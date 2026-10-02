@@ -333,13 +333,14 @@ def pr_command_kind(command: str) -> Optional[str]:
     between them: ``gh -R o/r pr create``, ``gh pr -R o/r create`` and ``gh --repo=o/r pr create`` are found. An
     option is a word that starts with a hyphen and the word after it may be its value or the next word of the command;
     both readings are followed, so the check errs towards finding the command. The verb must come right after the
-    subcommand and its options: ``gh pr view 5 -R o/r edit`` is not a pull request edit. A backslash-newline between
-    the words reads as a blank (the shell removes it, so a word cut in two by it is not seen). Quoted command words
-    stay unseen, see the module docstring.
+    subcommand and its options: ``gh pr view 5 -R o/r edit`` is not a pull request edit. A backslash-newline is
+    removed, as the shell removes it: between words the blanks around it still part them, and inside a word it joins
+    the two halves, so a verb cut in two by it is read whole. Quoted command words stay unseen, see the module
+    docstring.
     """
     # (client, still before the subcommand word?, did an option come last, so that the next word may be its value?)
     readings: Set[Tuple[str, bool, bool]] = set()
-    for word in _LINE_CONTINUATION.sub(" ", command or "").split():
+    for word in _LINE_CONTINUATION.sub("", command or "").split():
         client = _CLIENT.fullmatch(word)
         option = word.startswith("-")
         verb = _PR_VERB.match(word)

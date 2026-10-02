@@ -703,6 +703,10 @@ def test_merge_request_mcp_tools(name, expected):
     ("gh -R o/r \\\n pr create --title x", "create"),
     ("gh pr \\\n create --title x", "create"),
     ("gh pr -R o/r \\\n  edit 5", "update"),
+    # inside a word it joins the two halves, as the shell does: one word create here, one word o/rpr there
+    ("gh pr cre\\\nate --title x", "create"),
+    ("g\\\nh pr create --title x", "create"),
+    ("gh -R o/r\\\npr create", None),
     # a verb counts only right after pr or mr and the options that follow it, never from another subcommand
     ("gh -R o/r pr view 5", None),
     ("gh pr list --search create", None),

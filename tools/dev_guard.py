@@ -13,24 +13,47 @@ this hook does not know passes. An input without a tool name, or a known tool
 without its usual fields, is checked as text. Any failure while loading the
 checks or checking a known tool blocks, because Claude Code does not block on
 a hook that errors in any other way or times out. The text of a pull request
-that the hook cannot read from the command (a substitution, a variable,
-standard input that a here-document does not alone feed, a body file it
-cannot locate) blocks too, with the hint to pass an absolute --body-file
-path: a miss on the pull request path would let the text through unchecked. A
-here-document is trusted only when it is the one input: written on the pull
-request command itself, or in a first pipeline command that is exactly
-``cat <<'TAG'``, with no second input redirection on the command, and as the
-substitution ``$(cat <<'TAG'`` with the closing parenthesis right after it.
+that the hook cannot read from the command blocks too, with the hint to pass
+an absolute --body-file path, because a miss on the pull request path would
+let the text through unchecked: a command or process substitution, a
+variable, a tilde or zsh's =command; a body file attached to its option, named
+by a relative path after a cd, or that is a device, a pipe, a folder or a
+file under /dev or /proc.
 
-Open limits, declared and pinned in OPEN_FORMS of tests/test_dev_guard.py:
-an operator written inside a quoted string followed by a bare terminator line
-(``--body "Use <<'EOF' in scripts``, then ``$(cat body.md)``, then ``EOF``, then
-``"``) is taken for a quoted here-document, so the substitution that does run
-is not seen; and a folder change made by a program other than cd or pushd
-(``env -C sub gh pr create --body-file body.md``) leaves a relative body file
-read from the folder the hook starts in.
+A body read from standard input (--body-file or -F with -, /dev/stdin or
+/dev/fd/0) passes only when the whole command is one of two shapes, an
+allowlist and not a parser: gh or glab and its words, ending in one quoted
+here-document operator (``gh pr create --title x --body-file - <<'EOF'``), or
+``cat <<'EOF' |`` and then gh or glab and its words; after that line, the
+body, its terminator line and nothing but blanks and newlines. The words hold
+only ASCII letters, digits and - _ . / = : @ , + %, single-quoted text, and
+double-quoted text without $, backtick or backslash, none of them across a
+newline. Anything else with standard input blocks: a pipe from another
+command, a < or a second operator, a separator, a continuation, a second
+command.
+
+The body of a quoted here-document is literal text, and it is cut out before
+the command is searched for substitutions and variables; so a body may hold
+$HOME or backticks, and ``$(cat <<'EOF'`` is readable when nothing follows
+the operator on its line and the closing parenthesis comes right after the
+terminator. The terminator is the tag alone on its line (after tabs only for
+<<-), as bash and zsh end the body. An operator that a backslash escapes is no
+operator, and one whose line goes on past the newline (a quoted string left
+open, a backslash at the end) stops the cutting, so the lines after it stay in
+the text the checks read.
+
+Open limits, declared and pinned in OPEN_FORMS of tests/test_dev_guard.py: an
+operator the shell does not read as one (inside a quoted string, after a
+comment sign, in the body of an unquoted here-document) followed by a bare
+terminator line is taken for a quoted here-document, so a substitution
+between them is not seen (``--body "Use <<'EOF' in scripts``, then
+``$(cat body.md)``, then ``EOF``, then ``"``); and a folder change made by a
+program other than cd or pushd (``env -C sub gh pr create --body-file
+body.md``) leaves a relative body file read from the folder the hook starts
+in.
 """
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -53,36 +76,57 @@ BODY_HINT = (
     "/tmp/pr-body.md (a home path in the command is blocked too)"
 )
 _STDIN_NAMES = ("-", "/dev/stdin", "/dev/fd/0")  # body file names that mean standard input
-_BODY_FILE = re.compile(r"(?:--body-file|(?<!\S)-F)(?:\s+|=)(\"[^\"]*\"|'[^']*'|\S+)")
+# The name given to --body-file or -F as the shell passes it: the whole word, quoted parts and all, up to a blank or an
+# operator character (-; is standard input, then a separator), so that "-"x is the file -x and ""- is standard input;
+# _QUOTES then takes the quotes off.
+_BODY_FILE = re.compile(r"(?:--body-file|(?<!\S)-F)(?:\s+|=)((?:\"[^\"]*\"|'[^']*'|[^\s\"';&|<>()])+)")
+_QUOTES = re.compile(r"\"([^\"]*)\"|'([^']*)'")
+# Folders of devices and of process data: a body file there is a stream (the hook would read its own input, or wait)
+# or a file of another process, never the text the command sends.
+_SPECIAL_FOLDERS = ("/dev", "/proc")
 # A body file the pattern above does not read: -F attached to its value (-Fbody.md) or bundled with other short
 # options (-dF body.md). A short option word with an F in it also catches a value that happens to hold one (-tFix),
 # an accepted over-block.
 _ATTACHED_BODY_FILE = re.compile(r"(?<!\S)-(?!-)(?!F(?:\s|=|$))\S*?F")
-_STDIN_BODY = re.compile(
-    r"(?:--body-file|(?<!\S)-F)(?:\s+|=)[\"']?(?:%s)[\"']?(?!\S)" % "|".join(re.escape(n) for n in _STDIN_NAMES)
+# The only commands in which a body read from standard input is a here-document written in the command and nothing
+# else, as one grammar of the whole text: (A) gh or glab (a path in front allowed) and its words, ending in one quoted
+# here-document operator; (B) cat with that operator, a pipe, then gh or glab and its words. Then the body, the
+# terminator line exactly as bash and zsh end the body (the tag alone, after tabs only for <<-), and nothing but
+# blanks and newlines. A word holds, outside quotes, only ASCII letters, digits and _ - . / = : @ , + %; a
+# double-quoted string no $, backtick or backslash; a single-quoted one anything but '; neither a newline. So nothing
+# on the line expands, redirects or starts another command (what does expand there, zsh's =command, is blocked by
+# _EXPANSION first). Every character has one reading, so a failing match costs time linear in the text.
+_SHELL_WORD = r"(?:[\w\-.,/=:@+%]|'[^'\n]*'|\"[^\"$`\\\n]*\")+"
+_PR_CLIENT_COMMAND = r"(?:[\w.\-/]*/)?(?:gh|glab)(?:[ \t]+%s)*" % _SHELL_WORD
+_TERMINATOR = r"(?(dash)\t*)(?P=tag)(?=\n|\Z)"
+_STDIN_HERE_DOC_COMMAND = re.compile(
+    r"[ \t]*(?:(?P<pipe>cat[ \t]+)|{command}[ \t]*)<<(?P<dash>-)?(?P<quote>['\"])(?P<tag>\w+)(?P=quote)"
+    r"(?(pipe)[ \t]*\|[ \t]*{command})[ \t]*\n"
+    r"(?:(?!{terminator})[^\n]*\n)*{terminator}(?:\n[ \t\n]*)?".format(
+        command=_PR_CLIENT_COMMAND, terminator=_TERMINATOR
+    ),
+    re.ASCII,
 )
-# A quoted string, a pipeline element (a quoted string never ends one), a plain input redirection (not << or <<<) and
-# the first command of the one pipe that feeds a body from a here-document: cat and nothing else.
-_QUOTED_STRING = re.compile(r"\"[^\"]*\"|'[^']*'")
-_PIPELINE_ELEMENT = re.compile(r"(?:\"[^\"]*\"|'[^']*'|[^|\"'])+")
-_INPUT_REDIRECT = re.compile(r"(?<!<)<(?!<)")
-_CAT_HERE_DOC = re.compile(r"\s*cat[ \t]+<<-?[ \t]*([\"'])\w+\1\s*")
-# The operator of a quoted here-document, not of a here-string (<<<). Group 1 is the operator line: it is command
-# text and stays checked; only the body below it is literal. The pattern has no newline of its own to fail on: a
-# match always ends at the end of its line, so a long run of operators on one line is one match, not one per operator.
-_QUOTED_OPERATOR = re.compile(r"(?<!<)(<<-?[ \t]*([\"'])(\w+)\2[^\n]*)")
-_TERMINATOR_LINE = re.compile(r"^\t*(\w+)[ \t]*$", re.MULTILINE)
-# Where a command line ends: the separators of a list, and a newline unless a backslash continues the line.
-_LIST_SEPARATOR = re.compile(r"&&|\|\||;|\n|(?<![<>])&(?!>)")
-_CONTINUATION = re.compile(r"\\\r?\n")
+# The operator of a quoted here-document: not of a here-string (<<<), and not one a backslash escapes (\<<'EOF' is the
+# text < and an input redirection from a file). Groups: the dash of <<-, the quote, the tag.
+_QUOTED_OPERATOR = re.compile(r"(?<![<\\])<<(-)?[ \t]*([\"'])(\w+)\2")
+# What may follow the operator on its line for the body to start on the next one: quoted strings that close on the
+# line, and no backslash left at its end (an odd run of backslashes before the newline continues the line). Every
+# character has one reading, so a failing match costs time linear in the line.
+_OPERATOR_LINE_END = re.compile(r"(?:[^'\"\\\n]|\\[^\n]|'[^'\n]*'|\"(?:[^\"\\\n]|\\[^\n])*\")*")
+# A line that may end a body: tabs and a word, with no blank or carriage return after it.
+_TERMINATOR_LINE = re.compile(r"^(\t*)(\w+)$", re.MULTILINE)
 _CD = re.compile(r"\b(?:cd|pushd)\b")
-# A command substitution or a parameter expansion. The one substitution that is not text produced at run time is
+# Text the shell produces at run time: a command substitution, a parameter expansion, a process substitution (zsh
+# also writes =(...)), zsh's =command (the path of the command) and a tilde at the start of a word or after = or :
+# (the home folder). The one substitution that is not text produced at run time is
 # $(cat <<'EOF' with nothing else on its line and the closing parenthesis right after the body (the text this is
 # tested on has the body of a quoted here-document cut out): its text is then the here-document, which is part of
 # the command. An argument or a pipe after the operator, or a command after the terminator line, makes cat or the
 # substitution print something else; an unquoted tag keeps its body in the text, where the parenthesis is not next.
 _EXPANSION = re.compile(
     r"\$\((?!\s*cat\s+<<-?[ \t]*([\"'])\w+\1[ \t\r]*\n\s*\))|`|\$[{A-Za-z_0-9@*#?$!-]"
+    r"|[<>]\(|(?<!\S)=\S|(?<![^\s=:])~"
 )
 
 
@@ -140,67 +184,71 @@ def _content_after(tool_name: str, tool_input: Dict[str, Any], path: Path) -> Op
 def _without_quoted_here_document_bodies(text: str) -> str:
     """The text without the bodies of its quoted here-documents, which the shell takes literally.
 
-    The operator line stays, and so does everything after the terminator line. The text is read once: after a
-    terminator the search goes on from there, so an operator inside a body is part of that body, as in the shell. An
-    operator whose terminator is missing stops the scan and what follows stays in the text, where the checks see it:
-    the shell would read it as the body, but an operator inside a quoted string is no here-document, and taking the
-    rest of the text for a body would hide a substitution that really runs.
+    The operator line stays, and so does everything after the terminator line, which is the tag alone (after tabs
+    only for <<-), as bash and zsh end the body. The text is read once: after a terminator the search goes on from
+    there, so an operator inside a body is part of that body, as in the shell. An operator whose terminator is
+    missing, or whose line goes on past its newline (a quoted string still open, a backslash at the end), stops the
+    scan and what follows stays in the text, where the checks see it: the body does not start where the scan would
+    cut, and an operator inside a quoted string is no here-document, so taking the rest of the text for a body would
+    hide a substitution that really runs.
     """
     kept: List[str] = []
     position = 0
     while True:
         operator = _QUOTED_OPERATOR.search(text, position)
-        if operator is None or text[operator.end():operator.end() + 1] != "\n":
-            break  # no operator, or no line after it, and so no body
+        if operator is None:
+            break
+        line_end = text.find("\n", operator.end())
+        if line_end < 0 or not _OPERATOR_LINE_END.fullmatch(text, operator.end(), line_end):
+            break  # no line after it, or the command line goes on: no body starts on the next line
+        dash, tag = operator.group(1), operator.group(3)
         terminator = next(
             (
-                line for line in _TERMINATOR_LINE.finditer(text, operator.end() + 1)
-                if line.group(1) == operator.group(3)
+                line for line in _TERMINATOR_LINE.finditer(text, line_end + 1)
+                if line.group(2) == tag and (dash or not line.group(1))
             ),
             None,
         )
         if terminator is None:
             break
-        kept.append(text[position:operator.end(1)])
+        kept.append(text[position:line_end])
         position = terminator.end()
     kept.append(text[position:])
     return "".join(kept)
 
 
-def _stdin_fed_only_by_a_here_document(line: str) -> bool:
-    """Whether every body read from standard input on a command line comes from a here-document written in it.
-
-    A here-document written on the element of the pipeline that reads the body (the pull request command) feeds it.
-    So does a first element that is exactly ``cat <<'TAG'``, when the pull request command comes right after it. A
-    here-document written next to another command feeds that command, and a cat that also names a file, a command
-    between cat and the pull request command, or a second input redirection on the element (the last one wins, and
-    which one that is depends on the order) puts into the body something the hook cannot read.
-    """
-    elements = _PIPELINE_ELEMENT.findall(line)
-    for index, element in enumerate(elements):
-        if not _STDIN_BODY.search(element):
-            continue
-        outside_quotes = _QUOTED_STRING.sub("", element)  # a << or a < inside a quoted string is text
-        if _INPUT_REDIRECT.search(outside_quotes):
-            return False
-        if "<<" not in outside_quotes and not (index == 1 and _CAT_HERE_DOC.fullmatch(elements[0])):
-            return False
-    return True
-
-
 def _body_file_names(command: str) -> List[str]:
-    """The names given to --body-file or -F, except standard input, which a here-document in the command feeds."""
-    names = [raw.strip("\"'") for raw in _BODY_FILE.findall(command)]
-    return [name for name in names if name not in _STDIN_NAMES]
+    """The names given to --body-file or -F, without their quotes, as the shell passes them; standard input too."""
+    return [_QUOTES.sub(r"\1\2", word) for word in _BODY_FILE.findall(command)]
 
 
 def _body_files(cwd: Path, command: str) -> List[Tuple[str, str]]:
-    """(source, text) of the files named by --body-file or -F; a missing file raises and blocks."""
+    """(source, text) of the files named by --body-file or -F; a missing file raises and blocks.
+
+    Standard input is skipped: _unreadable_text lets it through only when a here-document written in the command
+    feeds it, and that text is checked with the command itself.
+    """
     texts = []
     for name in _body_file_names(command):
+        if name in _STDIN_NAMES:
+            continue
         path = Path(name) if Path(name).is_absolute() else cwd / name
         texts.append(("body file %s" % name, path.read_text(encoding="utf-8")))
     return texts
+
+
+def _is_special_file(cwd: Path, name: str) -> bool:
+    """Whether a body file is a device, a pipe, a folder or a file of another process.
+
+    That is a name under /dev or /proc as written or as resolved (``../``, ``//``, a symbolic link), or one that exists
+    as anything but a regular file. Reading it, the hook would get its own standard input, wait for a writer that never
+    comes, or fail, instead of reading the text the command sends.
+    """
+    joined = os.path.join(str(cwd), name)  # an absolute name replaces the folder
+    for path in (os.path.normpath(joined), os.path.realpath(joined)):
+        if any(path == folder or path.startswith(folder + "/") for folder in _SPECIAL_FOLDERS):
+            return True
+    return os.path.exists(joined) and not os.path.isfile(joined)
 
 
 def _check_pr_text(cwd: Path, sources: List[Tuple[str, str]]) -> Optional[str]:
@@ -222,36 +270,42 @@ def _check_pr_text(cwd: Path, sources: List[Tuple[str, str]]) -> Optional[str]:
     )
 
 
-def _unreadable_text(text: str) -> Optional[str]:
+def _unreadable_text(cwd: Path, text: str) -> Optional[str]:
     """Why the text of a pull request command cannot be read from the command, or None when it can.
 
     The body of a quoted here-document is literal and already in the command. Anything else the shell would
     produce at run time (a substitution, a variable, standard input), or read from a file the hook cannot find by
-    its name, is text this hook cannot check.
+    its name or cannot read as the command would, is text this hook cannot check.
     """
     literal = _without_quoted_here_document_bodies(text)
     if _EXPANSION.search(literal):
         return (
-            "the pull request command holds a command substitution or a shell variable, whose value this hook "
-            "cannot check; " + BODY_HINT + "; spell out the title, branch and other values in the command"
+            "the pull request command holds a substitution, a shell variable or another expansion (a tilde, "
+            "=command, <(...)), whose value this hook cannot check; " + BODY_HINT
+            + "; spell out the title, branch and other values in the command"
         )
     if _ATTACHED_BODY_FILE.search(literal):
         return (
             "the pull request command passes a body file attached to a short option (-Fbody.md, -dF body.md), "
             "which this hook cannot locate; " + BODY_HINT + ", written as a separate word"
         )
-    # A here-document feeds the standard input of the command it is written on, or of the pipeline element after a
-    # cat that holds nothing else. One written next to another command (git commit -F - <<'EOF') feeds that command.
-    for line in _LIST_SEPARATOR.split(_CONTINUATION.sub(" ", literal)):
-        if _STDIN_BODY.search(line) and not _stdin_fed_only_by_a_here_document(line):
-            return (
-                "the pull request body comes from standard input, and this hook cannot confirm that a here-document "
-                "written in the command is its only source, so it cannot read it; " + BODY_HINT
-            )
-    if _CD.search(literal) and any(not Path(name).is_absolute() for name in _body_file_names(text)):
+    names = _body_file_names(text)
+    if any(name in _STDIN_NAMES for name in names) and not _STDIN_HERE_DOC_COMMAND.fullmatch(text):
+        return (
+            "the pull request body comes from standard input, and the command is not one of the two forms whose "
+            "input this hook can read (the pull request command ending in one quoted here-document, <<'EOF', or "
+            "cat <<'EOF' piped into it, with plain words and nothing else in the command); " + BODY_HINT
+        )
+    files = [name for name in names if name not in _STDIN_NAMES]
+    if _CD.search(literal) and any(not Path(name).is_absolute() for name in files):
         return (
             "the command changes folder and names a body file with a relative path, which this hook would read from "
             "another folder; " + BODY_HINT
+        )
+    if any(_is_special_file(cwd, name) for name in files):
+        return (
+            "the pull request body file is a device, a pipe, a folder or a file under /dev or /proc, which this hook "
+            "cannot read as the command would; " + BODY_HINT
         )
     return None
 
@@ -260,7 +314,7 @@ def _check_shell(cwd: Path, text: str) -> Optional[str]:
     reason = filters.check_shell_command(text)
     if reason or not filters.pr_command_kind(text):
         return reason
-    return _unreadable_text(text) or _check_pr_text(cwd, [("the command", text)] + _body_files(cwd, text))
+    return _unreadable_text(cwd, text) or _check_pr_text(cwd, [("the command", text)] + _body_files(cwd, text))
 
 
 def decide(payload: Any) -> Optional[str]:

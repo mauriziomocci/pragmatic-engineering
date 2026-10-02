@@ -242,6 +242,8 @@ def test_missing_pr_body_file_blocks(repo_with_terms):
     # a backslash-newline between the words is a line continuation, not the end of the command
     'gh -R o/r \\\n pr create --title "Zorblax" --body x',
     'gh pr \\\n create --title "Zorblax" --body x',
+    # inside a word it joins the two halves, as bash and zsh do: gh gets create
+    "gh pr cre\\\nate --title Zorblax",
 ])
 def test_pr_command_with_options_between_its_words_is_checked(repo_with_terms, command):
     payload = {"tool_name": "Bash", "cwd": str(repo_with_terms), "tool_input": {"command": command}}
@@ -289,6 +291,64 @@ def test_pr_body_file_of_a_command_with_options_between_its_words_is_checked(rep
     "gh pr create --title x --body \"$(cat <<'EOF'\nIntro.\nEOF\ntrue; cat body.md\n)\"",
     "gh pr create --title x --body \"$(cat <<'EOF'\nIntro.\nEOF\n  cat body.md ; echo\n)\"",
     "gh pr create --title x --body \"$(cat <<EOF\nClean text.\nEOF\n)\"",
+    # standard input outside the two shapes: a here-document inside a substitution, a pipe or a < into gh, a second
+    # input next to the here-document (zsh joins the pipe and the here-document), redirections glued to each other
+    "cat body.md | gh pr create --body-file - --title $(cat <<'EOF'\nTitle\nEOF\n)",
+    "gh pr create --body-file - --title $(cat <<'EOF'\nT\nEOF\n) < body.md",
+    "cat body.md | gh pr create --title x --body-file - <<'EOF'\nClean body.\nEOF",
+    "gh pr create --title x --body-file - <'/dev/null'<body.md",
+    "gh pr create --title x --body-file - <<'EOF'<body.md\nClean body.\nEOF",
+    # a separator, an operator or an escaped quote inside a quoted string, which only a parser of quotes could place
+    "cat body.md | gh pr create --title \"x; cat <<'E'\" --body-file -",
+    "cat body.md | gh pr create --title \"x; y\" --body-file - --label \"<<EOF\"",
+    "cat body.md | gh pr create --body-file - --title \"a \\\" <<b\"",
+    # an escaped quote that keeps a double-quoted string open past the operator, whose substitution then runs
+    "gh pr create --body-file - --title \"a \\\" <<'EOF'\n$(cat body.md)\"\nEOF",
+    # a command after the terminator, then a line that looks like a second one
+    "gh pr create --title x --body-file - <<'EOF'\nClean.\nEOF\ncat body.md | gh pr edit 1 --body-file -\nEOF",
+    # a first command that is not gh or glab (GNU xargs -a adds the words of the file to gh's arguments)
+    "xargs -a body.md gh pr create --title x --body-file - <<'EOF'\nClean.\nEOF",
+    # a standard input name spelt with quotes the shell removes, or ended by a separator
+    "cat body.md | gh pr create --title x --body-file \"\"-",
+    "cat body.md | gh pr create --title x --body-file -; true",
+    # a line that is the tag with a tab, a trailing blank or a carriage return ends no plain here-document in bash or
+    # zsh, so the substitution goes on and zsh runs cat body.md into the body
+    "gh pr create --title x --body \"$(cat <<'EOF'\nIntro.\n\tEOF\n)\nEOF\ncat body.md\n)\"",
+    "gh pr create --title x --body \"$(cat <<'EOF'\nIntro.\nEOF \n)\nEOF\ncat body.md\n)\"",
+    "gh pr create --title x --body \"$(cat <<'EOF'\nIntro.\nEOF\r\n)\nEOF\ncat body.md\n)\"",
+    # an operator line that a backslash continues: the body starts after the continued lines, which run as a command
+    "cat <<'EOF' | gh pr create \\\n  --head \"$(cat title.txt)\" \\\n  --title x --body-file -\nClean text.\nEOF",
+    "cat <<'EOF' \\\nbody.md | gh pr create --title x --body-file -\nClean text.\nEOF",
+    "cat <<'EOF' | gh pr create --title x \\\n  --body-file - < body.md\nClean text.\nEOF",
+    # the same without standard input, where only the cutting of here-document bodies stands in the way; likewise a
+    # quoted string still open at the end of the operator line, and an operator a backslash escapes
+    "gh pr create --title x --body y <<'EOF' \\\n  --head \"$(cat title.txt)\"\nClean.\nEOF",
+    "gh pr create --body x <<'EOF' --title \"a\n$(cat body.md)\"\nfoo\nEOF",
+    "gh pr create --title x --body y \\<<'EOF'\ngh pr edit 1 --body \"$(cat body.md)\"\nEOF",
+    # a body file that is a device, another process's file, a pipe or a folder: the hook would read its own input, or
+    # wait, or fail
+    "cat body.md | gh pr create --title x --body-file /proc/self/fd/0",
+    "gh pr create --title x --body-file /dev/fd/3 3< body.md",
+    "cat body.md | gh pr create --title x --body-file " + "../" * 40 + "dev/stdin",
+    "cat body.md | gh pr create --title x --body-file /dev//stdin",
+    "cat body.md | gh pr create --title x --body-file //dev/stdin",
+    "gh pr create --title x --body-file /dev/tty",
+    "gh pr create --title x --body-file .git",
+    # process substitution (zsh also spells it =(...)), tilde and zsh's =command, each expanded at run time
+    "gh pr create --title x --body-file <(cat body.md)",
+    "gh pr create --title x --body y > >(tee pr.log)",
+    "gh pr create --title x --body-file =(cat body.md)",
+    "gh pr create --title x --body y --head ~/branch",
+    "gh pr create --title x --body-file ~/pr-body.md",
+    "gh pr create --title =gh --body-file - <<'EOF'\nClean.\nEOF",
+    # clean, but outside the two shapes for standard input: accepted over-blocks (a redirection, a continuation, a
+    # newline inside quotes, a second command that reads its own standard input, a body that only names the option:
+    # the names are read from the whole text, so that one in a line the cutting of bodies wrongly hid still counts)
+    "gh pr create --title x --body-file - 2>&1 <<'EOF'\nClean body.\nEOF",
+    "gh pr create --title x --body-file - \\\n  <<'EOF'\nClean body.\nEOF",
+    "gh pr create --title 'two\nlines' --body-file - <<'EOF'\nClean body.\nEOF",
+    "git commit -F - <<'EOF'\nA message.\nEOF\ngh pr create --title x --body \"$(cat <<'EOF'\nClean body.\nEOF\n)\"",
+    "gh pr create --title x --body \"$(cat <<'EOF'\nPass --body-file - to read standard input.\nEOF\n)\"",
 ])
 def test_pr_body_in_a_form_the_hook_cannot_locate_blocks_with_the_hint(repo_with_terms, command):
     (repo_with_terms / "body.md").write_text("Made for Zorblax.\n", encoding="utf-8")
@@ -298,15 +358,19 @@ def test_pr_body_in_a_form_the_hook_cannot_locate_blocks_with_the_hint(repo_with
 
 
 @pytest.mark.parametrize("command", [
-    "cat <<'EOF' | gh pr create --title x --body-file -\nClean body.\nEOF",
-    "gh pr create --title x --body-file - 2>&1 <<'EOF'\nClean body.\nEOF",
-    "gh pr create --title x --body-file - \\\n  <<'EOF'\nClean body.\nEOF",
-    "git commit -F - <<'EOF'\nA message.\nEOF\ngh pr create --title x --body \"$(cat <<'EOF'\nClean body.\nEOF\n)\"",
+    # shape (A): gh and its words, ending in the here-document
+    "gh pr create --title \"Clean title\" --body-file - <<'EOF'\nClean body.\nEOF",
     "gh pr create --title x --body-file - <<'EOF'\nNo -Fbody.md, no cd, no $(cat x) here.\nEOF",
+    "/opt/homebrew/bin/gh pr create --title v1.2:fix,50%+@me --body-file=/dev/fd/0 <<\"EOF\"\nClean body.\nEOF\n\n  \n",
+    "gh pr create --title x --body-file - <<-'EOF'\n\tClean body.\n\tEOF",
+    # a tab before the tag ends no plain here-document: the line is body, as in bash and zsh
+    "gh pr create --title x --body-file - <<'EOF'\nIndented:\n\tEOF\nEOF",
+    # shape (B): cat with the here-document, piped into gh and its words
+    "cat <<'EOF' | gh pr create --title x --body-file -\nClean body.\nEOF",
     "cat <<-'EOF' | gh pr create --title x --body-file -\n\tClean body.\n\tEOF",
-    "cat <<\"EOF\" | gh pr create --title x --body-file -\nClean body.\nEOF",
-    # the here-document written on gh itself wins over the pipe
-    "cat body.md | gh pr create --title x --body-file - <<'EOF'\nClean body.\nEOF",
+    "cat <<\"EOF\" | gh pr create --title x -F /dev/stdin\nClean body.\nEOF",
+    # the substitution, whose here-document body is the text
+    "gh pr create --title x --body \"$(cat <<'EOF'\nClean body.\nEOF\n)\"",
     "gh pr create --title x --body \"$(cat <<'EOF'\nClean body.\nEOF\n   )\"",
     # a < or a << or a | inside quotes is text
     "cat <<'EOF' | gh pr create --title \"a | b\" --body-file -\nClean body.\nEOF",
@@ -333,6 +397,41 @@ def test_an_operator_that_is_no_here_document_does_not_hide_what_follows(repo_wi
     assert reason and "--body-file <path>" in reason
 
 
+@pytest.mark.parametrize("command,name", [
+    ('gh pr create --title x --body-file "-"x', "-x"),
+    ('gh pr create --title x --body-file "clean.md"x', "clean.mdx"),
+])
+def test_a_body_file_name_glued_to_quotes_is_read_as_the_shell_passes_it(repo_with_terms, command, name):
+    """The shell joins the quoted part and the rest into one word: gh reads -x, not standard input or clean.md."""
+    (repo_with_terms / "clean.md").write_text("clean\n", encoding="utf-8")
+    (repo_with_terms / name).write_text("Made for Zorblax.\n", encoding="utf-8")
+    payload = {"tool_name": "Bash", "cwd": str(repo_with_terms), "tool_input": {"command": command}}
+    reason = dev_guard.decide(payload)
+    assert reason and 'term "Zorblax" in body file %s' % name in reason
+
+
+@pytest.mark.parametrize("target", ["/dev/stdin", "/proc/self/environ"])
+def test_a_body_file_linked_to_a_stream_or_a_process_file_blocks_with_the_hint(repo_with_terms, target):
+    """The link resolves to the hook's own input, or to a file of the hook's process, not to what gh would read."""
+    (repo_with_terms / "body.md").write_text("Made for Zorblax.\n", encoding="utf-8")
+    os.symlink(target, str(repo_with_terms / "link.md"))
+    payload = {"tool_name": "Bash", "cwd": str(repo_with_terms),
+               "tool_input": {"command": "cat body.md | gh pr create --title x --body-file link.md"}}
+    reason = dev_guard.decide(payload)
+    assert reason and "--body-file <path>" in reason
+
+
+def test_a_body_file_that_is_a_named_pipe_blocks_without_waiting(repo_with_terms):
+    """Opening a pipe nobody writes to waits forever, and a hook that times out lets the tool run."""
+    os.mkfifo(str(repo_with_terms / "pipe.md"))
+    payload = json.dumps({"tool_name": "Bash", "cwd": str(repo_with_terms),
+                          "tool_input": {"command": "gh pr create --title x --body-file pipe.md"}})
+    proc = subprocess.run([sys.executable, str(SCRIPT)], input=payload, cwd=str(repo_with_terms),
+                          capture_output=True, text=True, timeout=20)
+    assert proc.returncode == 2
+    assert "--body-file <path>" in proc.stderr
+
+
 def test_absolute_pr_body_file_after_a_cd_is_checked(repo_with_terms, tmp_path):
     body = tmp_path / "body.md"
     body.write_text("Made for Zorblax.\n", encoding="utf-8")
@@ -342,17 +441,45 @@ def test_absolute_pr_body_file_after_a_cd_is_checked(repo_with_terms, tmp_path):
     assert reason and 'term "Zorblax" in body file' in reason
 
 
-@pytest.mark.parametrize("command", [
-    "gh pr create --title x --body-file - <<'A'\n" + "<<'A'\nx\n" * 25000,  # 200 KB, nothing ends the first one
-    "gh pr create --title x --body-file - <<'A'\nx\nA\n" + "<<'A'\nx\nA\n" * 25000,  # 200 KB, every one ends
-    "gh pr create --title x --body-file - " + "<<'a'" * 40000,  # 200 KB on one line, no newline after any operator
-], ids=["unterminated", "terminated", "one-line"])
-def test_long_runs_of_quoted_here_documents_are_read_in_linear_time(repo_with_terms, command):
+# About 200 KB each, and whether the hook blocks it. The first three are runs of quoted here-documents that only the
+# cutting of their bodies reads (--body y: no standard input rule stops the check earlier); the rest are the worst
+# shapes of the rules for standard input, of the end of the operator line, of the expansions and of body file names.
+LONG_COMMANDS = [
+    ("gh pr create --title x --body y <<'A'\n" + "<<'A'\nx\n" * 25000, False),  # nothing ends the first one
+    ("gh pr create --title x --body y <<'A'\nx\nA\n" + "<<'A'\nx\nA\n" * 25000, False),  # every one ends
+    ("gh pr create --title x --body y " + "<<'a'" * 40000, False),  # one line, no newline after any operator
+    ("gh pr create --title x --body-file - <<'A'\n" + "<<'A'\nx\n" * 25000, True),  # no terminator
+    ("gh pr create --title x --body-file - " + "<<'a'" * 40000, True),  # more than one operator
+    ("gh pr create --body-file - " + "a " * 100000 + ";", True),  # words, then a separator
+    ("cat <<'A' | gh pr create --body-file - " + "'a'\"b\" " * 25000 + ";\nx\nA", True),  # quoted words
+    ("cat <<'A' | gh pr create --title x" + ' -F "-"' * 30000 + "\nx\nA", False),  # standard input names
+    ("gh pr create --body-file - <<'A'\n" + "x\n" * 100000, True),  # body lines, no terminator
+    ("gh pr create --body-file - <<-'ABCD'\n" + "\t\tABC\n" * 33000 + "\tABCD", False),  # lines almost the terminator
+    ("gh pr create --body-file - <<'A'\nx\nA\n" + " \n" * 100000 + "x", True),  # blanks after the terminator, then text
+    ("gh pr create --title x --body \"$(cat <<'A'" + ' "a' * 60000 + "\nx\nA\n)\"", True),  # long operator line
+    ("gh pr create --title x --body y <<'A' " + '"a' * 100001 + "\nx\nA", False),  # quote open at its end
+    ("gh pr create --title x --body y " + "\\<<'a'" * 30000, False),  # escaped operators
+    ("gh pr create --title x --body y" + " =" * 100000, False),  # = alone is no zsh expansion
+    ("gh pr create --title x --body y " + "a~" * 100000, False),  # ~ inside a word is no tilde expansion
+    ("a/" * 100000 + "gh pr create --body-file - <<'A'\nx\nA", False),  # a long path in front of gh
+    ("gh pr create --title x --body-file " + '""' * 100000 + "- <<'A'\nx\nA", False),  # one body file word
+    ("cat <<'A' | gh pr create --body-file - " + "a " * 100000 + "|\nx\nA", True),  # words, then a second pipe
+]
+
+
+@pytest.mark.parametrize("command,blocked", LONG_COMMANDS, ids=[
+    "unterminated", "terminated", "one-line", "stdin-unterminated", "stdin-one-line", "words", "quoted-words",
+    "stdin-names", "body-lines", "near-terminators", "blanks-after-terminator", "operator-line", "open-quote",
+    "escaped-operators", "equals", "tilde", "client-path", "glued-quotes", "pipe-words",
+])
+def test_long_commands_are_read_in_linear_time(repo_with_terms, command, blocked):
     """A hook that times out lets the tool run: scanning the rest of the text for every operator took 20 s here."""
     payload = {"tool_name": "Bash", "cwd": str(repo_with_terms), "tool_input": {"command": command}}
     started = time.perf_counter()
-    assert dev_guard.decide(payload) is None
-    assert time.perf_counter() - started < 1.0
+    reason = dev_guard.decide(payload)
+    elapsed = time.perf_counter() - started
+    assert (reason is not None) == blocked, reason
+    assert elapsed < 1.0
 
 
 @pytest.mark.parametrize("payload", [
@@ -370,12 +497,16 @@ def test_pr_tool_with_an_input_of_unknown_shape_blocks(payload):
 
 # What the module docstring declares open. Each command passes although the text the shell would send holds private
 # data; the cwd file is what the hook reads and the sub file what the command really reads (or the reverse for the
-# first form, where the command substitution runs in the folder the hook starts in). When one of these is closed,
-# this test fails and the docstring must change with it.
+# forms of the first limit, where the command substitution runs in the folder the hook starts in). When one of these
+# is closed, this test fails and the docstring must change with it.
 OPEN_FORMS = [
-    # an operator written inside a quoted string and a bare terminator line after it: taken for a real quoted
-    # here-document, so the substitution that does run is not seen
+    # an operator the shell does not read as one (inside a quoted string, after a comment sign, inside the body of an
+    # unquoted here-document) and a bare terminator line after it: taken for a real quoted here-document, so the
+    # substitution that does run between them is not seen
     ("gh pr create --title t --body \"Use <<'EOF' in scripts\n$(cat body.md)\nEOF\n\"", "Made for Zorblax.\n", "clean\n"),
+    ("gh pr create --title t --body-file sub/body.md # <<'EOF'\ngh pr edit 1 --body \"$(cat body.md)\"\nEOF",
+     "Made for Zorblax.\n", "clean\n"),
+    ("cat <<EOF\n<<'X'\nEOF\ngh pr edit 1 --body \"$(cat body.md)\"\nX", "Made for Zorblax.\n", "clean\n"),
     # a folder change by another program than cd or pushd: the relative body file is read from the hook's folder
     ("env -C sub gh pr create --title t --body-file body.md", "clean\n", "Made for Zorblax.\n"),
 ]
