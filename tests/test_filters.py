@@ -688,6 +688,45 @@ def test_merge_request_mcp_tools(name, expected):
     ("glab mr merge 4", "merge"),
     ("gh pr view 5", None),
     ("echo gh pr", None),
+    # options between the words belong to gh, glab and their subcommand: they do not hide the command
+    ("gh -R o/r pr create --title x", "create"),
+    ("gh pr -R o/r create --title x", "create"),
+    ("gh --repo=o/r pr create --title x", "create"),
+    ("gh --repo o/r pr edit 5 --body y", "update"),
+    ("gh -R o/r pr -R o/r merge 3", "merge"),
+    ("glab mr -R o/r create --title x", "create"),
+    ("glab --repo o/r mr update 4", "update"),
+    ("gh pr --help create", "create"),  # an option without a value, then the verb
+    ("/opt/homebrew/bin/gh -R o/r pr new --fill", "create"),
+    ("GH PR -r o/r CREATE --title x", "create"),
+    # a verb counts only right after pr or mr and the options that follow it, never from another subcommand
+    ("gh -R o/r pr view 5", None),
+    ("gh pr list --search create", None),
+    ("gh -R o/r issue create", None),
+    ("gh repo create x", None),
+    ("gh pr view 5 -R o/r edit", None),
+    ("gh pr -R o/r", None),
+    ("gh mr create", None),
+    ("glab pr create", None),
+    # quoted command words stay open, like the other forms a textual filter cannot see
+    ('gh pr "create" --title x', None),
+    ("'gh' pr create --title x", None),
 ])
 def test_pr_commands_are_recognised(command, expected):
     assert filters.pr_command_kind(command) == expected
+
+
+@pytest.mark.parametrize("command", [
+    "gh -a " * 20000,  # every gh starts a run of options with the next gh as a value
+    "gh pr -a " * 20000,
+    "gh pr " + "-a " * 50000,
+    "gh " + "-a " * 50000,
+    "gh pr " + "-a b " * 30000,
+    "glab mr " * 12000,
+    "gh pr -a " * 20000 + "view",
+], ids=["gh-runs", "gh-pr-runs", "options-after-pr", "options-after-gh", "options-with-values", "glab-mr-runs", "view-last"])
+def test_long_runs_of_options_are_read_for_a_pr_command_in_linear_time(command):
+    """The hook has 15 seconds and a hook that times out lets the tool run: no run of options may cost a second."""
+    started = time.perf_counter()
+    assert filters.pr_command_kind(command) is None
+    assert time.perf_counter() - started < 1.0

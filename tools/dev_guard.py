@@ -12,7 +12,11 @@ Exit 2 blocks the tool, with the reason on stderr; exit 0 lets it run. A tool
 this hook does not know passes. An input without a tool name, or a known tool
 without its usual fields, is checked as text. Any failure while loading the
 checks or checking a known tool blocks, because Claude Code does not block on
-a hook that errors in any other way or times out.
+a hook that errors in any other way or times out. The text of a pull request
+that the hook cannot read from the command (a substitution, a variable,
+standard input without a here-document of the same command line, a body file
+it cannot locate) blocks too, with the hint to pass an absolute --body-file
+path: a miss on the pull request path would let the text through unchecked.
 """
 import json
 import re
@@ -32,17 +36,32 @@ except Exception as exc:  # fail closed: a broken shared module must block, not 
     sys.exit(2)
 
 GIT_TIMEOUT = 5.0  # seconds for each git call: the hook has 15, and a hook that times out does not block
-BODY_HINT = "write the body to a file and pass --body-file <path>"
+BODY_HINT = (
+    "write the body to a file and pass --body-file <path> with an absolute path outside your home folder, such as "
+    "/tmp/pr-body.md (a home path in the command is blocked too)"
+)
 _STDIN_NAMES = ("-", "/dev/stdin", "/dev/fd/0")  # body file names that mean standard input
 _BODY_FILE = re.compile(r"(?:--body-file|(?<!\S)-F)(?:\s+|=)(\"[^\"]*\"|'[^']*'|\S+)")
+# A body file the pattern above does not read: -F attached to its value (-Fbody.md) or bundled with other short
+# options (-dF body.md). A short option word with an F in it also catches a value that happens to hold one (-tFix),
+# an accepted over-block.
+_ATTACHED_BODY_FILE = re.compile(r"(?<!\S)-(?!-)(?!F(?:\s|=|$))\S*?F")
 _STDIN_BODY = re.compile(
     r"(?:--body-file|(?<!\S)-F)(?:\s+|=)[\"']?(?:%s)[\"']?(?!\S)" % "|".join(re.escape(n) for n in _STDIN_NAMES)
 )
 _HERE_DOC = re.compile(r"<<-?\s*[\"']?\w+")
-# Group 1 is the operator line: it is command text and stays checked; only the body below it is literal.
-_QUOTED_HERE_DOC = re.compile(r"(<<-?\s*([\"'])(\w+)\2[^\n]*)\n.*?^\t*\3[ \t]*$", re.DOTALL | re.MULTILINE)
-# A command substitution (except the $(cat <<'EOF' form, whose body is literal) or a parameter expansion.
-_EXPANSION = re.compile(r"\$\((?!\s*cat\s+<<)|`|\$[{A-Za-z_0-9@*#?$!-]")
+# The operator of a quoted here-document, not of a here-string (<<<). Group 1 is the operator line: it is command
+# text and stays checked; only the body below it is literal.
+_QUOTED_OPERATOR = re.compile(r"(?<!<)(<<-?[ \t]*([\"'])(\w+)\2[^\n]*)\n")
+_TERMINATOR_LINE = re.compile(r"^\t*(\w+)[ \t]*$", re.MULTILINE)
+# Where a command line ends: the separators of a list, and a newline unless a backslash continues the line.
+_LIST_SEPARATOR = re.compile(r"&&|\|\||;|\n|(?<![<>])&(?!>)")
+_CONTINUATION = re.compile(r"\\\r?\n")
+_CD = re.compile(r"\b(?:cd|pushd)\b")
+# A command substitution or a parameter expansion. The one substitution that is not text produced at run time is
+# $(cat <<'EOF' with nothing else on its line: its text is the here-document below it, which is part of the command.
+# With an argument or a pipe after the operator, cat or the pipeline reads something else.
+_EXPANSION = re.compile(r"\$\((?!\s*cat\s+<<-?[ \t]*[\"']?\w+[\"']?[ \t\r]*\n)|`|\$[{A-Za-z_0-9@*#?$!-]")
 
 
 def _strings(value: Any) -> List[str]:
@@ -96,13 +115,43 @@ def _content_after(tool_name: str, tool_input: Dict[str, Any], path: Path) -> Op
     return source if isinstance(source, str) else None
 
 
+def _without_quoted_here_document_bodies(text: str) -> str:
+    """The text without the bodies of its quoted here-documents, which the shell takes literally.
+
+    The operator line stays, and so does everything after the terminator line. The text is read once: after a
+    terminator the search goes on from there, so an operator inside a body is part of that body, as in the shell. An
+    operator whose terminator is missing stops the scan and what follows stays in the text, where the checks see it:
+    the shell would read it as the body, but an operator inside a quoted string is no here-document, and taking the
+    rest of the text for a body would hide a substitution that really runs.
+    """
+    kept: List[str] = []
+    position = 0
+    while True:
+        operator = _QUOTED_OPERATOR.search(text, position)
+        if operator is None:
+            break
+        terminator = next(
+            (line for line in _TERMINATOR_LINE.finditer(text, operator.end()) if line.group(1) == operator.group(3)),
+            None,
+        )
+        if terminator is None:
+            break
+        kept.append(text[position:operator.end(1)])
+        position = terminator.end()
+    kept.append(text[position:])
+    return "".join(kept)
+
+
+def _body_file_names(command: str) -> List[str]:
+    """The names given to --body-file or -F, except standard input, which a here-document in the command feeds."""
+    names = [raw.strip("\"'") for raw in _BODY_FILE.findall(command)]
+    return [name for name in names if name not in _STDIN_NAMES]
+
+
 def _body_files(cwd: Path, command: str) -> List[Tuple[str, str]]:
     """(source, text) of the files named by --body-file or -F; a missing file raises and blocks."""
     texts = []
-    for raw in _BODY_FILE.findall(command):
-        name = raw.strip("\"'")
-        if name in _STDIN_NAMES:
-            continue  # standard input fed by a here-document inside the command, checked with the command itself
+    for name in _body_file_names(command):
         path = Path(name) if Path(name).is_absolute() else cwd / name
         texts.append(("body file %s" % name, path.read_text(encoding="utf-8")))
     return texts
@@ -127,20 +176,45 @@ def _check_pr_text(cwd: Path, sources: List[Tuple[str, str]]) -> Optional[str]:
     )
 
 
+def _unreadable_text(text: str) -> Optional[str]:
+    """Why the text of a pull request command cannot be read from the command, or None when it can.
+
+    The body of a quoted here-document is literal and already in the command. Anything else the shell would
+    produce at run time (a substitution, a variable, standard input), or read from a file the hook cannot find by
+    its name, is text this hook cannot check.
+    """
+    literal = _without_quoted_here_document_bodies(text)
+    if _EXPANSION.search(literal):
+        return (
+            "the pull request command holds a command substitution or a shell variable, whose value this hook "
+            "cannot check; " + BODY_HINT + "; spell out the title, branch and other values in the command"
+        )
+    if _ATTACHED_BODY_FILE.search(literal):
+        return (
+            "the pull request command passes a body file attached to a short option (-Fbody.md, -dF body.md), "
+            "which this hook cannot locate; " + BODY_HINT + ", written as a separate word"
+        )
+    # A here-document feeds the standard input of the command line it is written on: a pipeline or a single command.
+    # One written next to another command (git commit -F - <<'EOF') feeds that command, not the pull request.
+    for line in _LIST_SEPARATOR.split(_CONTINUATION.sub(" ", literal)):
+        if _STDIN_BODY.search(line) and not _HERE_DOC.search(line):
+            return (
+                "the pull request body comes from standard input and no here-document of the same command line "
+                "feeds it, which this hook cannot read; " + BODY_HINT
+            )
+    if _CD.search(literal) and any(not Path(name).is_absolute() for name in _body_file_names(text)):
+        return (
+            "the command changes folder and names a body file with a relative path, which this hook would read from "
+            "another folder; " + BODY_HINT
+        )
+    return None
+
+
 def _check_shell(cwd: Path, text: str) -> Optional[str]:
     reason = filters.check_shell_command(text)
     if reason or not filters.pr_command_kind(text):
         return reason
-    # The body of a quoted here-document is literal and already in the command; anything else the shell
-    # would produce at run time (a substitution, a variable, standard input) is text this hook cannot read.
-    if _EXPANSION.search(_QUOTED_HERE_DOC.sub(r"\1", text)):
-        return (
-            "the pull request command holds a command substitution or a shell variable, whose value this hook "
-            "cannot check; " + BODY_HINT + ", and spell out the title, branch and other values"
-        )
-    if _STDIN_BODY.search(text) and not _HERE_DOC.search(text):
-        return "the pull request body comes from standard input, which this hook cannot read; " + BODY_HINT
-    return _check_pr_text(cwd, [("the command", text)] + _body_files(cwd, text))
+    return _unreadable_text(text) or _check_pr_text(cwd, [("the command", text)] + _body_files(cwd, text))
 
 
 def decide(payload: Any) -> Optional[str]:
@@ -148,9 +222,8 @@ def decide(payload: Any) -> Optional[str]:
     if not isinstance(payload, dict):
         return "unreadable hook input"
     tool_name = payload.get("tool_name")
-    tool_input = payload.get("tool_input")
-    if not isinstance(tool_input, dict):
-        tool_input = {}
+    raw_input = payload.get("tool_input")
+    tool_input = raw_input if isinstance(raw_input, dict) else {}
     cwd_value = payload.get("cwd")
     cwd = Path(cwd_value) if isinstance(cwd_value, str) and cwd_value else Path.cwd()
     if not isinstance(tool_name, str) or tool_name in filters.SHELL_TOOLS:
@@ -164,6 +237,12 @@ def decide(payload: Any) -> Optional[str]:
     if filters.is_remote_write_mcp_tool(tool_name):
         return "MCP tools that write to a remote skip the privacy pre-push; commit locally and push with git"
     if filters.mr_action_kind(tool_name):
+        if not isinstance(raw_input, dict):
+            # The rest of the payload (cwd, transcript path) says nothing about the pull request, so it is not scanned.
+            return (
+                "the tool input of a pull or merge request tool is missing or has an unknown input shape, "
+                "so its text cannot be checked"
+            )
         return _check_pr_text(cwd, [("the tool input", text) for text in _strings(tool_input)])
     return None
 

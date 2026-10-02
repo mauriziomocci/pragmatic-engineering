@@ -11,8 +11,10 @@ does not write out, because an endpoint, an option value or the whole command
 is held in a variable (``gh api "$EP" -f ...``, ``git push -o "$OPT"``,
 ``$cmd``, ``eval "$cmd"``) or hidden by a shell, git or gh alias or function;
 a quoted option flag of git (``git push "-o" ...``); bundled short options of
-gh api (``-iX PUT``); and ``curl`` or any other client calling the API
-directly.
+gh api (``-iX PUT``); a quoted command word of a pull request command
+(``gh pr "create"``, ``'gh' pr create``, which ``pr_command_kind`` does not
+read, while options between its words are); and ``curl`` or any other client
+calling the API directly.
 
 For raw API writes the filter keeps every block of its first version, which
 blocked a command with an api call, a write marker and a pull or merge request
@@ -37,7 +39,7 @@ prints to the gh it starts).
 """
 import re
 from pathlib import PurePath
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import unquote
 
 SHELL_TOOLS: Tuple[str, ...] = ("Bash", "PowerShell", "Monitor", "mcp__terminal__run_in_terminal")
@@ -106,7 +108,7 @@ _MODELLED = re.compile(r"(?:[\w\-.,/=:@+% \t\n;|]|&&|'[^']*'|\"[^\"$`\\]*\")*", 
 _STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[^|;&\n])+")
 _WORD = re.compile(r"(?:[^\s\"'\\]|\\(?!\r?\n)|\"[^\"]*\"|'[^']*')+")
 _QUOTES = re.compile(r"\"([^\"]*)\"|'([^']*)'")
-_CLIENT = re.compile(r"(?:.*\W)?(?:gh|glab)", _I | re.DOTALL)  # also /usr/local/bin/gh, zsh's =gh, GH on macOS
+_CLIENT = re.compile(r"(?:.*\W)?(gh|glab)", _I | re.DOTALL)  # also /usr/local/bin/gh, zsh's =gh, GH on macOS
 _ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=")
 _BLANK = re.compile(r"\s")
 # gh api options (gh 2.100.0, gh api --help): those that take a value, those whose value is a field (the request
@@ -126,9 +128,12 @@ _WRITE_METHODS = frozenset({"post", "put", "patch", "delete"})
 # or a fragment graphql is data, and a REST endpoint with ?x=/graphql is still that endpoint.
 _GRAPHQL = re.compile(r"(?:[^?#]*/)?graphql/?(?:[?#].*)?", _I | re.DOTALL)
 _MUTATION = re.compile(r"\bmutation\b", _I)
-_PR_COMMAND = re.compile(
-    r"\bgh\s+pr\s+(create|new|edit|merge)\b|\bglab\s+mr\s+(create|new|update|merge)\b", _I
-)
+_PR_VERB = re.compile(r"(create|new|edit|update|merge)\b", _I)
+# The subcommand word and the verbs of the pull or merge request commands of each client, see pr_command_kind.
+_PR_SUBCOMMANDS = {
+    "gh": ("pr", frozenset({"create", "new", "edit", "merge"})),
+    "glab": ("mr", frozenset({"create", "new", "update", "merge"})),
+}
 _MCP_TOOL = re.compile(r"mcp__.+__([A-Za-z0-9_-]+)")
 _SETTINGS_NAME = re.compile(r"settings.*\.json", _I)
 _PR_KIND = {"create": "create", "new": "create", "edit": "update", "update": "update", "merge": "merge"}
@@ -319,9 +324,35 @@ def mr_action_kind(tool_name: str) -> Optional[str]:
 
 
 def pr_command_kind(command: str) -> Optional[str]:
-    """'create', 'update' or 'merge' for gh pr / glab mr commands in a shell text."""
-    match = _PR_COMMAND.search(command or "")
-    if not match:
-        return None
-    verb = (match.group(1) or match.group(2)).lower()
-    return _PR_KIND[verb]
+    """'create', 'update' or 'merge' for gh pr / glab mr commands in a shell text, for the first one found.
+
+    The words of the text are read once, with every reading that is still possible kept alive, so the time is linear
+    in the text (a pattern tried again from every gh of ``gh -a gh -a ...`` would not be). A command is a client word
+    (gh or glab, also with a path in front), the subcommand word (pr for gh, mr for glab) and a verb, with options
+    between them: ``gh -R o/r pr create``, ``gh pr -R o/r create`` and ``gh --repo=o/r pr create`` are found. An
+    option is a word that starts with a hyphen and the word after it may be its value or the next word of the command;
+    both readings are followed, so the check errs towards finding the command. The verb must come right after the
+    subcommand and its options: ``gh pr view 5 -R o/r edit`` is not a pull request edit. Quoted command words stay
+    unseen, see the module docstring.
+    """
+    # (client, still before the subcommand word?, did an option come last, so that the next word may be its value?)
+    readings: Set[Tuple[str, bool, bool]] = set()
+    for word in (command or "").split():
+        client = _CLIENT.fullmatch(word)
+        option = word.startswith("-")
+        verb = _PR_VERB.match(word)
+        following = {(client.group(1).lower(), True, False)} if client else set()
+        for name, before_subcommand, after_option in readings:
+            subcommand, verbs = _PR_SUBCOMMANDS[name]
+            if before_subcommand:
+                if word.lower() == subcommand:
+                    following.add((name, False, False))
+                if option or after_option:
+                    following.add((name, True, option))
+            else:
+                if verb and verb.group(1).lower() in verbs:
+                    return _PR_KIND[verb.group(1).lower()]
+                if option or after_option:
+                    following.add((name, False, option))
+        readings = following
+    return None
