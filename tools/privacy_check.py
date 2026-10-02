@@ -10,8 +10,18 @@ names and emails, the tag name), and the names of the pushed references. It
 looks for two kinds of evidence: the maintainer's private terms, read from a
 file outside every repository whose path is in ``git config
 pe.privateTermsFile``, and generic patterns (home paths, recognisable keys and
-tokens). A pattern finding reports the pattern name, never the matched text,
-so a secret is not echoed into logs.
+tokens). A pattern finding names the pattern, never the matched text, so a
+secret found in a line, a message or a header is not echoed into logs. The
+location printed next to a finding does show the file path or the reference
+name it concerns (a finding in a path or a reference name is located by that
+very name), and a term finding shows the term, which comes from the
+maintainer's own list.
+
+What counts as a binary file does not depend on the clone or on the user: the
+patch is read with a fixed size limit and without the user's global attributes
+file. The repository's own ``.gitattributes`` (and ``.git/info/attributes``)
+remains a known limit: a ``-diff`` rule there makes git report the matching
+files as binary, so they are skipped, and the skip is listed, not silent.
 
 Usage:
     privacy_check.py pre-push <remote-name> <remote-url>   (git's lines on stdin)
@@ -34,10 +44,10 @@ MAX_REPORTED = 50
 USAGE = "usage: privacy_check.py pre-push <remote-name> <remote-url> | scan <revision>..."
 
 GENERIC_PATTERNS: Dict[str, Pattern[str]] = {
-    "home-path-macos": re.compile(r"/Users/[A-Za-z0-9._-]+/"),
+    "home-path-macos": re.compile(r"/Users/[A-Za-z0-9._-]+"),
     "home-path-linux": re.compile(r"/home/[A-Za-z0-9._-]+/"),
     "home-path-windows": re.compile(r"[A-Za-z]:\\+Users\\+[A-Za-z0-9._ -]+\\"),
-    "claude-project-dir": re.compile(r"-Users-[A-Za-z0-9._]+-"),
+    "claude-project-dir": re.compile(r"-Users-[A-Za-z0-9._]+"),
     "github-token": re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}"),
     "github-fine-grained-token": re.compile(r"\bgithub_pat_[A-Za-z0-9_]{22,}"),
     "gitlab-token": re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}"),
@@ -49,6 +59,7 @@ GENERIC_PATTERNS: Dict[str, Pattern[str]] = {
 }
 _ANY_GENERIC = re.compile("|".join("(?:%s)" % p.pattern for p in GENERIC_PATTERNS.values()))
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+_OBJECT_ID = re.compile(r"\b[0-9a-f]{40}(?:[0-9a-f]{24})?\b")
 
 
 class TermsError(Exception):
@@ -105,39 +116,40 @@ def _term_regex(term: str) -> Pattern[str]:
     return re.compile("(?=(%s))" % re.escape(term), re.IGNORECASE)
 
 
-def _starts_word(text: str, start: int) -> bool:
-    if start == 0:
-        return True
-    before = text[start - 1]
-    if not before.isalpha():
-        return True
-    return before.islower() and text[start].isupper()
+def _is_boundary(text: str, index: int) -> bool:
+    """True when ``index`` falls between two words of ``text``, or at an end of it.
 
-
-def _ends_word(text: str, end: int) -> bool:
-    if end >= len(text):
+    The boundaries are the ones a camel-case identifier has: next to a
+    non-letter, from a lower-case to an upper-case letter ('getZorblax'), and
+    inside a run of capitals, before the last one, when a lower-case letter
+    follows it ('HTTPZorblax', 'ZORBLAXClient').
+    """
+    if index <= 0 or index >= len(text):
         return True
-    after = text[end]
-    if not after.isalpha():
+    before, after = text[index - 1], text[index]
+    if not (before.isalpha() and after.isalpha()):
         return True
-    return text[end - 1].islower() and after.isupper()
+    if before.islower() and after.isupper():
+        return True
+    return before.isupper() and after.isupper() and text[index + 1:index + 2].islower()
 
 
 def _term_occurs(text: str, term: str) -> bool:
     """True when ``term`` occurs in ``text`` as a whole word, ignoring case.
 
-    A word boundary is any non-letter, or a lower-to-upper case change, so a
-    name inside a CamelCase identifier is found while 'cat' is not found in
-    'concatenate'. A side of the term that is not a letter (the '+' of 'C++')
-    needs no boundary on that side.
+    A word boundary is where a camel-case identifier splits (see
+    ``_is_boundary``), so a name inside 'IoZorblax', 'HTTPZorblaxClient' or
+    'getZORBLAXData' is found while 'cat' is not found in 'concatenate' and
+    'QX' is not found in 'QXTRA'. A side of the term that is not a letter (the
+    '+' of 'C++') needs no boundary on that side.
     """
     check_start = term[0].isalpha()
     check_end = term[-1].isalpha()
     for match in _term_regex(term).finditer(text):
         start, end = match.start(1), match.end(1)
-        if check_start and not _starts_word(text, start):
+        if check_start and not _is_boundary(text, start):
             continue
-        if check_end and not _ends_word(text, end):
+        if check_end and not _is_boundary(text, end):
             continue
         return True
     return False
@@ -160,8 +172,24 @@ def scan_text(text: str, terms: Sequence[str], where: str) -> List[Finding]:
     return found
 
 
+def _run_git(repo: Path, *args: str, timeout: Optional[float] = None) -> "subprocess.CompletedProcess[bytes]":
+    """Run git in ``repo``; a timeout, or a git that cannot start, becomes a GitError.
+
+    Every way git can fail reaches the callers as one exception type, so the
+    exit status contract of ``main`` (2 for a git failure) holds without each
+    caller knowing about subprocess errors.
+    """
+    command = " ".join(("git",) + args)
+    try:
+        return subprocess.run(["git", *args], cwd=str(repo), capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise GitError("%s timed out after %s seconds" % (command, timeout)) from exc
+    except OSError as exc:
+        raise GitError("cannot run %s: %s" % (command, exc.strerror or exc.__class__.__name__)) from exc
+
+
 def _git(repo: Path, *args: str, timeout: Optional[float] = None) -> str:
-    proc = subprocess.run(["git", *args], cwd=str(repo), capture_output=True, timeout=timeout)
+    proc = _run_git(repo, *args, timeout=timeout)
     if proc.returncode != 0:
         detail = proc.stderr.decode("utf-8", "replace").strip()
         raise GitError("git %s failed: %s" % (" ".join(args), detail))
@@ -169,16 +197,20 @@ def _git(repo: Path, *args: str, timeout: Optional[float] = None) -> str:
 
 
 def repository_root(path: Path, timeout: Optional[float] = None) -> Path:
-    """Top of the working tree that contains ``path``; a hook passes a timeout."""
+    """Top of the working tree that contains ``path``; a hook passes a timeout.
+
+    Raises GitError, also when git times out or cannot start.
+    """
     return Path(_git(path, "rev-parse", "--show-toplevel", timeout=timeout).strip())
 
 
 def terms_file_from_git(repo: Path, timeout: Optional[float] = None) -> Path:
-    """Return the configured terms file, which must live outside the repository."""
-    proc = subprocess.run(
-        ["git", "config", "--type=path", "--get", "pe.privateTermsFile"],
-        cwd=str(repo), capture_output=True, timeout=timeout,
-    )
+    """Return the configured terms file, which must live outside the repository.
+
+    Raises TermsError when none is configured or it is misplaced, and GitError
+    when git times out or cannot start.
+    """
+    proc = _run_git(repo, "config", "--type=path", "--get", "pe.privateTermsFile", timeout=timeout)
     value = proc.stdout.decode("utf-8", "replace").strip()
     if proc.returncode != 0 or not value:
         raise TermsError(
@@ -196,10 +228,7 @@ def terms_file_from_git(repo: Path, timeout: Optional[float] = None) -> Path:
 
 
 def _is_local_commit(repo: Path, sha: str) -> bool:
-    proc = subprocess.run(
-        ["git", "cat-file", "-e", sha + "^{commit}"], cwd=str(repo), capture_output=True
-    )
-    return proc.returncode == 0
+    return _run_git(repo, "cat-file", "-e", sha + "^{commit}").returncode == 0
 
 
 def commits_to_push(repo: Path, local_sha: str, remote_sha: str, remote_name: str) -> List[str]:
@@ -215,9 +244,15 @@ def _strip_side_prefix(path: str) -> str:
 
 
 def _object_parts(repo: Path, kind: str, sha: str) -> Tuple[str, str]:
-    """Split a commit or tag object into its header (identities, tag name) and its message."""
+    """Split a commit or tag object into its header (identities, tag name) and its message.
+
+    The object ids of the header (tree, parent, object, the one inside a
+    mergetag) are removed: they are hex digits, and a short term made of the
+    letters a to f would match inside them. The rest of the header is kept:
+    author, committer, tagger, tag name, mergetag and signature lines.
+    """
     header, _, message = _git(repo, "cat-file", kind, sha).partition("\n\n")
-    return header, message
+    return _OBJECT_ID.sub("", header), message
 
 
 def _scan_paths(repo: Path, sha: str, terms: Sequence[str], result: ScanResult) -> None:
@@ -225,10 +260,11 @@ def _scan_paths(repo: Path, sha: str, terms: Sequence[str], result: ScanResult) 
 
     The list comes from git, not from the patch, because a new empty file has
     no +++ line; deleted paths are left out, so removing a name is never blocked.
+    ``--root`` lists the files of a root commit even when ``log.showRoot`` is off.
     """
     short = sha[:12]
     names = _git(
-        repo, "show", "--format=", "--name-only", "-z", "--no-relative",
+        repo, "show", "--format=", "--name-only", "-z", "--no-relative", "--root",
         "--diff-merges=first-parent", "--diff-filter=d", sha,
     )
     for path in names.split("\0"):
@@ -237,18 +273,31 @@ def _scan_paths(repo: Path, sha: str, terms: Sequence[str], result: ScanResult) 
 
 
 def _scan_patch(repo: Path, sha: str, terms: Sequence[str], result: ScanResult) -> None:
-    """Stream one commit's patch (first parent for merges) and scan the lines it adds."""
+    """Stream one commit's patch (first parent for merges) and scan the lines it adds.
+
+    ``core.bigFileThreshold`` and the user's attributes file are pinned on the
+    command line, so which files git calls binary does not depend on the clone's
+    or the user's configuration; ``--root`` shows a root commit even when
+    ``log.showRoot`` is off.
+    """
     short = sha[:12]
     command = [
-        "git", "-c", "core.quotepath=off", "show", "--format=", "--patch", "--no-color",
-        "--no-ext-diff", "--no-textconv", "--no-relative", "--diff-merges=first-parent",
+        "git", "-c", "core.quotepath=off", "-c", "core.bigFileThreshold=2g",
+        "-c", "core.attributesFile=/dev/null",
+        "show", "--format=", "--patch", "--no-color", "--no-ext-diff", "--no-textconv",
+        "--no-relative", "--root", "--diff-merges=first-parent",
         "-U0", "--inter-hunk-context=0", "--src-prefix=a/", "--dst-prefix=b/", sha,
     ]
     path = "?"
     new_line = 0
     in_header = False
     with tempfile.TemporaryFile() as errors:
-        proc = subprocess.Popen(command, cwd=str(repo), stdout=subprocess.PIPE, stderr=errors)
+        try:
+            proc = subprocess.Popen(command, cwd=str(repo), stdout=subprocess.PIPE, stderr=errors)
+        except OSError as exc:
+            raise GitError(
+                "cannot run git show %s: %s" % (short, exc.strerror or exc.__class__.__name__)
+            ) from exc
         assert proc.stdout is not None
         for raw in proc.stdout:
             line = raw.decode("utf-8", "replace").rstrip("\r\n")
@@ -341,7 +390,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(USAGE, file=sys.stderr)
         return 2
     try:
-        repo = repository_root(Path.cwd())
+        repo = repository_root(Path("."))  # not Path.cwd(): it raises when the directory is gone
         terms = load_terms(terms_file_from_git(repo))
         if args[0] == "pre-push":
             result = check_pre_push(repo, args[1], sys.stdin, terms)
