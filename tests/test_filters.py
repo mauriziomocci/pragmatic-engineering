@@ -1,4 +1,7 @@
 """Tests for lib/pe_guard/filters.py: shell text filter, file write filter, tool lists."""
+import itertools
+import random
+import re
 import time
 
 import pytest
@@ -102,6 +105,50 @@ BLOCKED_COMMANDS = [
     ("gh api graphql --field query=@m.graphql", "pull or merge requests"),
     ("gh api graphql -F 'query=@m.graphql'", "pull or merge requests"),
     ("gh api graphql --field=query=@m.graphql", "pull or merge requests"),
+    # a bundled short option group may carry digits
+    ("git push -4o merge_request.create origin x", "push options"),
+    # when a command is not read unambiguously the whole-text verdict stands, whatever one call alone looks like:
+    # an ampersand that belongs to a redirection is not a separator
+    ("gh api repos/o/r/pulls 2>&1 -f title=x -f head=a -f base=main", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge &>/dev/null -X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls >&2 -f title=x", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge <&0 -X PUT", "pull or merge requests"),
+    # separators inside a command substitution do not split the call
+    ("gh api repos/o/r/pulls/$(echo 1; echo)/merge -X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/$(echo 1 | cat)/merge -X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/$(true && echo 1)/merge -X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/$(echo 1\necho 2)/merge -X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/`echo 1; echo`/merge -X PUT", "pull or merge requests"),
+    # an unbalanced quote (an apostrophe in a comment, an escaped quote) would pair with a later quote and join
+    # statements, which widens the read exemption of the call before it
+    ("# don't merge yet\ngh api repos/o/r/pulls -f title=x -f head=a -f base=main\ncurl -X GET 'https://example.org'", "pull or merge requests"),
+    ('# say "hi\ngh api repos/o/r/pulls -f title=x -f head=a -f base=main\ncurl -X GET "https://example.org"', "pull or merge requests"),
+    ("echo \\'; gh api repos/o/r/pulls -f title=x -f head=a -f base=main; curl -X GET 'https://example.org'", "pull or merge requests"),
+    ('echo \\"; gh api repos/o/r/pulls -f title=x -f head=a -f base=main; curl -X GET "https://example.org"', "pull or merge requests"),
+    ('echo "; gh api repos/o/r/pulls -f title=x -f head=a -f base=main; curl -X GET "https://example.org"', "pull or merge requests"),
+    ("echo don't; gh api repos/o/r/pulls -f title=x -f head=a -f base=main; curl -X GET 'https://example.org'", "pull or merge requests"),
+    # two stray apostrophes pair with each other, so the quotes balance by luck and still swallow the call between
+    # them: comments and heredoc bodies are inert text to the shell
+    ("# don't merge yet\ngh api repos/o/r/pulls -f title=x -f head=a -f base=main\ncurl -X GET 'a'\n# can't merge either", "pull or merge requests"),
+    ("cat <<EOF\ndon't\nEOF\ngh api repos/o/r/pulls -f title=x -f head=a -f base=main\ncurl -X GET 'a'\ncat <<EOF\ncan't\nEOF", "pull or merge requests"),
+    # a redirection that overrides noclobber ends in a pipe character
+    ("gh api repos/o/r/pulls >| out.json -f title=x", "pull or merge requests"),
+    # a backslash-escaped space keeps the words together: graphql here is part of a field value
+    ("gh api -f title=a\\ graphql -X PUT repos/o/r/pulls/1/merge", "pull or merge requests"),
+    # an endpoint built by the shell (or missing) cannot be judged by the call's own text: when the command names a
+    # pull request elsewhere, the whole-text verdict stands
+    ('EP=repos/o/r/pulls; gh api -X POST "$EP" -f title=x', "pull or merge requests"),
+    ('EP=pulls gh api -X POST "$EP" -f title=x', "pull or merge requests"),
+    ("EP=pulls gh api -X POST `echo x` -f title=x", "pull or merge requests"),
+    ("echo pulls; glab api --method POST", "pull or merge requests"),
+    # a gh and an api in different statements are not a call, but the whole text reads like one
+    ("gh\napi repos/o/r/pulls -f title=x", "pull or merge requests"),
+    # a read marker inside quotes belongs to a value, not to the call
+    ("gh api repos/o/r/pulls -f title='support -X GET' -f head=a -f base=main", "pull or merge requests"),
+    ('gh api repos/o/r/pulls -f title="uses --method GET" -f head=a -f base=main', "pull or merge requests"),
+    ("gh api repos/o/r/pulls -f head=a -f base=main -H 'X-Note: -X GET'", "pull or merge requests"),
+    # GETX is not the method GET
+    ("gh api -X GETX repos/o/r/pulls -f title=x", "pull or merge requests"),
 ]
 
 # flags of gh api that take the next argument as their value (gh 2.100.0, gh api --help); the value of
@@ -132,6 +179,21 @@ PASSING_COMMANDS = [
     "gh api -XGET repos/o/r/pulls -f state=open",
     'gh api --method "GET" repos/o/r/pulls -f state=open',
     "gh api --input graphql repos/o/r/issues",  # a file named graphql, not the endpoint
+    # syntax the parser models stays a read: continuations, an apostrophe inside double quotes, a substitution
+    # without separators, an explicit GET with a value flag
+    "gh api -X GET repos/o/r/pulls \\\n  -f state=open",
+    "echo \"it's fine\" && gh api -X GET repos/o/r/pulls -f state=open",
+    "gh api -X GET repos/o/r/pulls/$(git rev-parse HEAD) -f state=open",
+    # a call whose own literal endpoint names no pull request is not a pull request write, whatever else is said
+    "echo pulls; gh api -X PUT repos/o/r/issues/1 -f state=closed",
+    "gh api -X GET repos/o/r/pulls -f title='#5' -f state=open",  # a hash inside quotes is not a comment
+    "gh api -X GET repos/o/r/pulls/5#comment-1 -f state=open",  # a hash inside a word is not a comment
+    "gh api -X GET repos/o/r/pulls -f n=$# -f state=open",  # $# is the argument count, not a comment
+    # ambiguous syntax alone blocks nothing: the whole-text verdict needs an api call, a write marker and a pull
+    # or merge request word, and the call here names none
+    "gh api repos/o/r/issues 2>&1 -f title=x",
+    "git add -f docs/pulls.md 2>&1",
+    "gh api -X GET repos/o/r/pulls -f state=open --jq '.[0].title' | head -1",
     # only gh api and glab api calls are looked at, whatever else a command says about pulls
     "git add -f docs/pulls.md",
     # a flag of the next command is not a field of the api call before it
@@ -141,7 +203,7 @@ PASSING_COMMANDS = [
     "gh api repos/o/r/pulls && git add -f x",
     # a quoted mention of gh api must not pair its quote with a quote of the next command
     "git commit -m 'switch to gh api graphql' && gh api graphql -f query='query { repository { pullRequest(number: 1) { id } } }'",
-    "echo \"run gh api\" && gh api -X GET repos/o/r/pulls -f state=open",
+    "echo \"run gh api now\" && gh api -X GET repos/o/r/pulls -f state=open",
     # a GraphQL query that merely contains a word starting or ending like mutation is a read
     "gh api graphql -f query='query { search(query: \"mutations is:pr\", type: ISSUE, first: 5) { nodes { ... on PullRequest { title } } } }'",
     "gh api graphql -f query='query { repository(owner:\"o\",name:\"r\") { pullRequests(labels: [\"no_mutation\"], first: 5) { nodes { title } } } }'",
@@ -172,12 +234,118 @@ def test_ordinary_shell_commands_pass(command):
     assert filters.check_shell_command(command) is None
 
 
+# what the module docstring declares open, and the limit of a glab-only value flag declared next to _VALUE_FLAGS
+OPEN_FORMS = [
+    'gh api "$EP" -f title=x',  # endpoint in a shell variable
+    'git push "-o" merge_request.create',  # quoted option flag
+    'git push -o "$OPT"',  # option value in a variable
+    "gp -o merge_request.create",  # alias or function that hides the word git
+    'eval "$cmd"',
+    "$cmd",
+    "curl -X POST https://api.example.org/repos/o/r/pulls -d x",  # another client calling the API directly
+    "glab api --unknown-value-flag v graphql -F query=@m.graphql",  # the unknown flag's value hides the endpoint
+]
+
+
+@pytest.mark.parametrize("command", OPEN_FORMS)
+def test_forms_a_textual_filter_cannot_see_stay_open_as_the_module_declares(command):
+    assert filters.check_shell_command(command) is None
+
+
 def test_thousands_of_api_calls_in_one_command_are_checked_in_linear_time():
     """Each api call is analysed once, on its own text: re-reading the tail for every call would take seconds."""
     command = "gh api -f a=b repos/o/r/issues " * 2000
     started = time.perf_counter()
     assert filters.check_shell_command(command) is None
     assert time.perf_counter() - started < 1.0
+
+
+# The whole-text verdict of the first version of the filter (commit e0eac43): a command with a gh or glab api call,
+# a write marker anywhere in it and a pull or merge request word anywhere in it is a write. The per-call analysis may
+# lift that block only for a command it reads unambiguously and finds made of reads.
+_WHOLE_API = re.compile(r"\b(?:gh|glab)\s+api\b", re.IGNORECASE)
+_WHOLE_MR = re.compile(r"pulls|merge_requests|pullrequest|mergerequest", re.IGNORECASE)
+_WHOLE_METHOD = re.compile(r"(?:-X\s*|--method[\s=]+)[\"']?(?:post|put|patch|delete)\b", re.IGNORECASE)
+_WHOLE_FIELD = re.compile(r"(?:^|\s)(?:-f|--field|--raw-field|--input)(?=[\s=]|$)", re.IGNORECASE)
+
+# calls the parser reads unambiguously and that read ({r} is where a redirection may go)
+CLEAN_READS = [
+    "gh api -X GET repos/o/r/pulls{r} -f state=closed -f per_page=100",
+    "gh api --method GET repos/o/r/pulls{r} -f state=open",
+    "gh api graphql{r} -f query='query { repository(owner:\"o\",name:\"r\") { pullRequest(number: 5) { title } } }'",
+    "glab api graphql{r} -f query='query { project(fullPath: \"o/r\") { mergeRequest(iid: \"4\") { title } } }'",
+    "gh api repos/o/r/pulls{r}",
+    "git status{r}",
+    "git commit -m 'switch to gh api graphql'{r}",
+    "curl -X GET https://x{r}",
+]
+# calls that write, or may
+WRITES = [
+    "gh api -X PUT repos/o/r/pulls/1/merge{r}",
+    "gh api repos/o/r/pulls{r} -f title=x -f head=a -f base=main",
+    "gh api -X POST repos/o/r/pulls{r} -f title=x",
+    "glab api projects/1/merge_requests{r} -X POST",
+    "gh api graphql{r} -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+    "gh api graphql{r} -F query=@m.graphql",
+    "gh api -f graphql=1{r} -X PUT repos/o/r/pulls/1/merge",
+    "gh api repos/o/r/pulls{r} -f title='support -X GET' -f head=a -f base=main",
+    'gh api -X POST "$EP"{r} -f title=x',  # the endpoint is built by the shell: it may be a pull request
+    "glab api --method POST{r}",  # no endpoint at all
+]
+# fragments the parser cannot read unambiguously: an apostrophe in a comment, a lone double quote, escaped quotes,
+# an escaped space, a separator inside a command substitution or backticks
+APOSTROPHE_COMMENTS = ["# don't merge yet", "# can't merge either"]
+FRAGMENTS = APOSTROPHE_COMMENTS + [
+    '# say "hi', "echo \\'", 'echo \\"', "echo a\\ b", "echo $(echo 1; echo)", "echo `echo 1; echo`",
+]
+REDIRECTIONS = [" 2>&1", " &>/dev/null", " >&2", " <&0", " >| out.json"]
+SEPARATORS = [" && ", " || ", "; ", " | ", "\n", " & "]
+
+
+def whole_text_blocks(command):
+    return bool(
+        _WHOLE_API.search(command)
+        and (_WHOLE_METHOD.search(command) or _WHOLE_FIELD.search(command))
+        and _WHOLE_MR.search(command)
+    )
+
+
+def generated_commands():
+    """(command, made only of clean reads) for chained commands that mix reads, writes and ambiguous syntax."""
+    plain = [(part.replace("{r}", ""), True) for part in CLEAN_READS]
+    plain += [(part.replace("{r}", ""), False) for part in WRITES]
+    plain += [(part, False) for part in FRAGMENTS]
+    redirected = [(part.replace("{r}", r), False) for part in CLEAN_READS + WRITES for r in REDIRECTIONS]
+    for (first, first_clean), (second, second_clean) in itertools.product(plain, plain):
+        for sep in SEPARATORS:
+            yield first + sep + second, first_clean and second_clean
+    for (call, _), (read, read_clean) in itertools.product(redirected, plain[: len(CLEAN_READS)]):
+        for sep in SEPARATORS:
+            yield call + sep + read, False
+            yield read + sep + call, False
+    # two apostrophes in comments pair up around a write and a read: the quotes balance by luck
+    for first, second in itertools.product(APOSTROPHE_COMMENTS, repeat=2):
+        for write, read in itertools.product(WRITES, CLEAN_READS):
+            yield "\n".join([first, write.replace("{r}", ""), read.replace("{r}", ""), second]), False
+    chooser = random.Random(20260930)
+    for _ in range(3000):
+        parts = [chooser.choice(plain + redirected) for _ in range(3)]
+        seps = [chooser.choice(SEPARATORS) for _ in range(2)]
+        yield parts[0][0] + seps[0] + parts[1][0] + seps[1] + parts[2][0], all(clean for _, clean in parts)
+
+
+def test_a_command_the_whole_text_rule_blocked_stays_blocked_unless_it_is_made_of_clean_reads():
+    """Monotonic: the per-call analysis lifts a block only for unambiguous commands in which every call reads."""
+    lifted = kept = 0
+    for command, clean_reads in generated_commands():
+        verdict = filters.check_shell_command(command)
+        if clean_reads:
+            assert verdict is None, command
+            lifted += whole_text_blocks(command)
+        elif whole_text_blocks(command):
+            assert verdict, command
+            kept += 1
+    assert lifted > 100 and kept > 3000, (lifted, kept)  # the generator really exercised both sides
 
 
 @pytest.mark.parametrize("flag", VALUE_FLAGS)
