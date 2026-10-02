@@ -699,6 +699,10 @@ def test_merge_request_mcp_tools(name, expected):
     ("gh pr --help create", "create"),  # an option without a value, then the verb
     ("/opt/homebrew/bin/gh -R o/r pr new --fill", "create"),
     ("GH PR -r o/r CREATE --title x", "create"),
+    # a backslash-newline between the words is a line continuation, not the end of the command
+    ("gh -R o/r \\\n pr create --title x", "create"),
+    ("gh pr \\\n create --title x", "create"),
+    ("gh pr -R o/r \\\n  edit 5", "update"),
     # a verb counts only right after pr or mr and the options that follow it, never from another subcommand
     ("gh -R o/r pr view 5", None),
     ("gh pr list --search create", None),

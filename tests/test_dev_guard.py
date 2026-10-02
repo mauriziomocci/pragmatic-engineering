@@ -239,6 +239,9 @@ def test_missing_pr_body_file_blocks(repo_with_terms):
     'gh --repo=o/r pr create --title "Zorblax" --body x',
     'gh --repo o/r pr edit 3 --title "Zorblax"',
     'glab mr -R o/r create --title "Zorblax"',
+    # a backslash-newline between the words is a line continuation, not the end of the command
+    'gh -R o/r \\\n pr create --title "Zorblax" --body x',
+    'gh pr \\\n create --title "Zorblax" --body x',
 ])
 def test_pr_command_with_options_between_its_words_is_checked(repo_with_terms, command):
     payload = {"tool_name": "Bash", "cwd": str(repo_with_terms), "tool_input": {"command": command}}
@@ -271,6 +274,21 @@ def test_pr_body_file_of_a_command_with_options_between_its_words_is_checked(rep
     "cd sub && gh pr create --title x --body-file body.md",
     "pushd sub; gh pr create --title x --body-file body.md",
     "(cd sub && gh pr edit 3 -F body.md)",
+    # a pipe whose first command also reads a file (bash prints the file), something between cat and gh, a second
+    # input that wins over the here-document, an operator written inside a quoted title, an unquoted tag
+    "cat <<'EOF' body.md | gh pr create --title x --body-file -\nClean text.\nEOF",
+    "cat body.md <<'EOF' | gh pr create --title x --body-file -\nClean text.\nEOF",
+    "cat <<'EOF' | sed 'r body.md' | gh pr create --title x --body-file -\nClean text.\nEOF",
+    "cat <<'EOF' | gh pr create --title x --body-file - < body.md\nClean text.\nEOF",
+    "gh pr create --title x --body-file - <<'EOF' < body.md\nClean text.\nEOF",
+    "gh pr create --title x --body-file - < body.md <<'EOF'\nClean text.\nEOF",
+    "cat body.md | gh pr create --title \"<<EOF\" --body-file -",
+    "cat <<EOF | gh pr create --title x --body-file -\nClean text.\nEOF",
+    # a command after the terminator inside the substitution: bash puts what it prints into the body
+    "gh pr create --title x --body \"$(cat <<'EOF'\nIntro.\nEOF\ncat body.md\n)\"",
+    "gh pr create --title x --body \"$(cat <<'EOF'\nIntro.\nEOF\ntrue; cat body.md\n)\"",
+    "gh pr create --title x --body \"$(cat <<'EOF'\nIntro.\nEOF\n  cat body.md ; echo\n)\"",
+    "gh pr create --title x --body \"$(cat <<EOF\nClean text.\nEOF\n)\"",
 ])
 def test_pr_body_in_a_form_the_hook_cannot_locate_blocks_with_the_hint(repo_with_terms, command):
     (repo_with_terms / "body.md").write_text("Made for Zorblax.\n", encoding="utf-8")
@@ -285,6 +303,14 @@ def test_pr_body_in_a_form_the_hook_cannot_locate_blocks_with_the_hint(repo_with
     "gh pr create --title x --body-file - \\\n  <<'EOF'\nClean body.\nEOF",
     "git commit -F - <<'EOF'\nA message.\nEOF\ngh pr create --title x --body \"$(cat <<'EOF'\nClean body.\nEOF\n)\"",
     "gh pr create --title x --body-file - <<'EOF'\nNo -Fbody.md, no cd, no $(cat x) here.\nEOF",
+    "cat <<-'EOF' | gh pr create --title x --body-file -\n\tClean body.\n\tEOF",
+    "cat <<\"EOF\" | gh pr create --title x --body-file -\nClean body.\nEOF",
+    # the here-document written on gh itself wins over the pipe
+    "cat body.md | gh pr create --title x --body-file - <<'EOF'\nClean body.\nEOF",
+    "gh pr create --title x --body \"$(cat <<'EOF'\nClean body.\nEOF\n   )\"",
+    # a < or a << or a | inside quotes is text
+    "cat <<'EOF' | gh pr create --title \"a | b\" --body-file -\nClean body.\nEOF",
+    "gh pr create --title \"Handle <T> generics\" --body-file - <<'EOF'\nClean body.\nEOF",
 ])
 def test_pr_body_in_a_here_document_of_its_own_command_passes(repo_with_terms, command):
     payload = {"tool_name": "Bash", "cwd": str(repo_with_terms), "tool_input": {"command": command}}
@@ -319,7 +345,8 @@ def test_absolute_pr_body_file_after_a_cd_is_checked(repo_with_terms, tmp_path):
 @pytest.mark.parametrize("command", [
     "gh pr create --title x --body-file - <<'A'\n" + "<<'A'\nx\n" * 25000,  # 200 KB, nothing ends the first one
     "gh pr create --title x --body-file - <<'A'\nx\nA\n" + "<<'A'\nx\nA\n" * 25000,  # 200 KB, every one ends
-], ids=["unterminated", "terminated"])
+    "gh pr create --title x --body-file - " + "<<'a'" * 40000,  # 200 KB on one line, no newline after any operator
+], ids=["unterminated", "terminated", "one-line"])
 def test_long_runs_of_quoted_here_documents_are_read_in_linear_time(repo_with_terms, command):
     """A hook that times out lets the tool run: scanning the rest of the text for every operator took 20 s here."""
     payload = {"tool_name": "Bash", "cwd": str(repo_with_terms), "tool_input": {"command": command}}
@@ -339,6 +366,28 @@ def test_pr_tool_with_an_input_of_unknown_shape_blocks(payload):
     """No tool_input object: its text cannot be checked, and the rest of the payload says nothing about the PR."""
     reason = dev_guard.decide(payload)
     assert reason and "unknown input shape" in reason
+
+
+# What the module docstring declares open. Each command passes although the text the shell would send holds private
+# data; the cwd file is what the hook reads and the sub file what the command really reads (or the reverse for the
+# first form, where the command substitution runs in the folder the hook starts in). When one of these is closed,
+# this test fails and the docstring must change with it.
+OPEN_FORMS = [
+    # an operator written inside a quoted string and a bare terminator line after it: taken for a real quoted
+    # here-document, so the substitution that does run is not seen
+    ("gh pr create --title t --body \"Use <<'EOF' in scripts\n$(cat body.md)\nEOF\n\"", "Made for Zorblax.\n", "clean\n"),
+    # a folder change by another program than cd or pushd: the relative body file is read from the hook's folder
+    ("env -C sub gh pr create --title t --body-file body.md", "clean\n", "Made for Zorblax.\n"),
+]
+
+
+@pytest.mark.parametrize("command,here,sub", OPEN_FORMS)
+def test_forms_the_hook_cannot_see_stay_open_as_the_module_declares(repo_with_terms, command, here, sub):
+    (repo_with_terms / "sub").mkdir()
+    (repo_with_terms / "body.md").write_text(here, encoding="utf-8")
+    (repo_with_terms / "sub" / "body.md").write_text(sub, encoding="utf-8")
+    payload = {"tool_name": "Bash", "cwd": str(repo_with_terms), "tool_input": {"command": command}}
+    assert dev_guard.decide(payload) is None
 
 
 @pytest.mark.parametrize("tool,field", [

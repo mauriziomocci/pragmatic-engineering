@@ -14,9 +14,21 @@ without its usual fields, is checked as text. Any failure while loading the
 checks or checking a known tool blocks, because Claude Code does not block on
 a hook that errors in any other way or times out. The text of a pull request
 that the hook cannot read from the command (a substitution, a variable,
-standard input without a here-document of the same command line, a body file
-it cannot locate) blocks too, with the hint to pass an absolute --body-file
-path: a miss on the pull request path would let the text through unchecked.
+standard input that a here-document does not alone feed, a body file it
+cannot locate) blocks too, with the hint to pass an absolute --body-file
+path: a miss on the pull request path would let the text through unchecked. A
+here-document is trusted only when it is the one input: written on the pull
+request command itself, or in a first pipeline command that is exactly
+``cat <<'TAG'``, with no second input redirection on the command, and as the
+substitution ``$(cat <<'TAG'`` with the closing parenthesis right after it.
+
+Open limits, declared and pinned in OPEN_FORMS of tests/test_dev_guard.py:
+an operator written inside a quoted string followed by a bare terminator line
+(``--body "Use <<'EOF' in scripts``, then ``$(cat body.md)``, then ``EOF``, then
+``"``) is taken for a quoted here-document, so the substitution that does run
+is not seen; and a folder change made by a program other than cd or pushd
+(``env -C sub gh pr create --body-file body.md``) leaves a relative body file
+read from the folder the hook starts in.
 """
 import json
 import re
@@ -49,19 +61,29 @@ _ATTACHED_BODY_FILE = re.compile(r"(?<!\S)-(?!-)(?!F(?:\s|=|$))\S*?F")
 _STDIN_BODY = re.compile(
     r"(?:--body-file|(?<!\S)-F)(?:\s+|=)[\"']?(?:%s)[\"']?(?!\S)" % "|".join(re.escape(n) for n in _STDIN_NAMES)
 )
-_HERE_DOC = re.compile(r"<<-?\s*[\"']?\w+")
+# A quoted string, a pipeline element (a quoted string never ends one), a plain input redirection (not << or <<<) and
+# the first command of the one pipe that feeds a body from a here-document: cat and nothing else.
+_QUOTED_STRING = re.compile(r"\"[^\"]*\"|'[^']*'")
+_PIPELINE_ELEMENT = re.compile(r"(?:\"[^\"]*\"|'[^']*'|[^|\"'])+")
+_INPUT_REDIRECT = re.compile(r"(?<!<)<(?!<)")
+_CAT_HERE_DOC = re.compile(r"\s*cat[ \t]+<<-?[ \t]*([\"'])\w+\1\s*")
 # The operator of a quoted here-document, not of a here-string (<<<). Group 1 is the operator line: it is command
-# text and stays checked; only the body below it is literal.
-_QUOTED_OPERATOR = re.compile(r"(?<!<)(<<-?[ \t]*([\"'])(\w+)\2[^\n]*)\n")
+# text and stays checked; only the body below it is literal. The pattern has no newline of its own to fail on: a
+# match always ends at the end of its line, so a long run of operators on one line is one match, not one per operator.
+_QUOTED_OPERATOR = re.compile(r"(?<!<)(<<-?[ \t]*([\"'])(\w+)\2[^\n]*)")
 _TERMINATOR_LINE = re.compile(r"^\t*(\w+)[ \t]*$", re.MULTILINE)
 # Where a command line ends: the separators of a list, and a newline unless a backslash continues the line.
 _LIST_SEPARATOR = re.compile(r"&&|\|\||;|\n|(?<![<>])&(?!>)")
 _CONTINUATION = re.compile(r"\\\r?\n")
 _CD = re.compile(r"\b(?:cd|pushd)\b")
 # A command substitution or a parameter expansion. The one substitution that is not text produced at run time is
-# $(cat <<'EOF' with nothing else on its line: its text is the here-document below it, which is part of the command.
-# With an argument or a pipe after the operator, cat or the pipeline reads something else.
-_EXPANSION = re.compile(r"\$\((?!\s*cat\s+<<-?[ \t]*[\"']?\w+[\"']?[ \t\r]*\n)|`|\$[{A-Za-z_0-9@*#?$!-]")
+# $(cat <<'EOF' with nothing else on its line and the closing parenthesis right after the body (the text this is
+# tested on has the body of a quoted here-document cut out): its text is then the here-document, which is part of
+# the command. An argument or a pipe after the operator, or a command after the terminator line, makes cat or the
+# substitution print something else; an unquoted tag keeps its body in the text, where the parenthesis is not next.
+_EXPANSION = re.compile(
+    r"\$\((?!\s*cat\s+<<-?[ \t]*([\"'])\w+\1[ \t\r]*\n\s*\))|`|\$[{A-Za-z_0-9@*#?$!-]"
+)
 
 
 def _strings(value: Any) -> List[str]:
@@ -128,10 +150,13 @@ def _without_quoted_here_document_bodies(text: str) -> str:
     position = 0
     while True:
         operator = _QUOTED_OPERATOR.search(text, position)
-        if operator is None:
-            break
+        if operator is None or text[operator.end():operator.end() + 1] != "\n":
+            break  # no operator, or no line after it, and so no body
         terminator = next(
-            (line for line in _TERMINATOR_LINE.finditer(text, operator.end()) if line.group(1) == operator.group(3)),
+            (
+                line for line in _TERMINATOR_LINE.finditer(text, operator.end() + 1)
+                if line.group(1) == operator.group(3)
+            ),
             None,
         )
         if terminator is None:
@@ -140,6 +165,27 @@ def _without_quoted_here_document_bodies(text: str) -> str:
         position = terminator.end()
     kept.append(text[position:])
     return "".join(kept)
+
+
+def _stdin_fed_only_by_a_here_document(line: str) -> bool:
+    """Whether every body read from standard input on a command line comes from a here-document written in it.
+
+    A here-document written on the element of the pipeline that reads the body (the pull request command) feeds it.
+    So does a first element that is exactly ``cat <<'TAG'``, when the pull request command comes right after it. A
+    here-document written next to another command feeds that command, and a cat that also names a file, a command
+    between cat and the pull request command, or a second input redirection on the element (the last one wins, and
+    which one that is depends on the order) puts into the body something the hook cannot read.
+    """
+    elements = _PIPELINE_ELEMENT.findall(line)
+    for index, element in enumerate(elements):
+        if not _STDIN_BODY.search(element):
+            continue
+        outside_quotes = _QUOTED_STRING.sub("", element)  # a << or a < inside a quoted string is text
+        if _INPUT_REDIRECT.search(outside_quotes):
+            return False
+        if "<<" not in outside_quotes and not (index == 1 and _CAT_HERE_DOC.fullmatch(elements[0])):
+            return False
+    return True
 
 
 def _body_file_names(command: str) -> List[str]:
@@ -194,13 +240,13 @@ def _unreadable_text(text: str) -> Optional[str]:
             "the pull request command passes a body file attached to a short option (-Fbody.md, -dF body.md), "
             "which this hook cannot locate; " + BODY_HINT + ", written as a separate word"
         )
-    # A here-document feeds the standard input of the command line it is written on: a pipeline or a single command.
-    # One written next to another command (git commit -F - <<'EOF') feeds that command, not the pull request.
+    # A here-document feeds the standard input of the command it is written on, or of the pipeline element after a
+    # cat that holds nothing else. One written next to another command (git commit -F - <<'EOF') feeds that command.
     for line in _LIST_SEPARATOR.split(_CONTINUATION.sub(" ", literal)):
-        if _STDIN_BODY.search(line) and not _HERE_DOC.search(line):
+        if _STDIN_BODY.search(line) and not _stdin_fed_only_by_a_here_document(line):
             return (
-                "the pull request body comes from standard input and no here-document of the same command line "
-                "feeds it, which this hook cannot read; " + BODY_HINT
+                "the pull request body comes from standard input, and this hook cannot confirm that a here-document "
+                "written in the command is its only source, so it cannot read it; " + BODY_HINT
             )
     if _CD.search(literal) and any(not Path(name).is_absolute() for name in _body_file_names(text)):
         return (
