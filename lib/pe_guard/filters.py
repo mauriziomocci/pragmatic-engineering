@@ -8,13 +8,18 @@ determined to bypass them.
 
 What a textual filter cannot see stays open, by design: the endpoint of a raw
 API call held in a shell variable (``gh api "$EP" -f ...``), a quoted option
-flag (``git push "-o" ...``), an option value held in a variable
-(``-o "$OPT"``), a shell alias or function that hides the word git, ``eval``
-or a command held in a variable (``$cmd``), and ``curl`` or any other client
-calling the API directly. For raw API writes the filter is monotonic: the
-whole-text verdict (a write marker anywhere in a command that has an api call
-and a pull or merge request word) is lifted only when every call is read
-unambiguously and reads, see ``_parse_is_unambiguous``.
+flag of git (``git push "-o" ...``), an option value held in a variable
+(``-o "$OPT"``), a shell, git or gh alias or function that hides the command,
+``eval`` or a command held in a variable (``$cmd``), a command line that
+another program builds from text (``sh -c 'g$(echo h) api ...'``,
+``printf '... %s PUT' -X | sh``), bundled short options of gh api
+(``-iX PUT``), and ``curl`` or any other client calling the API directly.
+
+For raw API writes the filter never lets through what its first version
+blocked, except reads it can vouch for: the whole-text verdict of that version
+(an api call, a write marker and a pull or merge request word, each anywhere in
+the command) stands unless the command is written only in the syntax the parser
+models and every api call found in it reads, see ``_api_writes_requests``.
 """
 import re
 from pathlib import PurePath
@@ -62,35 +67,39 @@ _GIT = re.compile(r"\bgit\b", _I)
 _MR_PUSH_OPTION = re.compile(
     r"(?:(?<![\w-])-[a-z0-9]*o\s*|--pu[a-z-]*[\s=]+|pushoption[\s=]+)[\"']?merge_request\.", _I
 )
-# A command is cut into statements at the shell separators (&& || ; | & and newline), reading from its start so
-# that quotes pair up: a separator inside quotes, or after a backslash-newline continuation, does not end a
-# statement. Each gh/glab api call is judged on its own text (up to the end of its statement or the next api
-# call), so a read in one call never excuses a write in the next.
-_STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[^|;&\n])+")
+# The whole-text verdict of the first version of this filter: an api call, a write marker and a pull or merge request
+# word, each anywhere in the command.
 _API_CALL = re.compile(r"\b(?:gh|glab)\s+api\b", _I)
-_CONTINUATION = re.compile(r"\\\r?\n")
-_ARGUMENT = re.compile(r"(?:[^\s\"']|\"[^\"]*\"|'[^']*')+")
-# Shell syntax that _STATEMENT and the per-call analysis do not model, see _parse_is_unambiguous.
-_QUOTED = re.compile(r"\"[^\"]*\"|'[^']*'")
-_COMMENT = re.compile(r"(?<![\w$])#")
-_HEREDOC = re.compile(r"<<")
-_REDIRECTION_AMPERSAND = re.compile(r"[<>]&|&>|>\|")
-_SUBSTITUTION = re.compile(r"\$\(|`")
-_SEPARATOR = re.compile(r"[|;&\n]")
-# gh api flags that take the next argument as their value (gh 2.100.0, gh api --help), except -X and --method,
-# which _endpoint_and_method reads itself; a value is never the endpoint nor the method. glab api could not be
-# checked here, so a glab-only value flag counts as the endpoint: a read behind it that names a pull or merge
-# request stays blocked (a false positive), and a GraphQL query read from a file behind it is not seen (open, as
-# it was in the first version of this filter).
-_VALUE_FLAGS = frozenset({
-    "-f", "-F", "-H", "-p", "-q", "-t",
-    "--cache", "--field", "--header", "--hostname", "--input", "--jq", "--preview", "--raw-field", "--template",
-})
-_MUTATION = re.compile(r"\bmutation\b", _I)
-_QUERY_FROM_FILE = re.compile(r"(?:-f|--field|--raw-field)[\s=]+[\"']?query=@|--input\b", _I)
 _MR_ENDPOINT = re.compile(r"pulls|merge_requests|pullrequest|mergerequest", _I)
 _WRITE_METHOD = re.compile(r"(?:-X\s*|--method[\s=]+)[\"']?(?:post|put|patch|delete)\b", _I)
 _WRITE_FIELD = re.compile(r"(?:^|\s)(?:-f|--field|--raw-field|--input)(?=[\s=]|$)", _I)
+# The syntax the parser models, an allowlist: outside quotes only word characters, - _ . / = : @ , + %, spaces, tabs
+# and the separators && || ; | and newline; single-quoted text with anything; double-quoted text without $, backtick
+# or backslash. Nothing in such a command expands, so the words below are exactly the arguments the shell passes.
+_MODELLED = re.compile(r"(?:[\w\-.,/=:@+% \t\n;|]|&&|'[^']*'|\"[^\"$`\\]*\")*", re.ASCII)
+# Statements end at && || ; | & and newline outside quotes, but not at a backslash-newline continuation; words end at
+# blanks outside quotes, and lose their quotes. A command outside the model is cut the same way, approximately: there
+# its calls can only add blocks to the whole-text verdict.
+_STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[^|;&\n])+")
+_WORD = re.compile(r"(?:[^\s\"'\\]|\\(?!\r?\n)|\"[^\"]*\"|'[^']*')+")
+_QUOTES = re.compile(r"\"([^\"]*)\"|'([^']*)'")
+_CLIENT = re.compile(r"(?:.*\W)?(?:gh|glab)", _I | re.DOTALL)  # also /usr/local/bin/gh, zsh's =gh, GH on macOS
+_ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=")
+_BLANK = re.compile(r"\s")
+# gh api options (gh 2.100.0, gh api --help): those that take a value, those whose value is a field (the request
+# body unless the method is GET), and the switches. glab api could not be checked here, so a glab-only option is an
+# option the parser does not know: the whole-text verdict stands for its command (a read that names a merge request
+# is blocked, a false positive), and the write check takes the next argument for the endpoint (a GraphQL query read
+# from a file behind a glab-only option that takes a value is not seen, open as in the first version of this filter).
+_VALUE_OPTIONS = frozenset({
+    "-F", "-H", "-X", "-f", "-p", "-q", "-t",
+    "--cache", "--field", "--header", "--hostname", "--input", "--jq", "--method", "--preview", "--raw-field",
+    "--template",
+})
+_FIELD_OPTIONS = frozenset({"-F", "-f", "--field", "--input", "--raw-field"})
+_SWITCHES = frozenset({"-i", "--allow-escape-sequences", "--include", "--paginate", "--silent", "--slurp", "--verbose"})
+_WRITE_METHODS = frozenset({"post", "put", "patch", "delete"})
+_MUTATION = re.compile(r"\bmutation\b", _I)
 _PR_COMMAND = re.compile(
     r"\bgh\s+pr\s+(create|new|edit|merge)\b|\bglab\s+mr\s+(create|new|update|merge)\b", _I
 )
@@ -132,17 +141,19 @@ def check_shell_command(command: str) -> Optional[str]:
 def _api_writes_requests(text: str) -> bool:
     """True when a gh/glab api call in a command writes to pull or merge requests, or may.
 
-    Monotonic with the whole-text verdict this filter started with: every call is judged on its own text and any
-    call that writes blocks, but the whole-text verdict (a write marker anywhere) is lifted only when the command
-    is read unambiguously and every call in it reads. When in doubt the whole-text verdict stands.
+    Any call that writes blocks. Otherwise the whole-text verdict of the first version of this filter stands, and is
+    lifted only when the parser can vouch for every call: the command, and each quoted argument a call was found in,
+    is written in the modelled syntax (_MODELLED), and every call is launched by the shell itself and has an endpoint
+    and only options gh api has. So this filter never lets through what the first version blocked, except reads it
+    has seen in full.
     """
-    # split() cuts a statement at each api call, so every call is analysed once, on its own text
-    calls = [call for statement in _STATEMENT.findall(text) for call in _API_CALL.split(statement)[1:]]
-    if any(_api_call_writes_requests(call) for call in calls):
+    texts: List[str] = []
+    calls = [(launched,) + _read_api_call(arguments) for arguments, launched in _api_calls(text, texts)]
+    if any(writes for _, _, writes in calls):
         return True
-    # No call found although the whole text has one (gh and api in different statements): nothing was analysed.
-    # A call whose endpoint the text does not show is not a read either, see _endpoint_is_known.
-    lifted = bool(calls) and _parse_is_unambiguous(text) and all(_endpoint_is_known(call) for call in calls)
+    # No call found although the whole text has one (gh and api in different statements): nothing was read.
+    seen_in_full = all(launched and endpoint is not None for launched, endpoint, _ in calls)
+    lifted = bool(calls) and seen_in_full and all(map(_MODELLED.fullmatch, texts))
     return _whole_text_writes(text) and not lifted
 
 
@@ -155,75 +166,68 @@ def _whole_text_writes(text: str) -> bool:
     )
 
 
-def _parse_is_unambiguous(text: str) -> bool:
-    """True when a command uses only shell syntax that _STATEMENT and the per-call analysis model.
+def _api_calls(text: str, texts: List[str]) -> List[Tuple[List[str], bool]]:
+    """The arguments of every gh/glab api call in a command, as the shell passes them, and whether the shell itself
+    launches the call.
 
-    Not modelled, hence ambiguous: a backslash other than a line continuation (an escaped space or quote); a quote
-    that does not pair; a comment or a heredoc, whose text the shell ignores but quote pairing does not (two stray
-    apostrophes pair up and the quotes balance by luck); an ampersand that belongs to a redirection (2>&1, &>) and
-    the noclobber redirection >|, whose character is not a separator; a command substitution in a command that
-    also has separators, which may sit inside it.
+    A call is the word gh or glab followed by the word api; its arguments run to the next call or the end of the
+    statement, so quoted text never cuts a call in two. The shell launches it when gh is the command word of its
+    statement, after any assignments; launched by another program (``xargs gh api ...``) it may get arguments the
+    text does not show. A quoted argument with a blank in it may be a command line for another shell
+    (``sh -c '...'``), so it is read as a command too. Each text a call was found in, the command included, is
+    appended to ``texts``.
     """
-    unquoted = _QUOTED.sub("", text)
-    if "\\" in _CONTINUATION.sub("", text) or '"' in unquoted or "'" in unquoted:
-        return False
-    if _COMMENT.search(unquoted) or _HEREDOC.search(text) or _REDIRECTION_AMPERSAND.search(text):
-        return False
-    return not (_SUBSTITUTION.search(text) and _SEPARATOR.search(text))
+    calls: List[Tuple[List[str], bool]] = []
+    for statement in _STATEMENT.findall(text):
+        words = [_QUOTES.sub(r"\1\2", word) for word in _WORD.findall(statement)]
+        command = next((i for i, word in enumerate(words) if not _ASSIGNMENT.match(word)), len(words))
+        starts = [i for i in range(len(words) - 1) if words[i + 1] == "api" and _CLIENT.fullmatch(words[i])]
+        calls += [(words[start + 2:end], start == command) for start, end in zip(starts, starts[1:] + [len(words)])]
+        for word in words:
+            if _BLANK.search(word):
+                calls += _api_calls(word, texts)
+    if calls:
+        texts.append(text)
+    return calls
 
 
-def _endpoint_and_method(arguments: List[str]) -> Tuple[Optional[str], Optional[str]]:
-    """Endpoint (first argument that is neither a flag nor a flag's value) and -X/--method value of an api call.
+def _read_api_call(arguments: List[str]) -> Tuple[Optional[str], bool]:
+    """The endpoint of one gh/glab api call, and whether the call writes to pull or merge requests, or may.
 
-    Quotes are removed from both and the method is lowercased. Quoted text is one argument, so ``-X GET`` inside
-    a field value is neither a method nor an endpoint.
+    The arguments are read as gh's flag parser reads them (``-X PUT``, ``-XPUT``, ``-X=PUT``, ``--method=PUT``, and so
+    for every option that takes a value), so ``-X GET`` inside a field value is a value, not the method. An option gh
+    api does not have (a glab-only flag, bundled short options like ``-iX``) leaves the endpoint unknown (None):
+    which argument is its value cannot be told. ``may`` is a GraphQL query read from a file, which cannot be inspected.
     """
     endpoint = method = None
+    known, fields, from_file = True, False, False
     remaining = iter(arguments)
     for argument in remaining:
-        if argument in ("-X", "--method"):
-            method = next(remaining, "")
-        elif argument.startswith("--method="):
-            method = argument[len("--method="):]
-        elif argument.startswith("-X"):
-            method = argument[len("-X"):]
-        elif argument in _VALUE_FLAGS:
-            next(remaining, None)
-        elif endpoint is None and not argument.startswith("-"):
-            endpoint = argument.strip("\"'")
-    return endpoint, (method.strip("\"'").lower() if method is not None else None)
-
-
-def _parse_api_call(call: str) -> Tuple[str, Optional[str], Optional[str]]:
-    """The call text with continuations joined, and its endpoint and method (see _endpoint_and_method)."""
-    call = _CONTINUATION.sub(" ", call)
-    return (call,) + _endpoint_and_method(_ARGUMENT.findall(call))
-
-
-def _endpoint_is_known(call: str) -> bool:
-    """True when a call names a pull or merge request, or has a literal endpoint that names none.
-
-    A missing endpoint, or one the shell builds (``"$EP"``, backticks), could name a pull request that the text of
-    the call does not show, so such a call cannot be judged a read by its own text.
-    """
-    call, endpoint, _ = _parse_api_call(call)
-    if _MR_ENDPOINT.search(call):
-        return True
-    return endpoint is not None and "$" not in endpoint and "`" not in endpoint
-
-
-def _api_call_writes_requests(call: str) -> bool:
-    """True when one gh/glab api call (the text after ``api``) writes to pull or merge requests, or may.
-
-    ``may`` is a GraphQL query read from a file: it cannot be inspected, so it counts as a write.
-    """
-    call, endpoint, method = _parse_api_call(call)
+        if argument in _VALUE_OPTIONS:
+            option, value = argument, next(remaining, "")
+        elif argument.startswith("--"):
+            option, _, value = argument.partition("=")
+        else:
+            option, value = argument[:2], argument[2:].lstrip("=")
+        if option in ("-X", "--method"):
+            method = value.lower()
+        elif option in _FIELD_OPTIONS:
+            fields = True
+            from_file = from_file or option == "--input" or value.startswith("query=@")
+        elif option in _VALUE_OPTIONS or argument in _SWITCHES:
+            continue
+        elif argument.startswith("-"):
+            known = False
+        elif endpoint is None:
+            endpoint = argument
+    call = " ".join(arguments)
     if (endpoint or "").lower() == "graphql":
         # GraphQL always travels as a POST, so only the query tells a read from a write.
-        return bool(_QUERY_FROM_FILE.search(call) or (_MUTATION.search(call) and _MR_ENDPOINT.search(call)))
-    # With an explicit GET, -f and -F fields are query parameters, not a request body.
-    writes = _WRITE_METHOD.search(call) or (_WRITE_FIELD.search(call) and method != "get")
-    return bool(writes and _MR_ENDPOINT.search(call))
+        writes = from_file or bool(_MUTATION.search(call) and _MR_ENDPOINT.search(call))
+    else:
+        # With an explicit GET, fields are query parameters, not a request body.
+        writes = (method in _WRITE_METHODS or (fields and method != "get")) and bool(_MR_ENDPOINT.search(call))
+    return (endpoint if known else None), writes
 
 
 def _is_git_dir(part: str) -> bool:

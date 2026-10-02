@@ -2,11 +2,16 @@
 import itertools
 import random
 import re
+import string
 import time
 
 import pytest
 
 from pe_guard import filters
+
+# a read that names pulls and has a field: chained to a write the first version of the filter could not see, it made
+# that version block the whole command
+CHAINED_READ = "; gh api -X GET repos/o/r/pulls -f state=open"
 
 # (command, a word of the reason it must be blocked for)
 BLOCKED_COMMANDS = [
@@ -149,6 +154,88 @@ BLOCKED_COMMANDS = [
     ("gh api repos/o/r/pulls -f head=a -f base=main -H 'X-Note: -X GET'", "pull or merge requests"),
     # GETX is not the method GET
     ("gh api -X GETX repos/o/r/pulls -f title=x", "pull or merge requests"),
+    # PATCH and DELETE write without any field
+    ("gh api -X PATCH repos/o/r/pulls/1", "pull or merge requests"),
+    ("gh api --method DELETE repos/o/r/pulls/1/requested_reviewers", "pull or merge requests"),
+    # a GraphQL query held in a shell variable: the expansion is outside the syntax the parser models
+    (
+        "Q='mutation { mergePullRequest(input: {pullRequestId: \"X\"}) { clientMutationId } }'; "
+        "gh api graphql -f query=\"$Q\"",
+        "pull or merge requests",
+    ),
+    (
+        "Q='mutation { mergePullRequest(input: {pullRequestId: \"X\"}) { clientMutationId } }'\n"
+        "gh api graphql -F query=\"$Q\"",
+        "pull or merge requests",
+    ),
+    # separators inside process substitution (bash, zsh) and parameter expansion
+    ("gh api repos/o/r/pulls/1/merge -t <(true; true) -X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge -t =(true; true) -X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge -t >(cat | cat) -X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge${x//;/} -X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls${x:+&} -f title=x -f head=a -f base=main", "pull or merge requests"),
+    # a quoted mention of gh api inside a write is a value: it does not cut the write in two
+    (
+        "gh api repos/o/r/pulls -H 'User-Agent: gh api client' -f title=x -f head=a -f base=main",
+        "pull or merge requests",
+    ),
+    ('gh api repos/o/r/pulls/1/merge -H "X-Note: gh api x" -X PUT', "pull or merge requests"),
+    # allowlist boundaries: each case is a write (bash or zsh) that the parser would read as a read if the allowlist
+    # accepted the character named in the comment
+    ("gh api repos/o/r/pulls -f title=x -f head=a -f base=main # -X GET", "pull or merge requests"),  # comment
+    ("gh api repos/o/r/pulls -f title=x -f head=a -f base=main -t a\\ -XGET", "pull or merge requests"),  # backslash
+    ("gh api repos/o/r/pulls -f title=x -f head=a -f base=main -t > -X GET", "pull or merge requests"),  # >
+    ("gh api repos/o/r/pulls -f title=x -f head=a -f base=main -t <<< -X GET", "pull or merge requests"),  # <
+    ("gh api repos/o/r/pulls -f title=x -f head=a -f base=main -t a\u00a0-XGET", "pull or merge requests"),  # non-ASCII
+    ("gh api repos/o/r/pulls -f title=x -f head=a -f base=main -t a\r-XGET", "pull or merge requests"),  # other blanks
+    ('gh api repos/o/r/pulls -f title=x -f head=a -f base=main -H "x:p\\" -X GET "q\\"', "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge -X `echo PUT`" + CHAINED_READ, "pull or merge requests"),  # backtick
+    ('gh api repos/o/r/pulls/1/merge -X "`echo PUT`"' + CHAINED_READ, "pull or merge requests"),
+    ("EP=repos/o/r/pulls; gh api -X POST $EP -f title=x", "pull or merge requests"),  # dollar
+    ("gh api repos/o/r/pulls/1/merge {-X,} PUT" + CHAINED_READ, "pull or merge requests"),  # braces (bash)
+    ("gh api repos/o/r/pulls/1/merge -X P*" + CHAINED_READ, "pull or merge requests"),  # globs, with a file PUT
+    ("gh api repos/o/r/pulls/1/merge -X PU?" + CHAINED_READ, "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge -X [P]UT" + CHAINED_READ, "pull or merge requests"),
+    ("hash -d m=PUT; gh api repos/o/r/pulls/1/merge -X ~m" + CHAINED_READ, "pull or merge requests"),  # tilde (zsh)
+    # the shell removes quotes: a quoted command name, option or method is still that word
+    ("'gh' api repos/o/r/pulls/1/merge -X PUT" + CHAINED_READ, "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge '-X' PUT" + CHAINED_READ, "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge -X P'U'T" + CHAINED_READ, "pull or merge requests"),
+    # gh found by a path, by zsh's =gh, or by another case on a case-insensitive file system
+    ("/usr/local/bin/gh api repos/o/r/pulls/1/merge -X PUT" + CHAINED_READ, "pull or merge requests"),
+    ("GH api repos/o/r/pulls/1/merge -X PUT" + CHAINED_READ, "pull or merge requests"),
+    ("=gh api repos/o/r/pulls/1/merge -X PUT" + CHAINED_READ, "pull or merge requests"),
+    # option spellings gh's flag parser accepts: a value attached with or without =, bundled short options
+    ("gh api repos/o/r/pulls/1/merge -X=PUT" + CHAINED_READ, "pull or merge requests"),
+    ("gh api repos/o/r/pulls -ftitle=x -fhead=a -fbase=main" + CHAINED_READ, "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge -iXPUT" + CHAINED_READ, "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge -iX PUT" + CHAINED_READ, "pull or merge requests"),
+    # a call that another program launches may get arguments the text does not show (xargs appends -X PUT here)
+    ("echo -X PUT | xargs gh api repos/o/r/pulls/1/merge", "pull or merge requests"),
+    # a quoted argument may be a command line for another shell: it is read as a command of its own
+    ("sh -c 'gh api repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ, "pull or merge requests"),
+    ("sh -c 'gh api graphql -F query=@m.graphql'", "pull or merge requests"),
+    ("sh -c 'gh api repos/o/r/pulls/$(echo 1; echo)/merge -X PUT'" + CHAINED_READ, "pull or merge requests"),
+]
+
+# Reads blocked by design: the whole-text verdict stands because the command leaves the syntax the parser models,
+# or a call in it cannot be judged. This is the price of failing closed; a change that opens one of these must be a
+# deliberate decision.
+OVER_BLOCKS = [
+    "gh api -X GET repos/o/r/pulls \\\n  -f state=open",  # a backslash, even a line continuation
+    "gh api -X GET repos/o/r/pulls/$(git rev-parse HEAD) -f state=open",  # a substitution
+    "gh api -X GET repos/o/r/pulls/5#comment-1 -f state=open",  # a hash, even inside a word
+    "gh api -X GET repos/o/r/pulls -f n=$# -f state=open",
+    "gh api -X GET repos/{owner}/{repo}/pulls -f state=open",  # gh's placeholders use braces
+    "gh api -X GET repos/o/r/pulls -f state=open 2>&1",  # a redirection
+    "gh api -X GET repos/o/r/pulls -f state=open & gh api -X GET repos/o/r/pulls -f state=closed",  # a lone &
+    'echo "run gh api" && gh api -X GET repos/o/r/pulls -f state=open',  # a quoted call with no endpoint
+    # gh not launched by the shell itself (a wrapper, or a mention inside a text): its arguments may differ
+    "env gh api -X GET repos/o/r/pulls -f state=open",
+    'echo "run gh api now" && gh api -X GET repos/o/r/pulls -f state=open',
+    "git commit -m 'switch to gh api graphql' && "
+    "gh api graphql -f query='query { repository { pullRequest(number: 1) { id } } }'",
+    "glab api --unknown v -X GET projects/1/merge_requests -F state=opened",  # an option gh api does not have
 ]
 
 # flags of gh api that take the next argument as their value (gh 2.100.0, gh api --help); the value of
@@ -179,21 +266,21 @@ PASSING_COMMANDS = [
     "gh api -XGET repos/o/r/pulls -f state=open",
     'gh api --method "GET" repos/o/r/pulls -f state=open',
     "gh api --input graphql repos/o/r/issues",  # a file named graphql, not the endpoint
-    # syntax the parser models stays a read: continuations, an apostrophe inside double quotes, a substitution
-    # without separators, an explicit GET with a value flag
-    "gh api -X GET repos/o/r/pulls \\\n  -f state=open",
+    # reads in the syntax the parser models stay open: quotes of both kinds, chained reads, option spellings
     "echo \"it's fine\" && gh api -X GET repos/o/r/pulls -f state=open",
-    "gh api -X GET repos/o/r/pulls/$(git rev-parse HEAD) -f state=open",
+    "gh api -X GET repos/o/r/pulls -f title='#5' -f state=open",  # a hash inside quotes is not a comment
+    "gh api -X GET repos/o/r/pulls -f state=open --jq '.[0].title' | head -1",
+    "gh api -X GET repos/o/r/pulls -f state=open && "
+    "gh api graphql -f query='query { repository(owner:\"o\",name:\"r\") { pullRequest(number: 5) { title } } }'",
+    "gh api -X=GET repos/o/r/pulls -f state=open -q.title --jq=.title -Hx:y --header=x:y",
+    "gh api -X GET repos/o/r/pulls\t-f labels=a,b -f q=a@b+c%20d",  # a tab and the safe punctuation
+    "gh api repos/o/r/pulls -H 'X-Note: -X PUT'",  # a write marker inside a quoted value is a value
     # a call whose own literal endpoint names no pull request is not a pull request write, whatever else is said
     "echo pulls; gh api -X PUT repos/o/r/issues/1 -f state=closed",
-    "gh api -X GET repos/o/r/pulls -f title='#5' -f state=open",  # a hash inside quotes is not a comment
-    "gh api -X GET repos/o/r/pulls/5#comment-1 -f state=open",  # a hash inside a word is not a comment
-    "gh api -X GET repos/o/r/pulls -f n=$# -f state=open",  # $# is the argument count, not a comment
-    # ambiguous syntax alone blocks nothing: the whole-text verdict needs an api call, a write marker and a pull
-    # or merge request word, and the call here names none
+    # syntax outside the model blocks nothing on its own: the whole-text verdict needs an api call, a write marker
+    # and a pull or merge request word, and the call here names none
     "gh api repos/o/r/issues 2>&1 -f title=x",
     "git add -f docs/pulls.md 2>&1",
-    "gh api -X GET repos/o/r/pulls -f state=open --jq '.[0].title' | head -1",
     # only gh api and glab api calls are looked at, whatever else a command says about pulls
     "git add -f docs/pulls.md",
     # a flag of the next command is not a field of the api call before it
@@ -201,9 +288,8 @@ PASSING_COMMANDS = [
     "gh api repos/o/r/pulls | grep -f patterns",
     "gh api repos/o/r/pulls\ngit add -f x",
     "gh api repos/o/r/pulls && git add -f x",
-    # a quoted mention of gh api must not pair its quote with a quote of the next command
-    "git commit -m 'switch to gh api graphql' && gh api graphql -f query='query { repository { pullRequest(number: 1) { id } } }'",
-    "echo \"run gh api now\" && gh api -X GET repos/o/r/pulls -f state=open",
+    # assignments before the command word are part of the command the shell launches
+    "GH_HOST=github.example.org GH_PAGER='cat -s' gh api -X GET repos/o/r/pulls -f state=open",
     # a GraphQL query that merely contains a word starting or ending like mutation is a read
     "gh api graphql -f query='query { search(query: \"mutations is:pr\", type: ISSUE, first: 5) { nodes { ... on PullRequest { title } } } }'",
     "gh api graphql -f query='query { repository(owner:\"o\",name:\"r\") { pullRequests(labels: [\"no_mutation\"], first: 5) { nodes { title } } } }'",
@@ -234,16 +320,37 @@ def test_ordinary_shell_commands_pass(command):
     assert filters.check_shell_command(command) is None
 
 
-# what the module docstring declares open, and the limit of a glab-only value flag declared next to _VALUE_FLAGS
+@pytest.mark.parametrize("command", OVER_BLOCKS)
+def test_reads_the_parser_cannot_vouch_for_stay_blocked(command):
+    reason = filters.check_shell_command(command)
+    assert reason and "pull or merge requests" in reason, reason
+
+
+# options of gh api (gh 2.100.0, gh api --help) that take no value, and those whose value is neither the method nor a
+# field: a read that uses any of them is still a read
+SWITCHES = ["-i", "--include", "--paginate", "--silent", "--slurp", "--verbose", "--allow-escape-sequences"]
+OTHER_VALUE_OPTIONS = ["-H", "-p", "-q", "-t", "--cache", "--header", "--hostname", "--jq", "--preview", "--template"]
+
+
+@pytest.mark.parametrize("option", SWITCHES + [option + " v" for option in OTHER_VALUE_OPTIONS])
+def test_a_read_with_any_option_of_gh_api_stays_open(option):
+    assert filters.check_shell_command("gh api %s -X GET repos/o/r/pulls -f state=open" % option) is None
+
+
+# what the module docstring declares open
 OPEN_FORMS = [
     'gh api "$EP" -f title=x',  # endpoint in a shell variable
-    'git push "-o" merge_request.create',  # quoted option flag
+    'git push "-o" merge_request.create',  # quoted option flag of git
     'git push -o "$OPT"',  # option value in a variable
-    "gp -o merge_request.create",  # alias or function that hides the word git
+    "gp -o merge_request.create",  # alias or function that hides the command
     'eval "$cmd"',
     "$cmd",
     "curl -X POST https://api.example.org/repos/o/r/pulls -d x",  # another client calling the API directly
-    "glab api --unknown-value-flag v graphql -F query=@m.graphql",  # the unknown flag's value hides the endpoint
+    "gh api repos/o/r/pulls/1/merge -iX PUT",  # bundled short options are not parsed
+    "glab api --unknown-value-flag v graphql -F query=@m.graphql",  # a glab-only option's value hides the endpoint
+    # a command line that another program builds from text is read as written, even next to a read that names pulls
+    "sh -c 'g$(echo h) api repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ,
+    "printf 'gh api repos/o/r/pulls/1/merge %s PUT' -X | sh" + CHAINED_READ,
 ]
 
 
@@ -260,46 +367,13 @@ def test_thousands_of_api_calls_in_one_command_are_checked_in_linear_time():
     assert time.perf_counter() - started < 1.0
 
 
-# The whole-text verdict of the first version of the filter (commit e0eac43): a command with a gh or glab api call,
-# a write marker anywhere in it and a pull or merge request word anywhere in it is a write. The per-call analysis may
-# lift that block only for a command it reads unambiguously and finds made of reads.
+# The whole-text verdict of the first version of the filter (commit e0eac43), copied here so that the oracle does not
+# depend on the code it checks: a command with a gh or glab api call, a write marker anywhere in it and a pull or merge
+# request word anywhere in it is a write.
 _WHOLE_API = re.compile(r"\b(?:gh|glab)\s+api\b", re.IGNORECASE)
 _WHOLE_MR = re.compile(r"pulls|merge_requests|pullrequest|mergerequest", re.IGNORECASE)
 _WHOLE_METHOD = re.compile(r"(?:-X\s*|--method[\s=]+)[\"']?(?:post|put|patch|delete)\b", re.IGNORECASE)
 _WHOLE_FIELD = re.compile(r"(?:^|\s)(?:-f|--field|--raw-field|--input)(?=[\s=]|$)", re.IGNORECASE)
-
-# calls the parser reads unambiguously and that read ({r} is where a redirection may go)
-CLEAN_READS = [
-    "gh api -X GET repos/o/r/pulls{r} -f state=closed -f per_page=100",
-    "gh api --method GET repos/o/r/pulls{r} -f state=open",
-    "gh api graphql{r} -f query='query { repository(owner:\"o\",name:\"r\") { pullRequest(number: 5) { title } } }'",
-    "glab api graphql{r} -f query='query { project(fullPath: \"o/r\") { mergeRequest(iid: \"4\") { title } } }'",
-    "gh api repos/o/r/pulls{r}",
-    "git status{r}",
-    "git commit -m 'switch to gh api graphql'{r}",
-    "curl -X GET https://x{r}",
-]
-# calls that write, or may
-WRITES = [
-    "gh api -X PUT repos/o/r/pulls/1/merge{r}",
-    "gh api repos/o/r/pulls{r} -f title=x -f head=a -f base=main",
-    "gh api -X POST repos/o/r/pulls{r} -f title=x",
-    "glab api projects/1/merge_requests{r} -X POST",
-    "gh api graphql{r} -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
-    "gh api graphql{r} -F query=@m.graphql",
-    "gh api -f graphql=1{r} -X PUT repos/o/r/pulls/1/merge",
-    "gh api repos/o/r/pulls{r} -f title='support -X GET' -f head=a -f base=main",
-    'gh api -X POST "$EP"{r} -f title=x',  # the endpoint is built by the shell: it may be a pull request
-    "glab api --method POST{r}",  # no endpoint at all
-]
-# fragments the parser cannot read unambiguously: an apostrophe in a comment, a lone double quote, escaped quotes,
-# an escaped space, a separator inside a command substitution or backticks
-APOSTROPHE_COMMENTS = ["# don't merge yet", "# can't merge either"]
-FRAGMENTS = APOSTROPHE_COMMENTS + [
-    '# say "hi', "echo \\'", 'echo \\"', "echo a\\ b", "echo $(echo 1; echo)", "echo `echo 1; echo`",
-]
-REDIRECTIONS = [" 2>&1", " &>/dev/null", " >&2", " <&0", " >| out.json"]
-SEPARATORS = [" && ", " || ", "; ", " | ", "\n", " & "]
 
 
 def whole_text_blocks(command):
@@ -310,42 +384,127 @@ def whole_text_blocks(command):
     )
 
 
+# The allowlist of the syntax the parser models, written again as a scanner rather than a regular expression: outside
+# quotes only letters, digits, _ - . / = : @ , + %, space, tab, newline, ; | and &&; single-quoted text with anything;
+# double-quoted text without $, backtick or backslash.
+MODELLED_OUTSIDE_QUOTES = frozenset(string.ascii_letters + string.digits + "_-./=:@,+% \t\n;|")
+
+
+def written_in_modelled_syntax(command):
+    position = 0
+    while position < len(command):
+        char = command[position]
+        if char in "'\"":
+            end = command.find(char, position + 1)
+            if end < 0 or (char == '"' and set(command[position + 1:end]) & set("$`\\")):
+                return False
+            position = end + 1
+        elif command.startswith("&&", position):
+            position += 2
+        elif char in MODELLED_OUTSIDE_QUOTES:
+            position += 1
+        else:
+            return False
+    return True
+
+
+# calls that read, written in the modelled syntax
+CLEAN_READS = [
+    "gh api -X GET repos/o/r/pulls -f state=closed -f per_page=100",
+    "gh api --method GET repos/o/r/pulls -f state=open",
+    "gh api graphql -f query='query { repository(owner:\"o\",name:\"r\") { pullRequest(number: 5) { title } } }'",
+    "glab api graphql -f query='query { project(fullPath: \"o/r\") { mergeRequest(iid: \"4\") { title } } }'",
+    "gh api repos/o/r/pulls",
+    "git status",
+    "git commit -m 'read pulls through the graphql api'",
+    "curl -X GET https://x",
+]
+# Pull or merge request writes (and two reads) with a slot {x} for an injected construct. The slot sits where text the
+# shell leaves alone keeps the call what it is; what the shell does with a construct (expand, substitute, redirect,
+# comment out) may change the call, and that is why the whole-text verdict must stand for it.
+WRITE_TEMPLATES = [
+    "gh api repos/o/r/pulls/1/merge{x} -X PUT",
+    "gh api repos/o/r/pulls/1/merge -t a{x} -X PUT",
+    "gh api repos/o/r/pulls/1/merge -t {x} -X PUT",
+    "gh api repos/o/r/pulls{x} -f title=x -f head=a -f base=main",
+    "gh api repos/o/r/pulls -H {x} -f title=x -f head=a -f base=main",
+    "gh api -X POST repos/o/r/pulls -f title={x}",
+    "glab api projects/1/merge_requests{x} -X POST",
+    "gh api graphql -H {x} -f query='mutation { mergePullRequest(input: {pullRequestId: \"X\"}) { clientMutationId } }'",
+    "gh api graphql -F query=@m.graphql{x}",
+    "gh api -f graphql=1 -X PUT repos/o/r/pulls/1/merge{x}",
+]
+READ_TEMPLATES = [
+    "gh api -X GET repos/o/r/pulls{x} -f state=open",
+    "gh api -X GET repos/o/r/pulls -t {x} -f state=open",
+]
+# The shell's alphabet, not the parser's: every printable ASCII character but the bare separators ; | and newline
+# (they cut a write into two commands that do not write; SEPARATORS chain commands instead), other blanks, characters
+# outside ASCII, and constructs built from them: quotes, expansions, substitutions, redirections, globs, comments.
+SHELL_CONSTRUCTS = [char for char in string.printable if char not in ";|\n"] + [
+    "\x00", "\u00a0", "\u2028", "\u00e9", "\uff1b",
+    "''", '""', "'a;b'", '"a;b"', "'a b'", "'gh api x'", '"gh api x"', "'gh api'", "'-X GET'", '"-X GET"',
+    "$x", "${x}", "${x//;/}", "${x:+&}", "${x:-a b}", "$(true; true)", "`true; true`", "$((1 + 1))", "$'a;b'", '$"a"',
+    '"$x"', '"$(true; true)"', '"`true; true`"', '"\\""', "\\;", "\\\n", "\\ ",
+    "<(true; true)", ">(cat | cat)", "=(true; true)", "(true; true)", "{ true; true; }", "{a,b}", "{1..2}",
+    "*", "[ab]", "~", "~root", "!!", "!x", "#x", "2>&1", "&>/dev/null", ">|x", "<<<x", "<x", ">x", ">>x", "<>x",
+    "|&", "&", "<<EOF\nx\nEOF\n",
+]
+MODELLED_SEPARATORS = [" && ", " || ", "; ", " | ", "\n"]
+SEPARATORS = MODELLED_SEPARATORS + [" & "]
+
+
+def injected(templates, construct):
+    """Each template with the construct in its slot; a blank never fills a whole option value (it would shift the
+    arguments, and the write would no longer be one)."""
+    return [
+        template.replace("{x}", construct) for template in templates if construct.strip() or " {x} " not in template
+    ]
+
+
 def generated_commands():
-    """(command, made only of clean reads) for chained commands that mix reads, writes and ambiguous syntax."""
-    plain = [(part.replace("{r}", ""), True) for part in CLEAN_READS]
-    plain += [(part.replace("{r}", ""), False) for part in WRITES]
-    plain += [(part, False) for part in FRAGMENTS]
-    redirected = [(part.replace("{r}", r), False) for part in CLEAN_READS + WRITES for r in REDIRECTIONS]
-    for (first, first_clean), (second, second_clean) in itertools.product(plain, plain):
-        for sep in SEPARATORS:
-            yield first + sep + second, first_clean and second_clean
-    for (call, _), (read, read_clean) in itertools.product(redirected, plain[: len(CLEAN_READS)]):
-        for sep in SEPARATORS:
-            yield call + sep + read, False
-            yield read + sep + call, False
-    # two apostrophes in comments pair up around a write and a read: the quotes balance by luck
-    for first, second in itertools.product(APOSTROPHE_COMMENTS, repeat=2):
-        for write, read in itertools.product(WRITES, CLEAN_READS):
-            yield "\n".join([first, write.replace("{r}", ""), read.replace("{r}", ""), second]), False
-    chooser = random.Random(20260930)
+    """(command, made only of reads): chains of reads and writes, and calls with an injected construct, alone and
+    next to a read that names pulls."""
+    reads = [(read, True) for read in CLEAN_READS]
+    writes = [(write.replace(" {x} ", " x:y ").replace("{x}", ""), False) for write in WRITE_TEMPLATES]
+    for (first, first_read), (second, second_read) in itertools.product(reads + writes, repeat=2):
+        for separator in SEPARATORS:
+            yield first + separator + second, first_read and second_read
+    marked = []
+    for construct in SHELL_CONSTRUCTS:
+        marked += [(command, False) for command in injected(WRITE_TEMPLATES, construct)]
+        marked += [(command, True) for command in injected(READ_TEMPLATES, construct)]
+    for command, read in marked:
+        yield command, read
+        for clean in (CLEAN_READS[0], CLEAN_READS[2]):
+            yield command + "; " + clean, read
+            yield clean + "\n" + command, read
+    chooser = random.Random(20261002)
     for _ in range(3000):
-        parts = [chooser.choice(plain + redirected) for _ in range(3)]
-        seps = [chooser.choice(SEPARATORS) for _ in range(2)]
-        yield parts[0][0] + seps[0] + parts[1][0] + seps[1] + parts[2][0], all(clean for _, clean in parts)
+        parts = [chooser.choice(reads + writes + marked) for _ in range(3)]
+        separators = [chooser.choice(SEPARATORS) for _ in range(2)]
+        command = parts[0][0] + separators[0] + parts[1][0] + separators[1] + parts[2][0]
+        yield command, all(read for _, read in parts)
 
 
-def test_a_command_the_whole_text_rule_blocked_stays_blocked_unless_it_is_made_of_clean_reads():
-    """Monotonic: the per-call analysis lifts a block only for unambiguous commands in which every call reads."""
+def test_a_command_the_whole_text_rule_blocked_stays_blocked_unless_modelled_and_made_of_reads():
+    """Monotonic: what the first version blocked is open only when written in the modelled syntax and made of reads."""
     lifted = kept = 0
-    for command, clean_reads in generated_commands():
-        verdict = filters.check_shell_command(command)
-        if clean_reads:
-            assert verdict is None, command
-            lifted += whole_text_blocks(command)
-        elif whole_text_blocks(command):
-            assert verdict, command
+    for command, reads_only in generated_commands():
+        if not whole_text_blocks(command):
+            continue
+        if filters.check_shell_command(command) is None:
+            assert reads_only and written_in_modelled_syntax(command), command
+            lifted += 1
+        else:
             kept += 1
     assert lifted > 100 and kept > 3000, (lifted, kept)  # the generator really exercised both sides
+
+
+def test_chains_of_clean_reads_stay_open():
+    for first, second in itertools.product(CLEAN_READS, repeat=2):
+        for separator in MODELLED_SEPARATORS:
+            assert filters.check_shell_command(first + separator + second) is None, first + separator + second
 
 
 @pytest.mark.parametrize("flag", VALUE_FLAGS)
