@@ -112,6 +112,10 @@ BLOCKED_COMMANDS = [
     ("gh api graphql --field=query=@m.graphql", "pull or merge requests"),
     # a bundled short option group may carry digits
     ("git push -4o merge_request.create origin x", "push options"),
+    # the abbreviation is found anywhere in a run of letters and hyphens, as the linear form of the pattern must keep
+    ("git push x--pu=merge_request.create origin", "push options"),
+    ("git push --pu--pu=merge_request.create origin", "push options"),
+    ("git push --pu--pu --pu-opt merge_request.create origin", "push options"),
     # when a command is not read unambiguously the whole-text verdict stands, whatever one call alone looks like:
     # an ampersand that belongs to a redirection is not a separator
     ("gh api repos/o/r/pulls 2>&1 -f title=x -f head=a -f base=main", "pull or merge requests"),
@@ -229,6 +233,13 @@ BLOCKED_COMMANDS = [
     ("gh -F query=@m.graphql api graphql", "pull or merge requests"),  # a field before api belongs to the call
     # a path that merely ends in the word graphql is not the GraphQL endpoint
     ("gh api 'repos/o/r/pulls/1/merge?note=graphql' -X PUT", "pull or merge requests"),
+    # graphql in the query string or the fragment of a REST endpoint is no GraphQL endpoint either, however it is
+    # spelled: the endpoint is the path before the first ? or #
+    ("gh api 'repos/o/r/pulls/1/merge?x=/graphql' -X PUT", "pull or merge requests"),
+    ("gh api 'repos/o/r/pulls/1/merge#/graphql' -X PUT", "pull or merge requests"),
+    ("gh api 'repos/o/r/pulls/1/merge?x=%2Fgraphql' -X PUT", "pull or merge requests"),
+    ("gh api 'repos/o/r/pulls?x=/graphql' -f title=x -f head=a -f base=main", "pull or merge requests"),
+    ("glab api 'projects/1/merge_requests/1/merge?x=/graphql' -X PUT", "pull or merge requests"),
     # the GraphQL endpoint spelled as a path, a URL, with a host, a query string or a trailing slash
     ("gh api /graphql -F query=@m.graphql", "pull or merge requests"),
     ("gh api /graphql -F query=@m.graphql" + CHAINED_READ, "pull or merge requests"),
@@ -273,6 +284,10 @@ OVER_BLOCKS = [
     "git commit -m 'switch to gh api graphql' && "
     "gh api graphql -f query='query { repository { pullRequest(number: 1) { id } } }'",
     "glab api --unknown v -X GET projects/1/merge_requests -F state=opened",  # an option gh api does not have
+    # the parser cannot tell what PowerShell's splatting or an array makes of these arguments, and so does not judge
+    # them, though in bash they are plain reads
+    "gh api -X GET repos/o/r/pulls -f state=open --jq @json",
+    "gh api -X GET repos/o/r/pulls -f labels=a,-b",
 ]
 
 # flags of gh api that take the next argument as their value (gh 2.100.0, gh api --help); the value of
@@ -393,6 +408,10 @@ OPEN_FORMS = [
     "sh -c 'g\\h api repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ,
     "sh -c 'gh ap\\i repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ,
     "printf 'gh api repos/o/r/pulls/1/merge%s' ' -X PUT' | sh" + CHAINED_READ,
+    # the program name or the arguments come from another command: $0 is the word after the quoted text, and xargs
+    # appends the words echo prints to the gh it starts
+    "sh -c '$0 api repos/o/r/pulls/1/merge -X PUT' gh" + CHAINED_READ,
+    "echo api repos/o/r/pulls/1/merge -X PUT | xargs gh" + CHAINED_READ,
 ]
 
 
@@ -407,6 +426,14 @@ def test_forms_a_textual_filter_cannot_see_stay_open_as_the_module_declares(comm
 ])
 def test_thousands_of_api_calls_in_one_command_are_checked_in_linear_time(command):
     """Each api call is analysed once, on its own text: re-reading the tail for every call would take seconds."""
+    started = time.perf_counter()
+    assert filters.check_shell_command(command) is None
+    assert time.perf_counter() - started < 1.0
+
+
+def test_a_long_run_of_push_option_prefixes_is_checked_in_linear_time():
+    """A hook that times out lets the tool run, so 100 KB of repeated --pu must not take a second."""
+    command = "git status " + "--pu" * 25000
     started = time.perf_counter()
     assert filters.check_shell_command(command) is None
     assert time.perf_counter() - started < 1.0
@@ -482,6 +509,12 @@ WRITE_TEMPLATES = [
     "gh -X PUT api repos/o/r/pulls/1/merge{x}",
     "gh api /graphql -F query=@m.graphql{x}",  # the GraphQL endpoint as a path and as a URL
     "gh api https://api.github.com/graphql -F query=@m.graphql{x}",
+    # a REST endpoint with graphql in its query string or fragment, quoted so that the command stays in the syntax the
+    # parser models: it is not the GraphQL endpoint, whatever follows it
+    "gh api 'repos/o/r/pulls/1/merge?x=/graphql'{x} -X PUT",
+    "gh api 'repos/o/r/pulls/1/merge#/graphql'{x} -X PUT",
+    "gh api 'repos/o/r/pulls?x=/graphql'{x} -f title=x -f head=a -f base=main",
+    "glab api 'projects/1/merge_requests/1/merge?x=/graphql'{x} -X PUT",
 ]
 READ_TEMPLATES = [
     "gh api -X GET repos/o/r/pulls{x} -f state=open",

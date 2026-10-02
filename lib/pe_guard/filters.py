@@ -29,7 +29,11 @@ written out in it, so a call built there from pieces is not seen, even next to
 a read the first version blocked:
 ``sh -c 'g$(echo h) api ...'``, ``sh -c 'g`echo h` api ...'``,
 ``sh -c 'g\\h api ...'``, ``sh -c 'gh ap\\i ...'``,
-``printf 'gh api .../merge%s' ' -X PUT' | sh``.
+``printf 'gh api .../merge%s' ' -X PUT' | sh``. The same goes where another
+program supplies the command word or the arguments of the call: ``sh -c '$0 api
+.../merge -X PUT' gh`` (the shell fills ``$0`` with the word after the quoted
+text) and ``echo api .../merge -X PUT | xargs gh`` (xargs appends what echo
+prints to the gh it starts).
 """
 import re
 from pathlib import PurePath
@@ -75,8 +79,16 @@ _GIT = re.compile(r"\bgit\b", _I)
 # word git anywhere in the command, not the arguments of a git command (so an alias like "git p" is caught): it
 # keeps "curl -o merge_request.json" and "sort -o merge_request.txt" out, and "git status && curl -o
 # merge_request.json URL" is blocked, an accepted over-block.
+# The long option branch is written to be linear: an unanchored --pu[a-z-]* would, from every --pu of a long run such
+# as --pu--pu--pu..., read on to the end of the run, and a hook that times out lets the tool run. It starts once per
+# maximal run of letters and hyphens (the lookbehind), checks with the lookahead that the run holds --pu, takes the
+# whole run and asks for the separator after it: the same commands as --pu[a-z-]*[\s=]+ at any place, since a match
+# from a --pu inside a run always read on to the end of that run.
 _MR_PUSH_OPTION = re.compile(
-    r"(?:(?<![\w-])-[a-z0-9]*o\s*|--pu[a-z-]*[\s=]+|pushoption[\s=]+)[\"']?merge_request\.", _I
+    r"(?:(?<![\w-])-[a-z0-9]*o\s*"
+    r"|(?<![a-z-])(?=[a-z-]*--pu)[a-z-]+[\s=]+"
+    r"|pushoption[\s=]+)[\"']?merge_request\.",
+    _I,
 )
 # The whole-text verdict of the first version of this filter: an api call, a write marker and a pull or merge request
 # word, each anywhere in the command. _api_writes_requests also counts a call with options between gh and api.
@@ -110,7 +122,9 @@ _VALUE_OPTIONS = frozenset({
 _FIELD_OPTIONS = frozenset({"-F", "-f", "--field", "--input", "--raw-field"})
 _SWITCHES = frozenset({"-i", "--allow-escape-sequences", "--include", "--paginate", "--silent", "--slurp", "--verbose"})
 _WRITE_METHODS = frozenset({"post", "put", "patch", "delete"})
-_GRAPHQL = re.compile(r"(?:.*/)?graphql/?(?:[?#].*)?", _I | re.DOTALL)  # graphql, /graphql, a URL, a host prefix
+# graphql, /graphql, a URL, a host prefix. Only the path before the first ? or # may precede the word: in a query string
+# or a fragment graphql is data, and a REST endpoint with ?x=/graphql is still that endpoint.
+_GRAPHQL = re.compile(r"(?:[^?#]*/)?graphql/?(?:[?#].*)?", _I | re.DOTALL)
 _MUTATION = re.compile(r"\bmutation\b", _I)
 _PR_COMMAND = re.compile(
     r"\bgh\s+pr\s+(create|new|edit|merge)\b|\bglab\s+mr\s+(create|new|update|merge)\b", _I
