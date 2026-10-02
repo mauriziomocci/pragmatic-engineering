@@ -40,14 +40,32 @@ _PRE_PUSH = re.compile(r"pre-push", _I)
 _DATA_DIR = re.compile(r"(?:\.git|--git-(?:common-)?dir\)[\"']?)[/\\]+pragmatic-engineering", _I)
 _GUARD_CLI = re.compile(r"\bpe[-_]guard\b", _I)
 _GUARD_REMOVAL = re.compile(r"\b(?:uninstall|repair)\b", _I)
-# Any merge_request.* push option (create, merge_when_pipeline_succeeds, auto_merge, description, ...) drives a
-# merge request from a plain push. The prefix is anchored to the option syntax (-o, --push-option, or the
-# push.pushOption config key) so that a file named tests/test_merge_request.py is not caught.
-_MR_PUSH_OPTION = re.compile(r"(?:-o\s*|--push-option[\s=]+|pushoption[\s=]+)[\"']?merge_request\.", _I)
+_GIT = re.compile(r"\bgit\b", _I)
+# Any merge_request.* push option (create, merge_when_pipeline_succeeds, auto_merge, description, ...) opens,
+# updates or auto-merges a merge request from a plain push. The prefix is anchored to the option syntax, not to
+# the word push: -o alone or bundled (-uo), a long option or an abbreviation of it git accepts (--pu...), or the
+# push.pushOption config key. A short option must start a word, so --typo or release-o are not -o. A file named
+# tests/test_merge_request.py is not caught; the word git (not push, so an alias like "git p" is caught) keeps
+# "curl -o merge_request.json" and "sort -o merge_request.txt" out.
+_MR_PUSH_OPTION = re.compile(
+    r"(?:(?<![\w-])-[a-z]*o\s*|--pu[a-z-]*[\s=]+|pushoption[\s=]+)[\"']?merge_request\.", _I
+)
+# A command is cut into statements at the shell separators (&& || ; | & and newline), reading from its start so
+# that quotes pair up: a separator inside quotes, or after a backslash-newline continuation, does not end a
+# statement. Each gh/glab api call is judged on its own text (up to the end of its statement or the next api
+# call), so a read in one call never excuses a write in the next.
+_STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[^|;&\n])+")
 _API_CALL = re.compile(r"\b(?:gh|glab)\s+api\b", _I)
-# graphql counts only as the endpoint (first positional after api, flags allowed before it), not as a word
-# inside a field value such as a pull request title.
-_GRAPHQL_CALL = re.compile(r"\b(?:gh|glab)\s+api\s+(?:-\S+\s+)*[\"']?graphql\b", _I)
+_CONTINUATION = re.compile(r"\\\r?\n")
+_ARGUMENT = re.compile(r"(?:[^\s\"']|\"[^\"]*\"|'[^']*')+")
+# gh api flags that take the next argument as their value (gh 2.100.0, gh api --help); a value is never the
+# endpoint. glab api could not be checked here, so a glab-only value flag counts as the endpoint: that fails
+# closed, it can only block a read.
+_VALUE_FLAGS = frozenset({
+    "-f", "-F", "-X", "-H", "-p", "-q", "-t",
+    "--cache", "--field", "--header", "--hostname", "--input", "--jq", "--method", "--preview",
+    "--raw-field", "--template",
+})
 _MUTATION = re.compile(r"\bmutation\b", _I)
 _QUERY_FROM_FILE = re.compile(r"(?:-f|--field|--raw-field)[\s=]+[\"']?query=@|--input\b", _I)
 _MR_ENDPOINT = re.compile(r"pulls|merge_requests|pullrequest|mergerequest", _I)
@@ -79,12 +97,12 @@ def check_shell_command(command: str) -> Optional[str]:
         return _DATA_DIR_REASON
     if _GUARD_CLI.search(text) and _GUARD_REMOVAL.search(text):
         return "pe-guard uninstall and repair are the user's commands, from their own terminal"
-    if _PUSH.search(text) and _MR_PUSH_OPTION.search(text):
+    if _GIT.search(text) and _MR_PUSH_OPTION.search(text):
         return (
-            "merge_request.* push options (create, merge, auto_merge, description, ...) "
-            "bypass the checked merge request tools"
+            "merge_request.* push options open, update or auto-merge a merge request "
+            "without going through the checked merge request tools"
         )
-    if _API_CALL.search(text) and _api_writes_requests(text):
+    if _api_writes_requests(text):
         return (
             "writing to pull or merge requests through the raw API, or sending a GraphQL query read from a file, "
             "bypasses the checked tools"
@@ -93,14 +111,38 @@ def check_shell_command(command: str) -> Optional[str]:
 
 
 def _api_writes_requests(text: str) -> bool:
-    """True for a gh/glab api call that writes to pull or merge requests, or may (query read from a file)."""
-    if _GRAPHQL_CALL.search(text):
-        # GraphQL always travels as a POST, so only the query tells a read from a write. A query read from a
-        # file cannot be inspected: it counts as a write.
-        return bool(_QUERY_FROM_FILE.search(text) or (_MUTATION.search(text) and _MR_ENDPOINT.search(text)))
+    """True when any gh/glab api call in a command writes to pull or merge requests, or may."""
+    # split() cuts a statement at each api call, so every call is analysed once, on its own text
+    return any(
+        _api_call_writes_requests(call)
+        for statement in _STATEMENT.findall(text)
+        for call in _API_CALL.split(statement)[1:]
+    )
+
+
+def _api_endpoint(call: str) -> Optional[str]:
+    """First argument of a gh/glab api call that is neither a flag nor a flag's value, quotes removed."""
+    arguments = iter(_ARGUMENT.findall(call))
+    for argument in arguments:
+        if not argument.startswith("-"):
+            return argument.strip("\"'")
+        if argument in _VALUE_FLAGS:
+            next(arguments, None)
+    return None
+
+
+def _api_call_writes_requests(call: str) -> bool:
+    """True when one gh/glab api call (the text after ``api``) writes to pull or merge requests, or may.
+
+    ``may`` is a GraphQL query read from a file: it cannot be inspected, so it counts as a write.
+    """
+    call = _CONTINUATION.sub(" ", call)
+    if (_api_endpoint(call) or "").lower() == "graphql":
+        # GraphQL always travels as a POST, so only the query tells a read from a write.
+        return bool(_QUERY_FROM_FILE.search(call) or (_MUTATION.search(call) and _MR_ENDPOINT.search(call)))
     # With an explicit GET, -f and -F fields are query parameters, not a request body.
-    writes = _WRITE_METHOD.search(text) or (_WRITE_FIELD.search(text) and not _READ_METHOD.search(text))
-    return bool(writes and _MR_ENDPOINT.search(text))
+    writes = _WRITE_METHOD.search(call) or (_WRITE_FIELD.search(call) and not _READ_METHOD.search(call))
+    return bool(writes and _MR_ENDPOINT.search(call))
 
 
 def _is_git_dir(part: str) -> bool:

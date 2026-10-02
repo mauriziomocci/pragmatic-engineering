@@ -1,4 +1,6 @@
 """Tests for lib/pe_guard/filters.py: shell text filter, file write filter, tool lists."""
+import time
+
 import pytest
 
 from pe_guard import filters
@@ -38,6 +40,13 @@ BLOCKED_COMMANDS = [
     ('git push -o "merge_request.create" origin x', "push options"),
     ("git push -omerge_request.create origin x", "push options"),
     ("git -c push.pushOption=merge_request.create push", "push options"),
+    ("git config --add push.pushOption merge_request.draft", "push options"),
+    # spellings git accepts: abbreviated long option, bundled short options, an alias with no push word
+    ("git push --pu=merge_request.create origin x", "push options"),
+    ("git push --push-opt=merge_request.create origin x", "push options"),
+    ("git push -uo merge_request.create origin x", "push options"),
+    ("git push -uomerge_request.create origin x", "push options"),
+    ("git p -o merge_request.create origin x", "push options"),
     # alternatives of the hooks directory and data folder patterns that no other case reaches alone
     ('cd "$(git rev-parse --git-dir)/hooks" && chmod -x pre-push', "pre-push hook"),
     ('cd "$(git rev-parse --git-common-dir)"/hooks && rm pre-push', "pre-push hook"),
@@ -59,6 +68,47 @@ BLOCKED_COMMANDS = [
     ("glab api projects/1/merge_requests --raw-field title=x", "pull or merge requests"),
     # a REST call whose title merely says graphql is still a REST write
     ("gh api -X POST repos/o/r/pulls -f title='Move to graphql'", "pull or merge requests"),
+    # a read exemption belongs to its own api call: it never covers a write next to it in the same command
+    ("gh api graphql -f query='query { viewer { login } }' && gh api -X PUT repos/o/r/pulls/1/merge", "pull or merge requests"),
+    ("gh api -X GET repos/o/r/pulls && gh api repos/o/r/pulls -f title=x -f head=a -f base=main", "pull or merge requests"),
+    ("curl -X GET https://x && gh api repos/o/r/pulls -f title=x", "pull or merge requests"),
+    ("git commit -m 'switch to gh api graphql' && gh api -X POST repos/o/r/pulls -f title=x", "pull or merge requests"),
+    ("gh api -X GET repos/o/r/pulls || gh api repos/o/r/pulls -f title=x", "pull or merge requests"),
+    ("gh api -X GET repos/o/r/pulls; gh api repos/o/r/pulls -f title=x", "pull or merge requests"),
+    ("gh api -X GET repos/o/r/pulls & gh api repos/o/r/pulls -f title=x", "pull or merge requests"),
+    ("gh api -X GET repos/o/r/pulls\ngh api repos/o/r/pulls -f title=x", "pull or merge requests"),
+    (
+        "gh api -X GET repos/o/r/pulls/1 --jq .title | xargs -I{} gh api repos/o/r/pulls -f title={} -f head=a -f base=main",
+        "pull or merge requests",
+    ),
+    # the graphql endpoint is the first argument that is neither a flag nor a flag's value
+    ("gh api -f graphql=1 -X PUT repos/o/r/pulls/1/merge", "pull or merge requests"),
+    ("gh api -f title='graphql tips' -X PUT repos/o/r/pulls/1/merge", "pull or merge requests"),
+    ('gh api -f title="graphql tips" -X PUT repos/o/r/pulls/1/merge', "pull or merge requests"),
+    ("gh api --paginate graphql -F query=@m.graphql", "pull or merge requests"),
+    ("gh api --hostname h graphql -F query=@m.graphql", "pull or merge requests"),
+    ("gh api 'graphql' -F query=@m.graphql", "pull or merge requests"),
+    ('gh api "graphql" -F query=@m.graphql', "pull or merge requests"),
+    ("gh api GraphQL -F query=@m.graphql", "pull or merge requests"),
+    # a call nested in a command substitution is a call of its own, even next to a read in the same statement
+    ('gh api -X GET repos/o/r/pulls --jq "$(gh api repos/o/r/pulls -f title=x)"', "pull or merge requests"),
+    # a separator inside quotes does not end the call, and neither does a backslash-newline continuation
+    ('gh api -f title="a; b" -X PUT repos/o/r/pulls/1/merge', "pull or merge requests"),
+    ("gh api -f title='a | b' -X PUT repos/o/r/pulls/1/merge", "pull or merge requests"),
+    ("gh api graphql -f query='mutation {\n  mergePullRequest(input: {}) { clientMutationId }\n}'", "pull or merge requests"),
+    ("gh api -X PUT \\\n  repos/o/r/pulls/1/merge", "pull or merge requests"),
+    ("gh api \\\n  graphql -F query=@m.graphql", "pull or merge requests"),
+    # every spelling of a query read from a file
+    ("gh api graphql --field query=@m.graphql", "pull or merge requests"),
+    ("gh api graphql -F 'query=@m.graphql'", "pull or merge requests"),
+    ("gh api graphql --field=query=@m.graphql", "pull or merge requests"),
+]
+
+# flags of gh api that take the next argument as their value (gh 2.100.0, gh api --help); the value of
+# --input is covered by its own passing case, because --input also marks a query read from a file
+VALUE_FLAGS = [
+    "-f", "-F", "-X", "-H", "-p", "-q", "-t",
+    "--cache", "--field", "--header", "--hostname", "--jq", "--method", "--preview", "--raw-field", "--template",
 ]
 
 PASSING_COMMANDS = [
@@ -79,10 +129,31 @@ PASSING_COMMANDS = [
     "gh api graphql -f query='mutation { addStar(input: {starrableId: \"x\"}) { clientMutationId } }'",  # no PR
     "gh api --method GET repos/o/r/pulls -f state=open",
     "glab api --method=get projects/1/merge_requests -F state=opened",
+    "gh api -XGET repos/o/r/pulls -f state=open",
+    'gh api --method "GET" repos/o/r/pulls -f state=open',
+    "gh api --input graphql repos/o/r/issues",  # a file named graphql, not the endpoint
+    # only gh api and glab api calls are looked at, whatever else a command says about pulls
+    "git add -f docs/pulls.md",
+    # a flag of the next command is not a field of the api call before it
+    "gh api repos/o/r/pulls; git add -f x",
+    "gh api repos/o/r/pulls | grep -f patterns",
+    "gh api repos/o/r/pulls\ngit add -f x",
+    "gh api repos/o/r/pulls && git add -f x",
+    # a quoted mention of gh api must not pair its quote with a quote of the next command
+    "git commit -m 'switch to gh api graphql' && gh api graphql -f query='query { repository { pullRequest(number: 1) { id } } }'",
+    "echo \"run gh api\" && gh api -X GET repos/o/r/pulls -f state=open",
+    # a GraphQL query that merely contains a word starting or ending like mutation is a read
+    "gh api graphql -f query='query { search(query: \"mutations is:pr\", type: ISSUE, first: 5) { nodes { ... on PullRequest { title } } } }'",
+    "gh api graphql -f query='query { repository(owner:\"o\",name:\"r\") { pullRequests(labels: [\"no_mutation\"], first: 5) { nodes { title } } } }'",
     # a file that merely has merge_request in its name is not a push option
     "python3 -m pytest tests/test_merge_request.py -q",
     "git push && python3 -m pytest tests/test_merge_request.py -q",
+    "git add merge_request.py && git push",
     "curl -o merge_request.json https://example.org/api",
+    "curl -o merge_request.json https://github.com/o/r",  # github is not the word git
+    "sort -o merge_request.txt in.txt",
+    "git log --abbrev-commit --typo merge_request.py",  # a long option that merely ends in o
+    "git checkout release-o merge_request.py",  # a hyphen inside a word is not a short option
     "gh pr create --title x --body y",
     "python3 -m pytest tests/test_filters.py -q",
     "python3 tools/install_dev_hooks.py",
@@ -99,6 +170,21 @@ def test_suspicious_shell_commands_are_blocked(command, word):
 @pytest.mark.parametrize("command", PASSING_COMMANDS)
 def test_ordinary_shell_commands_pass(command):
     assert filters.check_shell_command(command) is None
+
+
+def test_thousands_of_api_calls_in_one_command_are_checked_in_linear_time():
+    """Each api call is analysed once, on its own text: re-reading the tail for every call would take seconds."""
+    command = "gh api -f a=b repos/o/r/issues " * 2000
+    started = time.perf_counter()
+    assert filters.check_shell_command(command) is None
+    assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.parametrize("flag", VALUE_FLAGS)
+def test_the_value_of_a_flag_is_never_taken_for_the_graphql_endpoint(flag):
+    """``gh api -f graphql -X PUT ...`` is a REST write: here graphql is a flag value, not the endpoint."""
+    reason = filters.check_shell_command("gh api %s graphql -X PUT repos/o/r/pulls/1/merge" % flag)
+    assert reason and "pull or merge requests" in reason, reason
 
 
 # (path, content after the write, a word of the reason it must be blocked for)
