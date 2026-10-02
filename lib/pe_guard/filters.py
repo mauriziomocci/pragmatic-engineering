@@ -40,15 +40,24 @@ _PRE_PUSH = re.compile(r"pre-push", _I)
 _DATA_DIR = re.compile(r"(?:\.git|--git-(?:common-)?dir\)[\"']?)[/\\]+pragmatic-engineering", _I)
 _GUARD_CLI = re.compile(r"\bpe[-_]guard\b", _I)
 _GUARD_REMOVAL = re.compile(r"\b(?:uninstall|repair)\b", _I)
-_MR_PUSH_OPTION = re.compile(r"merge_request\.(?:create|merge_when_pipeline_succeeds)", _I)
+# Any merge_request.* push option (create, merge_when_pipeline_succeeds, auto_merge, description, ...) drives a
+# merge request from a plain push. The prefix is anchored to the option syntax (-o, --push-option, or the
+# push.pushOption config key) so that a file named tests/test_merge_request.py is not caught.
+_MR_PUSH_OPTION = re.compile(r"(?:-o\s*|--push-option[\s=]+|pushoption[\s=]+)[\"']?merge_request\.", _I)
 _API_CALL = re.compile(r"\b(?:gh|glab)\s+api\b", _I)
+# graphql counts only as the endpoint (first positional after api, flags allowed before it), not as a word
+# inside a field value such as a pull request title.
+_GRAPHQL_CALL = re.compile(r"\b(?:gh|glab)\s+api\s+(?:-\S+\s+)*[\"']?graphql\b", _I)
+_MUTATION = re.compile(r"\bmutation\b", _I)
+_QUERY_FROM_FILE = re.compile(r"(?:-f|--field|--raw-field)[\s=]+[\"']?query=@|--input\b", _I)
 _MR_ENDPOINT = re.compile(r"pulls|merge_requests|pullrequest|mergerequest", _I)
 _WRITE_METHOD = re.compile(r"(?:-X\s*|--method[\s=]+)[\"']?(?:post|put|patch|delete)\b", _I)
+_READ_METHOD = re.compile(r"(?:-X\s*|--method[\s=]+)[\"']?get\b", _I)
 _WRITE_FIELD = re.compile(r"(?:^|\s)(?:-f|--field|--raw-field|--input)(?=[\s=]|$)", _I)
 _PR_COMMAND = re.compile(
     r"\bgh\s+pr\s+(create|new|edit|merge)\b|\bglab\s+mr\s+(create|new|update|merge)\b", _I
 )
-_MCP_TOOL = re.compile(r"mcp__.+__([A-Za-z0-9_]+)")
+_MCP_TOOL = re.compile(r"mcp__.+__([A-Za-z0-9_-]+)")
 _SETTINGS_NAME = re.compile(r"settings.*\.json", _I)
 _PR_KIND = {"create": "create", "new": "create", "edit": "update", "update": "update", "merge": "merge"}
 
@@ -70,12 +79,28 @@ def check_shell_command(command: str) -> Optional[str]:
         return _DATA_DIR_REASON
     if _GUARD_CLI.search(text) and _GUARD_REMOVAL.search(text):
         return "pe-guard uninstall and repair are the user's commands, from their own terminal"
-    if _MR_PUSH_OPTION.search(text):
-        return "push options that open or merge a merge request bypass the checked merge request tools"
-    api_write = _API_CALL.search(text) and (_WRITE_METHOD.search(text) or _WRITE_FIELD.search(text))
-    if api_write and _MR_ENDPOINT.search(text):
-        return "writing to pull or merge requests through the raw API bypasses the checked tools"
+    if _PUSH.search(text) and _MR_PUSH_OPTION.search(text):
+        return (
+            "merge_request.* push options (create, merge, auto_merge, description, ...) "
+            "bypass the checked merge request tools"
+        )
+    if _API_CALL.search(text) and _api_writes_requests(text):
+        return (
+            "writing to pull or merge requests through the raw API, or sending a GraphQL query read from a file, "
+            "bypasses the checked tools"
+        )
     return None
+
+
+def _api_writes_requests(text: str) -> bool:
+    """True for a gh/glab api call that writes to pull or merge requests, or may (query read from a file)."""
+    if _GRAPHQL_CALL.search(text):
+        # GraphQL always travels as a POST, so only the query tells a read from a write. A query read from a
+        # file cannot be inspected: it counts as a write.
+        return bool(_QUERY_FROM_FILE.search(text) or (_MUTATION.search(text) and _MR_ENDPOINT.search(text)))
+    # With an explicit GET, -f and -F fields are query parameters, not a request body.
+    writes = _WRITE_METHOD.search(text) or (_WRITE_FIELD.search(text) and not _READ_METHOD.search(text))
+    return bool(writes and _MR_ENDPOINT.search(text))
 
 
 def _is_git_dir(part: str) -> bool:
@@ -93,11 +118,12 @@ def check_file_write(path: str, content_after: Optional[str]) -> Optional[str]:
     if not parts:
         return None
     name = parts[-1]
+    # Indices before the file name only: parts[i + 1] always exists, and a git directory is never the
+    # "hooks" folder itself, so a non-empty list already means "somewhere under a git directory".
     git_dirs = [i for i, part in enumerate(parts[:-1]) if _is_git_dir(part)]
-    if name == "pre-push" and len(parts) >= 2 and parts[-2] == "hooks":
-        if any(i < len(parts) - 2 for i in git_dirs):
-            return "the pre-push hook is not written by the agent"
-    if any(i + 1 < len(parts) and parts[i + 1] == GUARD_DATA_DIR for i in git_dirs):
+    if git_dirs and name == "pre-push" and parts[-2] == "hooks":
+        return "the pre-push hook is not written by the agent"
+    if any(parts[i + 1] == GUARD_DATA_DIR for i in git_dirs):
         return _DATA_DIR_REASON
     after = None if content_after is None else content_after.lower()
     is_settings = name == "managed-settings.json" or (
@@ -109,8 +135,9 @@ def check_file_write(path: str, content_after: Optional[str]) -> Optional[str]:
 
 
 def _mcp_suffix(tool_name: str) -> Optional[str]:
+    """Tool name after the server part, with hyphens read as underscores (some servers spell them so)."""
     match = _MCP_TOOL.fullmatch(tool_name or "")
-    return match.group(1) if match else None
+    return match.group(1).replace("-", "_") if match else None
 
 
 def is_remote_write_mcp_tool(tool_name: str) -> bool:
