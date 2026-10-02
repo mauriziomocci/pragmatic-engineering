@@ -189,6 +189,7 @@ BLOCKED_COMMANDS = [
     ("gh api repos/o/r/pulls -f title=x -f head=a -f base=main -t a\u00a0-XGET", "pull or merge requests"),  # non-ASCII
     ("gh api repos/o/r/pulls -f title=x -f head=a -f base=main -t a\r-XGET", "pull or merge requests"),  # other blanks
     ('gh api repos/o/r/pulls -f title=x -f head=a -f base=main -H "x:p\\" -X GET "q\\"', "pull or merge requests"),
+    ('gh api repos/o/r/pulls -f title=x -f head=a -f base=main -H "x:p\\" -X GET -t "y\\"', "pull or merge requests"),
     ("gh api repos/o/r/pulls/1/merge -X `echo PUT`" + CHAINED_READ, "pull or merge requests"),  # backtick
     ('gh api repos/o/r/pulls/1/merge -X "`echo PUT`"' + CHAINED_READ, "pull or merge requests"),
     ("EP=repos/o/r/pulls; gh api -X POST $EP -f title=x", "pull or merge requests"),  # dollar
@@ -216,6 +217,38 @@ BLOCKED_COMMANDS = [
     ("sh -c 'gh api repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ, "pull or merge requests"),
     ("sh -c 'gh api graphql -F query=@m.graphql'", "pull or merge requests"),
     ("sh -c 'gh api repos/o/r/pulls/$(echo 1; echo)/merge -X PUT'" + CHAINED_READ, "pull or merge requests"),
+    # gh hands the options written before its subcommand to that subcommand
+    ("gh --hostname x api repos/o/r/pulls/1/merge -X PUT", "pull or merge requests"),
+    ("gh --hostname x api repos/o/r/pulls/1/merge -X PUT" + CHAINED_READ, "pull or merge requests"),
+    ("gh -X PUT api repos/o/r/pulls/1/merge", "pull or merge requests"),
+    ("gh -X PUT api repos/o/r/pulls/1/merge" + CHAINED_READ, "pull or merge requests"),
+    ('EP=repos/o/r/pulls/1/merge; gh -X PUT api "$EP"', "pull or merge requests"),  # seen by the whole-text verdict
+    # an option with its value attached takes no value of its own: api, or the next option, comes right after it
+    ("gh -XPUT api repos/o/r/pulls/1/merge", "pull or merge requests"),
+    ("gh --hostname=x -X PUT api repos/o/r/pulls/1/merge", "pull or merge requests"),
+    ("gh -F query=@m.graphql api graphql", "pull or merge requests"),  # a field before api belongs to the call
+    # a path that merely ends in the word graphql is not the GraphQL endpoint
+    ("gh api 'repos/o/r/pulls/1/merge?note=graphql' -X PUT", "pull or merge requests"),
+    # the GraphQL endpoint spelled as a path, a URL, with a host, a query string or a trailing slash
+    ("gh api /graphql -F query=@m.graphql", "pull or merge requests"),
+    ("gh api /graphql -F query=@m.graphql" + CHAINED_READ, "pull or merge requests"),
+    ("gh api https://api.github.com/graphql -F query=@m.graphql", "pull or merge requests"),
+    ("gh api https://api.github.com/graphql -F query=@m.graphql" + CHAINED_READ, "pull or merge requests"),
+    ("gh api api.github.com/graphql --input query.json", "pull or merge requests"),
+    ("gh api '/graphql?x=1' -F query=@m.graphql", "pull or merge requests"),
+    ("gh api graphql/ -F query=@m.graphql", "pull or merge requests"),
+    ("gh api /graph%71l -F query=@m.graphql", "pull or merge requests"),  # percent-encoded, decoded by the server
+    # a percent-encoded endpoint: the server decodes it
+    ("gh api repos/o/r/pu%6Cls/1/merge -X PUT", "pull or merge requests"),
+    # gh's parser strips one = from an attached value: -X==GET sends the method =GET, which gh rejects, not GET
+    ("gh api -X==GET repos/o/r/pulls -f state=open", "pull or merge requests"),
+    # a second positional argument leaves the arguments unknown; so do PowerShell's arrays and splatting, which turn
+    # a,-X or @a into several arguments
+    ("gh api repos/o/r/pulls/1/merge -t a,-X PUT", "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge -t a,-X,PUT" + CHAINED_READ, "pull or merge requests"),
+    ("gh api repos/o/r/pulls/1/merge -t @a" + CHAINED_READ, "pull or merge requests"),
+    # a command line printf builds: the placeholders are a second and a third positional argument of the call
+    ("printf 'gh api repos/o/r/pulls/1/merge %s PUT' -X | sh" + CHAINED_READ, "pull or merge requests"),
 ]
 
 # Reads blocked by design: the whole-text verdict stands because the command leaves the syntax the parser models,
@@ -232,6 +265,10 @@ OVER_BLOCKS = [
     'echo "run gh api" && gh api -X GET repos/o/r/pulls -f state=open',  # a quoted call with no endpoint
     # gh not launched by the shell itself (a wrapper, or a mention inside a text): its arguments may differ
     "env gh api -X GET repos/o/r/pulls -f state=open",
+    # options before api: which word gh takes for its subcommand depends on them
+    "gh --hostname x api -X GET repos/o/r/pulls -f state=open",
+    # a call inside a quoted command line is vouched for only when the whole command is in the modelled syntax
+    "sh -c 'gh api -X GET repos/o/r/pulls -f state=open' 2>&1",
     'echo "run gh api now" && gh api -X GET repos/o/r/pulls -f state=open',
     "git commit -m 'switch to gh api graphql' && "
     "gh api graphql -f query='query { repository { pullRequest(number: 1) { id } } }'",
@@ -275,6 +312,8 @@ PASSING_COMMANDS = [
     "gh api -X=GET repos/o/r/pulls -f state=open -q.title --jq=.title -Hx:y --header=x:y",
     "gh api -X GET repos/o/r/pulls\t-f labels=a,b -f q=a@b+c%20d",  # a tab and the safe punctuation
     "gh api repos/o/r/pulls -H 'X-Note: -X PUT'",  # a write marker inside a quoted value is a value
+    # a GraphQL query read inline is a read, whatever spelling of the endpoint
+    "gh api /graphql -f query='query { repository(owner:\"o\",name:\"r\") { pullRequest(number: 5) { title } } }'",
     # a call whose own literal endpoint names no pull request is not a pull request write, whatever else is said
     "echo pulls; gh api -X PUT repos/o/r/issues/1 -f state=closed",
     # syntax outside the model blocks nothing on its own: the whole-text verdict needs an api call, a write marker
@@ -350,7 +389,10 @@ OPEN_FORMS = [
     "glab api --unknown-value-flag v graphql -F query=@m.graphql",  # a glab-only option's value hides the endpoint
     # a command line that another program builds from text is read as written, even next to a read that names pulls
     "sh -c 'g$(echo h) api repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ,
-    "printf 'gh api repos/o/r/pulls/1/merge %s PUT' -X | sh" + CHAINED_READ,
+    "sh -c 'g`echo h` api repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ,
+    "sh -c 'g\\h api repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ,
+    "sh -c 'gh ap\\i repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ,
+    "printf 'gh api repos/o/r/pulls/1/merge%s' ' -X PUT' | sh" + CHAINED_READ,
 ]
 
 
@@ -359,9 +401,12 @@ def test_forms_a_textual_filter_cannot_see_stay_open_as_the_module_declares(comm
     assert filters.check_shell_command(command) is None
 
 
-def test_thousands_of_api_calls_in_one_command_are_checked_in_linear_time():
+@pytest.mark.parametrize("command", [
+    "gh api -f a=b repos/o/r/issues " * 2000,
+    "gh -a " * 20000,  # each gh starts a run of options with gh as values: scanning every run again is quadratic
+])
+def test_thousands_of_api_calls_in_one_command_are_checked_in_linear_time(command):
     """Each api call is analysed once, on its own text: re-reading the tail for every call would take seconds."""
-    command = "gh api -f a=b repos/o/r/issues " * 2000
     started = time.perf_counter()
     assert filters.check_shell_command(command) is None
     assert time.perf_counter() - started < 1.0
@@ -433,6 +478,10 @@ WRITE_TEMPLATES = [
     "gh api graphql -H {x} -f query='mutation { mergePullRequest(input: {pullRequestId: \"X\"}) { clientMutationId } }'",
     "gh api graphql -F query=@m.graphql{x}",
     "gh api -f graphql=1 -X PUT repos/o/r/pulls/1/merge{x}",
+    "gh --hostname x api repos/o/r/pulls/1/merge{x} -X PUT",  # options between the client and api
+    "gh -X PUT api repos/o/r/pulls/1/merge{x}",
+    "gh api /graphql -F query=@m.graphql{x}",  # the GraphQL endpoint as a path and as a URL
+    "gh api https://api.github.com/graphql -F query=@m.graphql{x}",
 ]
 READ_TEMPLATES = [
     "gh api -X GET repos/o/r/pulls{x} -f state=open",
