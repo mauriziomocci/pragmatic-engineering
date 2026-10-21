@@ -61,6 +61,9 @@ BLOCKED_COMMANDS = [
     ('cat "$(git rev-parse --git-dir)/pragmatic-engineering/events.jsonl"', "data folder"),
     ('cat "$(git rev-parse --git-dir)"/pragmatic-engineering/events.jsonl', "data folder"),
     ("gh api -X POST repos/o/r/pulls -f title=x", "pull or merge requests"),
+    # zsh expands =gh after empty quotes: still a write to the API
+    ("''=gh api repos/o/r/pulls/1/merge -X PUT", "pull or merge requests"),
+    ('""=gh api repos/o/r/pulls/1/merge -X PUT', "pull or merge requests"),
     ("gh api repos/o/r/pulls/1/merge --method PUT", "pull or merge requests"),
     ("gh api repos/o/r/pulls -F title=x", "pull or merge requests"),
     ("gh api repos/o/r/pulls/2 --input body.json", "pull or merge requests"),
@@ -463,17 +466,24 @@ MODELLED_OUTSIDE_QUOTES = frozenset(string.ascii_letters + string.digits + "_-./
 
 
 def written_in_modelled_syntax(command):
+    """The allowlist, plus one refusal: zsh expands an = or a tilde after empty quotes at a word start (''=gh)."""
     position = 0
+    word_start = True
     while position < len(command):
         char = command[position]
         if char in "'\"":
             end = command.find(char, position + 1)
             if end < 0 or (char == '"' and set(command[position + 1:end]) & set("$`\\")):
                 return False
+            if end == position + 1 and word_start and command[end + 1:end + 2] in ("=", "~"):
+                return False
+            word_start = word_start and end == position + 1  # an empty string leaves the word where it was
             position = end + 1
         elif command.startswith("&&", position):
+            word_start = True
             position += 2
         elif char in MODELLED_OUTSIDE_QUOTES:
+            word_start = char in " \t\n;|"
             position += 1
         else:
             return False
@@ -589,6 +599,33 @@ def test_chains_of_clean_reads_stay_open():
             assert filters.check_shell_command(first + separator + second) is None, first + separator + second
 
 
+@pytest.mark.parametrize("command", [
+    "''=gh api -X GET repos/o/r/pulls -f state=open",
+    '""=gh api -X GET repos/o/r/pulls -f state=open',
+    "''''=gh api -X GET repos/o/r/pulls -f state=open",
+    "git status;''=gh api -X GET repos/o/r/pulls -f state=open",
+    "git status && ''=gh api -X GET repos/o/r/pulls -f state=open",
+    "gh api -X GET repos/o/r/pulls -f state=open ''~",
+])
+def test_an_empty_quoted_string_before_an_expansion_is_not_in_the_modelled_syntax(command):
+    """zsh expands =gh and a tilde after empty quotes at a word start, so the words are not what the parser reads:
+    the command keeps the whole-text verdict of the first version, which blocks this read with a field."""
+    assert not written_in_modelled_syntax(command)
+    reason = filters.check_shell_command(command)
+    assert reason and "pull or merge requests" in reason
+
+
+@pytest.mark.parametrize("command", [
+    "gh api -X GET repos/o/r/pulls -f state=open -H ''",  # an empty value
+    "gh api -X GET repos/o/r/pulls -f label=''",  # an empty value after an =
+    "gh api -X GET repos/o/r/pulls -f ''label=open",  # empty quotes inside a word that does not start with = or ~
+    "git commit -m '' && gh api -X GET repos/o/r/pulls -f state=open",
+])
+def test_empty_quoted_strings_elsewhere_stay_in_the_modelled_syntax(command):
+    assert written_in_modelled_syntax(command)
+    assert filters.check_shell_command(command) is None
+
+
 @pytest.mark.parametrize("flag", VALUE_FLAGS)
 def test_the_value_of_a_flag_is_never_taken_for_the_graphql_endpoint(flag):
     """``gh api -f graphql -X PUT ...`` is a REST write: here graphql is a flag value, not the endpoint."""
@@ -695,6 +732,11 @@ def test_merge_request_mcp_tools(name, expected):
     ("glab mr note 1 -m x", "update"),
     ("gh -R o/r pr comment 1 -F body.md", "update"),
     ("glab mr -R o/r note 1 -m x", "update"),
+    # gh pr revert opens a pull request with a title and a body, gh pr reopen takes a comment
+    ("gh pr revert 5 --title x", "create"),
+    ("gh -R o/r pr revert 5 --body x", "create"),
+    ("gh pr reopen 5 --comment x", "update"),
+    ("gh --repo=o/r pr reopen 5", "update"),
     ("gh issue comment 1 --body x", None),
     ("gh pr note 1", None),
     # options between the words belong to gh, glab and their subcommand: they do not hide the command
@@ -744,8 +786,10 @@ def test_pr_commands_are_recognised(command, expected):
     ("'it\"s'", 'it"s'),  # a quote of the other kind inside a quoted part is text
     ("\"it's\"", "it's"),
     ("lone'quote", "lone'quote"),  # a quote that is never closed stays
+    ("\\-", "\\-"),  # nothing else is done to the word: a backslash stays, and so does the $ of $'...'
+    ("$'a'", "$a"),
 ])
-def test_remove_quotes_gives_the_word_the_shell_passes(word, expected):
+def test_remove_quotes_takes_off_the_quotes_and_nothing_else(word, expected):
     assert filters.remove_quotes(word) == expected
 
 

@@ -9,7 +9,8 @@ determined to bypass them.
 What a textual filter cannot see stays open, by design: a call the command
 does not write out, because an endpoint, an option value or the whole command
 is held in a variable (``gh api "$EP" -f ...``, ``git push -o "$OPT"``,
-``$cmd``, ``eval "$cmd"``) or hidden by a shell, git or gh alias or function;
+``$cmd``, ``eval "$cmd"``), hidden by a shell, git or gh alias or function, or
+written in a script file the command runs (``bash make-pr.sh``);
 a quoted option flag of git (``git push "-o" ...``); bundled short options of
 gh api (``-iX PUT``); a quoted command word of a pull request command
 (``gh pr "create"``, ``'gh' pr create``, which ``pr_command_kind`` does not
@@ -100,8 +101,13 @@ _WRITE_METHOD = re.compile(r"(?:-X\s*|--method[\s=]+)[\"']?(?:post|put|patch|del
 _WRITE_FIELD = re.compile(r"(?:^|\s)(?:-f|--field|--raw-field|--input)(?=[\s=]|$)", _I)
 # The syntax the parser models, an allowlist: outside quotes only word characters, - _ . / = : @ , + %, spaces, tabs
 # and the separators && || ; | and newline; single-quoted text with anything; double-quoted text without $, backtick
-# or backslash. Nothing in such a command expands, so the words below are exactly the arguments the shell passes.
+# or backslash. Nothing in such a command expands, so the words below are exactly the arguments the shell passes; the
+# one place where the allowlist alone would be wrong is shared with the hook of step zero, see the next constant.
 _MODELLED = re.compile(r"(?:[\w\-.,/=:@+% \t\n;|]|&&|'[^']*'|\"[^\"$`\\]*\")*", re.ASCII)
+# zsh expands an = or a tilde that follows empty quotes at the start of a word (''=gh is the path of gh, ''~ the home
+# folder) as it does without the quotes. The start of a word is the start of the text, a blank or a separator.
+EMPTY_QUOTES_BEFORE_EXPANSION = r"(?<![^\s;&|])(?:''|\"\")+[=~]"
+_EMPTY_QUOTES_EXPANSION = re.compile(EMPTY_QUOTES_BEFORE_EXPANSION)
 # Statements end at && || ; | & and newline outside quotes, but not at a backslash-newline continuation; words end at
 # blanks outside quotes, and lose their quotes. A command outside the model is cut the same way, approximately: there
 # its calls can only add blocks to the whole-text verdict.
@@ -129,16 +135,17 @@ _WRITE_METHODS = frozenset({"post", "put", "patch", "delete"})
 _GRAPHQL = re.compile(r"(?:[^?#]*/)?graphql/?(?:[?#].*)?", _I | re.DOTALL)
 _MUTATION = re.compile(r"\bmutation\b", _I)
 _LINE_CONTINUATION = re.compile(r"\\\r?\n")
-# What each verb of the pull or merge request commands does to the request, see pr_command_kind. A comment, a review
-# and a closing comment are updates: their text is as public as a body.
+# What each verb of the pull or merge request commands does to the request, see pr_command_kind. A comment, a review,
+# a closing comment and a reopening comment are updates: their text is as public as a body. A revert opens a request.
 _PR_KIND = {
     "create": "create", "new": "create", "edit": "update", "update": "update", "merge": "merge",
     "comment": "update", "review": "update", "close": "update", "note": "update",
+    "revert": "create", "reopen": "update",
 }
 _PR_VERB = re.compile(r"(%s)\b" % "|".join(_PR_KIND), _I)
 # The subcommand word and the verbs of the pull or merge request commands of each client.
 _PR_SUBCOMMANDS = {
-    "gh": ("pr", frozenset({"create", "new", "edit", "merge", "comment", "review", "close"})),
+    "gh": ("pr", frozenset({"create", "new", "edit", "merge", "comment", "review", "close", "revert", "reopen"})),
     "glab": ("mr", frozenset({"create", "new", "update", "merge", "note"})),
 }
 _MCP_TOOL = re.compile(r"mcp__.+__([A-Za-z0-9_-]+)")
@@ -209,7 +216,7 @@ def _api_calls(text: str) -> List[Tuple[List[str], bool]]:
     in it may be a command line for another shell (``sh -c '...'``), so it is read as a command too, and vouched for
     only if the text around it is in the modelled syntax as well.
     """
-    modelled = _MODELLED.fullmatch(text) is not None
+    modelled = _MODELLED.fullmatch(text) is not None and _EMPTY_QUOTES_EXPANSION.search(text) is None
     calls: List[Tuple[List[str], bool]] = []
     for statement in _STATEMENT.findall(text):
         words = [remove_quotes(word) for word in _WORD.findall(statement)]
@@ -330,7 +337,10 @@ def mr_action_kind(tool_name: str) -> Optional[str]:
 
 
 def remove_quotes(word: str) -> str:
-    """A word as the shell passes it on: its single and double quoted parts without their quotes, the text kept."""
+    """The word with the quotes of its single and double quoted parts taken off, and nothing else done to it.
+
+    A backslash stays, and so does the dollar sign of ``$'...'``; the text inside the quotes is kept as it is.
+    """
     return _QUOTES.sub(r"\1\2", word)
 
 
@@ -347,8 +357,8 @@ def without_line_continuations(text: str) -> str:
 def pr_command_kind(command: str) -> Optional[str]:
     """'create', 'update' or 'merge' for gh pr / glab mr commands in a shell text, for the first one found.
 
-    A comment, a review or a closing comment (``gh pr comment``, ``gh pr review``, ``gh pr close``, ``glab mr note``)
-    counts as an 'update': its text is as public as a body.
+    A comment, a review, a closing or reopening comment (``gh pr comment``, ``review``, ``close``, ``reopen``, ``glab
+    mr note``) counts as an 'update': its text is as public as a body. ``gh pr revert`` opens a pull request: 'create'.
 
     The words of the text are read once, with every reading that is still possible kept alive, so the time is linear
     in the text (a pattern tried again from every gh of ``gh -a gh -a ...`` would not be). A command is a client word

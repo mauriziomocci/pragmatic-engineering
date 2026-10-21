@@ -7,7 +7,8 @@ directory. It keeps the agent from skipping or switching off the privacy
 pre-push (shared filters in lib/pe_guard/filters.py), blocks MCP tools that
 write to a remote (they bypass the pre-push), and runs the privacy check on
 the text of pull and merge requests when they are opened, edited or merged and,
-for gh and glab commands, when they are commented, reviewed or closed.
+for gh and glab commands, when they are reverted, reopened, commented, reviewed
+or closed.
 
 Exit 2 blocks the tool, with the reason on stderr; exit 0 lets it run. A tool
 this hook does not know passes. An input without a tool name, or a known tool
@@ -16,30 +17,44 @@ checks or checking a known tool blocks, because Claude Code does not block on
 a hook that errors in any other way or times out.
 
 The text of a pull request is read only where it is written: in the command,
-or in an absolute regular file named by --body-file or -F. The hook models no
-shell grammar, so what the shell would fill in at run time blocks, with the
-hint to pass an absolute --body-file path: a here-document or a here-string
-(any <<), standard input as the body file (-, /dev/stdin, /dev/fd/0), a command
-or process substitution, a variable, an ANSI-C or locale string ($'...',
-$"..."), a tilde or zsh's =command, also after empty quotes. A body file blocks
-too when it is attached to its option (-Fbody.md), named by a relative path
-after a cd, or a device, a pipe, a folder or a file under /dev or /proc; when
-its name, or just its last component, is written elsewhere in the command,
-because the hook reads the file before the command runs and a cp or a redirect
-in the same command would leave it with a text the command no longer sends; and
-when the command names more than ten different body files, each of which is
-searched for in the whole text. A backslash-newline is removed before the
-command is checked, as the shell removes it; the privacy scan reads the command
-both ways, because inside single quotes the shell keeps the pair.
+or in a regular file named by --body-file or -F (by a relative name only when
+the command changes no folder). The hook models no shell grammar, so what the
+shell would fill in at run time blocks, with the hint to write the body to a
+file and pass its absolute path: a here-document or a here-string (any <<),
+standard input as the body file (-, /dev/stdin, /dev/fd/0), any dollar sign
+followed by a character (a substitution, a variable, arithmetic, $'...',
+$"...", zsh's $=name), a backtick, a process substitution, a tilde or zsh's
+=command, also after empty quotes, and the word xargs, which appends text that
+comes from elsewhere to the command it runs. A body file blocks too when it is
+attached to its option (-Fbody.md); when it is named by a relative path after a
+cd, pushd or chdir; when it is missing, a device, a pipe, a folder or a file
+under /dev or /proc; and when its name, or just its last component, is a word
+of the rest of the command (in any letter case, quotes taken off), because the
+hook reads the file before the command runs and a cp or a redirect in the same
+command would leave it with a text the command no longer sends. A
+backslash-newline is removed before the command is checked, as the shell
+removes it. The privacy scan reads the command three ways: as written (inside
+single quotes the shell keeps the backslash-newline), with the
+backslash-newlines removed, and with each '\\'' turned into an apostrophe, the
+way the shell joins 'Dell'\\''Acqua'.
 
 Open limits, declared and pinned in OPEN_FORMS of tests/test_dev_guard.py:
 
-- a folder change made by a program other than cd or pushd (``env -C sub gh pr
-  create --body-file body.md``) leaves a relative body file read from the
+- a folder change made by a program other than cd, pushd or chdir (``env -C sub
+  gh pr create --body-file body.md``) leaves a relative body file read from the
   folder the hook starts in;
 - an option name that is quoted or escaped (``'-F' -``, ``"--body-file" -``,
   ``--body\\-file -``) is not read as the option, so the standard input given
   to it is not seen;
+- another program that runs the gh command and supplies its text, other than
+  xargs (``find -exec``, ``parallel``), and a gh call written in a script file
+  (``bash make-pr.sh``), which is unseen like a call held in a variable, an
+  alias or a function (see lib/pe_guard/filters.py);
+- a step of the same command that writes the body file without spelling its
+  name as the option does (``sh gen.sh && gh pr create --body-file body.md``),
+  or a value glued to a short option (``curl -sob.md``);
+- quote removal, backslash removal, brace expansion and globs that build a term
+  from literal parts (``Zorb""lax``, ``Zorbl{b,a}x``) and reach gh as the term;
 - gh fills a pull request from places the command does not show (flags of gh
   2.102.0, read in the help of ``gh pr create``, ``edit`` and ``comment``, not
   run against GitHub): ``--fill``, ``--fill-first`` and ``--fill-verbose`` take
@@ -70,45 +85,36 @@ except Exception as exc:  # fail closed: a broken shared module must block, not 
 
 GIT_TIMEOUT = 5.0  # seconds for each git call: the hook has 15, and a hook that times out does not block
 BODY_HINT = (
-    "write the body to a file and pass --body-file <path> with an absolute path outside your home folder, such as "
-    "/tmp/pr-body.md (a home path in the command is blocked too)"
+    "write the body to a file in a separate step (with the Write tool), then pass --body-file <path> with an absolute "
+    "path outside your home folder, such as /tmp/pr-body.md (a home path in the command is blocked too)"
 )
+# Why the text of a pull request command cannot be read; _check_shell closes each one with BODY_HINT.
 _HERE_DOCUMENT_REASON = (
     "the pull request command holds a here-document or a here-string (<<): this hook reads only text written in the "
-    "command or in a body file, and the shell fills the input in at run time; " + BODY_HINT
+    "command or in a body file, and the shell fills the input in at run time"
 )
 _EXPANSION_REASON = (
     "the pull request command holds a substitution, a shell variable or another expansion (a tilde, =command, "
-    "<(...), $'...'), whose value this hook cannot check; " + BODY_HINT
-    + "; spell out the title, branch and other values in the command"
+    "<(...), $'...'), whose value this hook cannot check; spell out the title, branch and other values in the command"
 )
+_XARGS_REASON = "the pull request command runs under xargs, which appends text from elsewhere that this hook cannot see"
 _ATTACHED_REASON = (
     "the pull request command passes a body file attached to a short option (-Fbody.md, -dF body.md), which this "
-    "hook cannot locate; " + BODY_HINT + ", written as a separate word"
+    "hook cannot locate"
 )
 _STDIN_REASON = (
-    "the pull request body comes from standard input (-, /dev/stdin, /dev/fd/0), which this hook cannot read; "
-    + BODY_HINT
+    "the pull request body comes from standard input (-, /dev/stdin, /dev/fd/0), which this hook cannot read"
 )
 _CD_REASON = (
     "the command changes folder and names a body file with a relative path, which this hook would read from "
-    "another folder; " + BODY_HINT
-)
-_SPECIAL_FILE_REASON = (
-    "the pull request body file is a device, a pipe, a folder or a file under /dev or /proc, which this hook "
-    "cannot read as the command would; " + BODY_HINT
+    "another folder"
 )
 _STALE_FILE_REASON = (
-    "the command writes or names the body file elsewhere, and this hook reads the file before the command runs; "
-    "write it in a separate step; " + BODY_HINT
+    "the command writes or names the body file elsewhere, and this hook reads the file before the command runs"
 )
-# Each body file name is searched for in the whole command, so the cost grows with names times text: 40000 different
-# names in a 490 KB command took 4.7 s. A pull request command reads one body file, so a count this high is no
-# hurried form.
-_MAX_BODY_FILES = 10
-_MANY_FILES_REASON = (
-    "the command names more than %d different body files, and this hook checks each one against the rest of the "
-    "command; run one pull request command at a time; " % _MAX_BODY_FILES + BODY_HINT
+_SPECIAL_FILE_REASON = (
+    "the pull request body file is missing, a device, a pipe, a folder or a file under /dev or /proc, which this hook "
+    "cannot read as the command would"
 )
 _STDIN_NAMES = ("-", "/dev/stdin", "/dev/fd/0")  # body file names that mean standard input
 # The option and the name given to --body-file or -F as the shell passes it: the whole word, quoted parts and all, up
@@ -124,14 +130,18 @@ _SPECIAL_FOLDERS = ("/dev", "/proc")
 # options (-dF body.md). A short option word with an F in it also catches a value that happens to hold one (-tFix),
 # an accepted over-block.
 _ATTACHED_BODY_FILE = re.compile(r"(?<!\S)-(?!-)(?!F(?:\s|=|$))\S*?F")
-_CD = re.compile(r"\b(?:cd|pushd)\b")
-# Text the shell produces at run time or reads otherwise than as written: a command, arithmetic or parameter
-# substitution ($(, ${, $name, $1, $?), a backtick, an ANSI-C or locale string ($' and $"), a process substitution
-# (zsh also writes =(...)), zsh's =command (the path of the command) and a tilde at the start of a word or after = or :
-# (the home folder). zsh ignores empty quotes in front of an = or a tilde, so those count after them too.
+_CD = re.compile(r"\b(?:cd|pushd|chdir)\b")  # chdir is zsh's
+_XARGS = re.compile(r"\bxargs\b")
+# Text the shell produces at run time or reads otherwise than as written: a dollar sign followed by anything but a
+# blank (a substitution, a parameter, arithmetic, an ANSI-C or locale string, zsh's $=name and its other flags), a
+# backtick, a process substitution (zsh also writes =(...)), zsh's =command (the path of the command), a tilde at the
+# start of a word or after = or : (the home folder), and an = or a tilde after empty quotes at a word start.
 _EXPANSION = re.compile(
-    r"\$[({'\"A-Za-z_0-9@*#?$!-]|`|[<>]\(|(?<!\S)=\S|(?<![^\s=:])~|(?<!\S)(?:''|\"\")+[=~]"
+    r"\$\S|`|[<>]\(|(?<!\S)=\S|(?<![^\s=:])~|" + filters.EMPTY_QUOTES_BEFORE_EXPANSION
 )
+# Where a word of the command ends: at a blank, a separator, a redirection, a parenthesis, or an = or : (of an
+# assignment or an option value).
+_WORD_BREAK = re.compile(r"[\s;&|<>()=:]+")
 
 
 def _strings(value: Any) -> List[str]:
@@ -191,9 +201,9 @@ def _body_file_names(command: str) -> List[str]:
 
 
 def _body_files(cwd: Path, names: List[str]) -> List[Tuple[str, str]]:
-    """(source, text) of the files named by --body-file or -F; a missing file raises and blocks.
+    """(source, text) of the files named by --body-file or -F; one that cannot be decoded or opened raises and blocks.
 
-    Standard input is refused before this runs, so every name is a file.
+    Standard input and a name with no file behind it are refused before this runs.
     """
     return [("body file %s" % name, (cwd / name).read_text(encoding="utf-8")) for name in names]
 
@@ -203,29 +213,32 @@ def _under_special_folder(path: str) -> bool:
 
 
 def _is_special_file(cwd: Path, name: str) -> bool:
-    """Whether a body file is a device, a pipe, a folder or a file of another process.
+    """Whether a body file is missing, a device, a pipe, a folder or a file of another process.
 
-    That is a name under /dev or /proc as written or as resolved (``../``, ``//``, a symbolic link), or one that exists
-    as anything but a regular file. Reading it, the hook would get its own standard input, wait for a writer that never
-    comes, or fail, instead of reading the text the command sends. A name that is not there is not resolved: reading
-    it raises, which blocks.
+    That is a name under /dev or /proc as written or as resolved (``../``, ``//``, a symbolic link), a name with no file
+    behind it (a typo, or a name the shell rewrites: ``\\-``, ``pr.m?``, ``p{x,r}.md``), or one that exists as anything
+    but a regular file. Reading it, the hook would get its own standard input, wait for a writer that never comes, or
+    fail, instead of reading the text the command sends. A name that is not there is not resolved, which keeps a very
+    long one cheap.
     """
     joined = os.path.join(str(cwd), name)  # an absolute name replaces the folder
-    if _under_special_folder(os.path.normpath(joined)):
+    if _under_special_folder(os.path.normpath(joined)) or not os.path.lexists(joined):
         return True
-    if not os.path.lexists(joined):
-        return False
     return _under_special_folder(os.path.realpath(joined)) or not os.path.isfile(joined)
 
 
 def _names_body_file_elsewhere(command: str, names: List[str]) -> bool:
     """Whether the command writes or names a body file anywhere but as the value of --body-file or -F.
 
-    A name counts when it, or its last component, is found in the rest of the text however it is spelt around it
-    (``>/tmp/b.md``, ``cd /tmp && cp x b.md``). A short name is found in many words: an accepted over-block.
+    The words of the rest of the command go into one set, built once, each with its quotes taken off and in lower case
+    (the disk of a Mac ignores the case), together with the last component of each. A name is found when it, or its
+    last component, is one of them: ``cp x /tmp/b.md``, ``>b.md`` and ``tee "B".md`` name b.md, ``gh pr`` does not name
+    ``--body-file``. A short name is a word of many commands (``pr``): an accepted over-block.
     """
     elsewhere = _BODY_FILE.sub(r"\g<option>", command)
-    return any((os.path.basename(name) or name) in elsewhere for name in names)
+    words = {filters.remove_quotes(word).lower() for word in _WORD_BREAK.split(elsewhere) if word}
+    spelt = words | {os.path.basename(word) for word in words}
+    return any((os.path.basename(name) or name).lower() in spelt for name in names)
 
 
 def _check_pr_text(cwd: Path, sources: List[Tuple[str, str]]) -> Optional[str]:
@@ -251,26 +264,26 @@ def _unreadable_text(cwd: Path, command: str, names: List[str]) -> Optional[str]
     """Why the text of a pull request command cannot be read from the command, or None when it can.
 
     The hook reads what is written in the command and in the files named by --body-file or -F. Whatever the shell
-    would fill in at run time, standard input, or a file the hook cannot find by its name or read as the command
-    would, is text it cannot check. ``command`` has its backslash-newlines removed; ``names`` are the distinct body
-    file names in it.
+    or another program would fill in at run time, standard input, or a file the hook cannot find by its name or read
+    as the command would, is text it cannot check. ``command`` has its backslash-newlines removed; ``names`` are the
+    distinct body file names in it. The reason has no hint: the caller adds it.
     """
     if "<<" in command:
         return _HERE_DOCUMENT_REASON
     if _EXPANSION.search(command):
         return _EXPANSION_REASON
+    if _XARGS.search(command):
+        return _XARGS_REASON
     if _ATTACHED_BODY_FILE.search(command):
         return _ATTACHED_REASON
     if any(name in _STDIN_NAMES for name in names):
         return _STDIN_REASON
     if _CD.search(command) and any(not Path(name).is_absolute() for name in names):
         return _CD_REASON
-    if len(names) > _MAX_BODY_FILES:
-        return _MANY_FILES_REASON
-    if any(_is_special_file(cwd, name) for name in names):
-        return _SPECIAL_FILE_REASON
     if _names_body_file_elsewhere(command, names):
         return _STALE_FILE_REASON
+    if any(_is_special_file(cwd, name) for name in names):
+        return _SPECIAL_FILE_REASON
     return None
 
 
@@ -282,10 +295,11 @@ def _check_shell(cwd: Path, text: str) -> Optional[str]:
     names = list(dict.fromkeys(_body_file_names(command)))
     reason = _unreadable_text(cwd, command, names)
     if reason:
-        return reason
-    # Inside single quotes the shell keeps a backslash-newline, so what it sends may be either reading of the text.
-    sources = [("the command", reading) for reading in dict.fromkeys((text, command))]
-    return _check_pr_text(cwd, sources + _body_files(cwd, names))
+        return "%s; %s" % (reason, BODY_HINT)
+    # What the shell sends is one of three readings: inside single quotes it keeps a backslash-newline, and it joins
+    # 'Dell'\''Acqua' into Dell'Acqua.
+    readings = dict.fromkeys((text, command, command.replace("'\\''", "'")))
+    return _check_pr_text(cwd, [("the command", reading) for reading in readings] + _body_files(cwd, names))
 
 
 def decide(payload: Any) -> Optional[str]:
