@@ -21,12 +21,12 @@ The filters read text and defend against an agent's haste, not against a determi
 - `--no-verify` from the maintainer's own terminal;
 - the check edited in the working tree, then installed: nothing guards the installer yet;
 - files that a `-diff` rule of `.gitattributes` makes git report as binary: skipped, and the skip is listed;
-- a term in lower case inside a longer word (`myterm`) or with an ending (`terms`): terms match as whole words, in any letter case, with camel-case capitals as boundaries, so such forms must be listed too;
-- forms the hook cannot see in the command: a call hidden in a script, alias, function or variable, or built inside `sh -c`; quoted or escaped words; a folder change by a program other than `cd`; brace expansion and globs; a body file written under another spelling of its name;
+- a term glued to other letters, before or after it (`myterm`, `MYTERM`, `terms`): terms match as whole words in any letter case, and only a non-letter or a capital that starts a new word (`myTerm`) marks the edge, so such forms must be listed too;
+- forms the hook cannot see in the command: a call hidden in a script, alias, function or variable, or built inside `sh -c`; a program other than `xargs` that runs `gh` and supplies its text (`find -exec`, `parallel`); a quoted or escaped option name or command word; a folder change by a program other than `cd`, `pushd` or `chdir`; brace expansion and globs; a body file written under another spelling of its name, or by a script that does not name it;
 - the `gh` flags that fill a pull request from elsewhere: templates, attachments, an earlier failed run, an editor, the browser, and commit messages, which the pre-push checks;
 - sessions where the project hook is not loaded: it runs in the main clone and in worktree sessions started from the Claude desktop app (they read the main checkout's settings), not in a terminal session inside a linked worktree, where the pre-push still runs.
 
-The exact lists are in the module docstrings named above.
+The exact lists of the hidden forms and of the `gh` flags are in the module docstrings of `tools/dev_guard.py` and `lib/pe_guard/filters.py`.
 
 ## Tests
 
