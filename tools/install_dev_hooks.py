@@ -11,24 +11,31 @@ copy. Refreshing the copy touches only that folder. A branch without the
 tools therefore cannot stop every tool, and an edit to the working tree
 changes nothing until the installer runs again. Linked worktrees share the
 copy and the hook. The installer refuses to overwrite a pre-push hook it
-did not write, and refuses when core.hooksPath is set, because git would
-then ignore the hook. It is a tool of this repository, not part of the
-plugin.
+did not write (a symlink counts as one), and refuses when core.hooksPath
+is set, even to an empty value, because git would then ignore the hook.
+It is a tool of this repository, not part of the plugin.
 """
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 SOURCE_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SOURCE_ROOT / "lib"))
 
 from pe_guard.filters import GUARD_DATA_DIR  # noqa: E402
+import privacy_check  # noqa: E402
 
 HOOK_MARKER = "pragmatic-engineering privacy pre-push"
 COPY_SUBDIR = GUARD_DATA_DIR + "/step-zero"  # relative to the git common dir
-COPIED = ("tools/privacy_check.py", "tools/dev_guard.py", "lib/pe_guard")
+COPIED: Tuple[str, ...] = ("tools/privacy_check.py", "tools/dev_guard.py", "lib/pe_guard")
+UNSET_HOOKS_PATH = {
+    "local": "git config --unset core.hooksPath",
+    "worktree": "git config --worktree --unset core.hooksPath",
+    "global": "git config --global --unset core.hooksPath",
+    "system": "git config --system --unset core.hooksPath",
+}
 
 
 class InstallError(Exception):
@@ -93,19 +100,54 @@ def refresh_copy(repo: Path) -> Path:
     return target
 
 
+def _refuse_custom_hooks_path(repo: Path) -> None:
+    """Raise InstallError when git would not look for hooks where this installer writes them.
+
+    Only exit status 1 means "not set". An empty value exits 0 with no output and
+    makes git run no hook, and a git that cannot answer must not be read as "not set".
+    """
+    proc = _git(repo, "config", "--show-scope", "--get", "core.hooksPath")
+    if proc.returncode == 1:
+        return
+    if proc.returncode != 0:
+        raise InstallError(
+            "cannot read core.hooksPath (git config exited %d): %s"
+            % (proc.returncode, proc.stderr.strip())
+        )
+    scope = proc.stdout.split("\t", 1)[0]
+    command = UNSET_HOOKS_PATH.get(scope)
+    if command is None:
+        raise InstallError(
+            "core.hooksPath is set in the %s configuration, so git would ignore this hook; "
+            "remove it where it is defined" % scope
+        )
+    raise InstallError(
+        "core.hooksPath is set, so git would ignore this hook; the user can remove it "
+        "from their own terminal with: %s" % command
+    )
+
+
+def _is_foreign_hook(hook: Path) -> bool:
+    """True when ``hook`` exists and this installer did not write it.
+
+    A symlink is foreign even when its target carries the marker, and even when
+    the target is missing: writing would go through the link, outside the git directory.
+    """
+    if hook.is_symlink():
+        return True
+    return hook.exists() and HOOK_MARKER not in hook.read_text(encoding="utf-8", errors="replace")
+
+
 def install(repo: Path) -> Path:
     """Refresh the copy, write the hook into the clone's hooks directory and make it executable."""
-    if _git(repo, "config", "--get", "core.hooksPath").stdout.strip():
-        raise InstallError(
-            "core.hooksPath is set, so git would ignore this hook; the user can remove it "
-            "from their own terminal with: git config --unset core.hooksPath"
-        )
+    _refuse_custom_hooks_path(repo)
     hooks_dir = _git_path(repo, "--git-path", "hooks")
     hook = hooks_dir / "pre-push"
-    if hook.exists() and HOOK_MARKER not in hook.read_text(encoding="utf-8", errors="replace"):
+    if _is_foreign_hook(hook):
         raise InstallError(
-            "a pre-push hook that this installer did not write already exists at %s; "
-            "chain it by hand or move it away first" % hook
+            "a pre-push hook that this installer did not write already exists at %s; move it away, "
+            "or chain it by hand into a hook that does not keep the line '%s', because the "
+            "installer overwrites any file that carries it" % (hook, HOOK_MARKER)
         )
     refresh_copy(repo)
     hooks_dir.mkdir(parents=True, exist_ok=True)
@@ -117,14 +159,10 @@ def install(repo: Path) -> Path:
 def main(argv: Optional[List[str]] = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     start = Path(args[0]) if args else Path.cwd()
-    proc = _git(start, "rev-parse", "--show-toplevel")
-    if proc.returncode != 0:
-        print("install_dev_hooks: not inside a git repository: %s" % start, file=sys.stderr)
-        return 1
-    top = Path(proc.stdout.strip())
     try:
+        top = privacy_check.repository_root(start)
         hook = install(top)
-    except (InstallError, OSError) as exc:
+    except (InstallError, privacy_check.GitError, OSError) as exc:
         print("install_dev_hooks: %s" % exc, file=sys.stderr)
         return 1
     print("installed %s" % hook)
