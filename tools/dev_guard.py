@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """Project PreToolUse hook of the plugin repository (step zero).
 
-Registered in the maintainer's .claude/settings.local.json, outside git, and
-run from the copy that tools/install_dev_hooks.py keeps under the git
-directory. It keeps the agent from skipping or switching off the privacy
-pre-push (shared filters in lib/pe_guard/filters.py), blocks MCP tools that
-write to a remote (they bypass the pre-push), and runs the privacy check on
-the text of pull and merge requests when they are opened, edited or merged and,
-for gh and glab commands, when they are reverted, reopened, commented, reviewed
-or closed.
+Registered in the maintainer's .claude/settings.local.json as
+``python3 "<copy>/tools/dev_guard.py" || exit 2``, outside git, and run from
+the copy that tools/install_dev_hooks.py keeps under the git directory. It
+keeps the agent from skipping or switching off the privacy pre-push (shared
+filters in lib/pe_guard/filters.py), blocks MCP tools that write to a remote
+(they bypass the pre-push), and runs the privacy check on the text of pull and
+merge requests when they are opened, edited or merged and, for gh and glab
+commands, when they are reverted, reopened, commented, reviewed or closed.
 
 Exit 2 blocks the tool, with the reason on stderr; exit 0 lets it run. A tool
 this hook does not know passes. An input without a tool name, or a known tool
-without its usual fields, is checked as text. Any failure while loading the
-checks or checking a known tool blocks, because Claude Code does not block on
-a hook that errors in any other way or times out.
+without its usual fields, is checked as text. A failure while importing the
+shared checks or while checking a known tool exits 2 from inside the hook. A
+failure before the hook runs, such as no python3 (exit 127) or a syntax error
+in this file (exit 1), exits with another status, which Claude Code does not
+treat as a block; the ``|| exit 2`` of the registration turns it into one.
+A timeout does not block.
 
 The text of a pull request is read only where it is written: in the command,
 or in a regular file named by --body-file or -F (by a relative name only when
@@ -26,20 +29,22 @@ followed by a character (a substitution, a variable, arithmetic, $'...',
 $"...", zsh's $=name), a backtick, a process substitution, a tilde or zsh's
 =command, also after empty quotes. So does the word xargs when a gh or glab
 word follows it, in any command and with or without a pull request verb in the
-text: xargs builds the command line of the gh it starts at run time. A body
+text: xargs builds the command line of the gh it starts at run time (that
+reason carries no advice about a body file, since the gh may be a read). A body
 file blocks too when it is attached to its option (-Fbody.md); when it is named
 by a relative path after a cd, pushd or chdir; when it is missing, a device, a
 pipe, a folder or a file under /dev or /proc; and when its name, or just its
-last component, is a word of the rest of the command (a quoted part stays in
-its word, quotes taken off, in any letter case; the pieces of a word split at =
-and : count too), because the hook reads the file before the command runs and a
-cp or a redirect in the same command would leave it with a text the command no
-longer sends. A backslash-newline is removed before the command is checked, as
-the shell removes it. The privacy scan reads the command three ways, and every
-term found in any of them blocks: as written (inside single quotes the shell
-keeps the backslash-newline), with the backslash-newlines removed, and with the
-quoting removed as the shell removes it, so that Zorb""lax, 'Zorb''lax',
-Zorb\\lax and 'Dell'\\''Acqua' read as the words gh gets.
+last component, is a word of the rest of the command (read both with a quoted
+part kept in its word and split at blanks, quotes taken off, in any letter case;
+the pieces of a word split at = and : count too), because the hook reads the
+file before the command runs and a cp or a redirect in the same command would
+leave it with a text the command no longer sends. A backslash-newline is
+removed before the command is checked, as the shell removes it. The privacy
+scan reads the command three ways, and every term found in any of them blocks:
+as written (inside single quotes the shell keeps the backslash-newline), with
+the backslash-newlines removed, and with the quoting removed as the shell
+removes it, so that Zorb""lax, 'Zorb''lax', Zorb\\lax and 'Dell'\\''Acqua' read
+as the words gh gets.
 
 Open limits, declared and pinned in OPEN_FORMS of tests/test_dev_guard.py:
 
@@ -100,7 +105,6 @@ _EXPANSION_REASON = (
     "the pull request command holds a substitution, a shell variable or another expansion (a tilde, =command, "
     "<(...), $'...'), whose value this hook cannot check; spell out the title, branch and other values in the command"
 )
-_XARGS_REASON = "the pull request command runs under xargs, which appends text from elsewhere that this hook cannot see"
 _ATTACHED_REASON = (
     "the pull request command passes a body file attached to a short option (-Fbody.md, -dF body.md), which this "
     "hook cannot locate"
@@ -119,6 +123,12 @@ _SPECIAL_FILE_REASON = (
     "the pull request body file is missing, a device, a pipe, a folder or a file under /dev or /proc, which this hook "
     "cannot read as the command would"
 )
+# Why a gh or glab command that xargs starts is blocked. It is no pull request reason: xargs may start a read, and
+# there is no body to move into a file, so this one has no BODY_HINT.
+_XARGS_REASON = (
+    "xargs builds the gh or glab command line when it runs, so this hook cannot read it; run gh without xargs, "
+    "with the values written in the command"
+)
 _STDIN_NAMES = ("-", "/dev/stdin", "/dev/fd/0")  # body file names that mean standard input
 # A word of the command as the shell reads it: quoted parts kept whole, whatever they hold, up to a blank or an
 # operator character (-; is standard input, then a separator), so that "-"x is the file -x and ""- is standard input.
@@ -136,8 +146,9 @@ _SPECIAL_FOLDERS = ("/dev", "/proc")
 _ATTACHED_BODY_FILE = re.compile(r"(?<!\S)-(?!-)(?!F(?:\s|=|$))\S*?F")
 _CD = re.compile(r"\b(?:cd|pushd|chdir)\b")  # chdir is zsh's
 _XARGS = re.compile(r"\bg?xargs\b")  # gxargs is GNU xargs from Homebrew
-# A gh or glab word, also with a path in front: at the start of a word, not the start of ghost or gh-x.
-_CLIENT_WORD = re.compile(r"(?<![^\s;&|<>()])(?:\S*/)?(?:gh|glab)(?![\w.-])", re.IGNORECASE)
+# A gh or glab word wherever it stands, also in the quoted command line of a shell (sh -c 'gh pr create ...') and
+# behind a path (/usr/bin/gh), but not inside ghost, gh-x, gh.exe or my-gh.
+_CLIENT_WORD = re.compile(r"(?<![\w.-])(?:gh|glab)(?![\w.-])", re.IGNORECASE)
 # Text the shell produces at run time or reads otherwise than as written: a dollar sign followed by anything but a
 # blank (a substitution, a parameter, arithmetic, an ANSI-C or locale string, zsh's $=name and its other flags), a
 # backtick, a process substitution (zsh also writes =(...)), zsh's =command (the path of the command), a tilde at the
@@ -145,6 +156,8 @@ _CLIENT_WORD = re.compile(r"(?<![^\s;&|<>()])(?:\S*/)?(?:gh|glab)(?![\w.-])", re
 _EXPANSION = re.compile(
     r"\$\S|`|[<>]\(|(?<!\S)=\S|(?<![^\s=:])~|" + filters.EMPTY_QUOTES_BEFORE_EXPANSION
 )
+# The words of a text split without reading its quotes: at a blank, a separator, a redirection, a parenthesis, =, :.
+_BLANK_SPLIT = re.compile(r"[\s;&|<>()=:]+")
 # Where the pieces of a word start: after the = of an assignment or an option value, or the : of a path list.
 _VALUE_BREAK = re.compile(r"[=:]+")
 
@@ -235,15 +248,18 @@ def _is_special_file(cwd: Path, name: str) -> bool:
 def _names_body_file_elsewhere(command: str, names: List[str]) -> bool:
     """Whether the command writes or names a body file anywhere but as the value of --body-file or -F.
 
-    The words of the rest of the command, read with the grammar of the option's value (a quoted part stays in its
-    word, whatever it holds), go into one set, built once, each with its quotes taken off and in lower case (the disk
-    of a Mac ignores the case). The set also holds the pieces of each word split at = and :, and the last component
-    of each piece. A name is found when it, or its last component, is in the set: ``cp x /tmp/b.md``, ``>b.md``,
+    The words of the rest of the command go into one set, built once, each with its quotes taken off and in lower
+    case (the disk of a Mac ignores the case). They are read two ways and the set holds both: with the grammar of the
+    option's value (a quoted part stays in its word, whatever it holds: ``"pr body.md"``), and split at blanks and
+    operator characters (an escaped quote, which the first reading does not see, shifts its pairing and can fold a
+    write of the file into one long word). Pieces of each word split at = and :, and the last component of each
+    piece, join them. A name is found when it, or its last component, is in the set: ``cp x /tmp/b.md``, ``>b.md``,
     ``tee "B".md`` and ``cp x "pr body.md"`` name the files b.md and pr body.md. ``--body-file`` does not name
-    ``body``; ``gh pr`` names ``pr``, an accepted over-block.
+    ``body``; ``gh pr`` names ``pr``, an accepted over-block. A union can only find more.
     """
     elsewhere = _BODY_FILE.sub(r"\g<option>", command)
-    words = {filters.remove_quotes(word).lower() for word in _WORDS.findall(elsewhere)}
+    read = set(_WORDS.findall(elsewhere)) | set(_BLANK_SPLIT.split(elsewhere))
+    words = {filters.remove_quotes(word).lower() for word in read}
     pieces = words | {piece for word in words for piece in _VALUE_BREAK.split(word) if piece}
     spelt = pieces | {os.path.basename(piece) for piece in pieces}
     return any((os.path.basename(name) or name).lower() in spelt for name in names)
@@ -308,7 +324,7 @@ def _check_shell(cwd: Path, text: str) -> Optional[str]:
         return reason
     command = filters.without_line_continuations(text)
     if _xargs_starts_client(command):
-        return "%s; %s" % (_XARGS_REASON, BODY_HINT)
+        return _XARGS_REASON
     if not filters.pr_command_kind(command):
         return None
     names = list(dict.fromkeys(_body_file_names(command)))

@@ -21,7 +21,7 @@ HEREDOC = "here-document"
 STDIN = "comes from standard input"
 EXPANSION = "substitution, a shell variable or another expansion"
 STALE = "writes or names the body file elsewhere"
-XARGS = "xargs"
+XARGS = "xargs builds the gh or glab command line when it runs"
 CHANGES_FOLDER = "changes folder"
 MISSING = "missing, a device, a pipe, a folder"
 ATTACHED = "attached to a short option"
@@ -441,19 +441,6 @@ HOOK_BLOCKS = [
     ("cat body.md | gh pr revert 5 --body-file -", STDIN),
     ("gh pr revert 5 --body \"$(cat body.md)\"", EXPANSION),
     ("gh pr reopen 5 --comment \"$(cat body.md)\"", EXPANSION),
-    # xargs builds the command line of the gh it starts at run time, with or without a verb in the text
-    ("cat title.txt | xargs gh pr create --body y --head", XARGS),
-    ("head -1 title.txt | xargs -I{} gh pr create --title {} --body y", XARGS),
-    ("cat args.txt | xargs gh pr", XARGS),
-    ("cat args.txt | xargs -I{} gh pr create --title {}", XARGS),
-    ("echo create --title Zorblax-branch --body y | xargs gh pr", XARGS),
-    ("echo api repos/o/r/pulls/1/merge -X PUT | xargs gh", XARGS),
-    ("printf '%s\\n' 1 2 | xargs -n1 gh pr view", XARGS),
-    ("cat title.txt | /usr/bin/xargs glab mr create --description", XARGS),
-    ("cat title.txt | gxargs gh pr create --body y --head", XARGS),
-    ("cat title.txt | xargs \\\n  gh pr create --body y --head", XARGS),
-    ("xargs -a body.md gh pr create --title x --body y", XARGS),  # GNU xargs -a adds the words of the file
-    ("echo xargs gh", XARGS),  # the hook does not parse: the words xargs and then gh, in this order, block
     # zsh's chdir changes folder as cd does
     ("chdir sub && gh pr create --title x --body-file pr.md", CHANGES_FOLDER),
     # a body file attached to its option; one that is not there, however the name is spelt (the shell rewrites \-)
@@ -472,6 +459,35 @@ def test_pr_text_the_hook_cannot_read_exits_with_2_and_says_why(repo_with_terms,
     assert fragment in proc.stderr
     assert proc.stderr.strip().endswith(dev_guard.BODY_HINT), proc.stderr  # the hint closes every such reason, once
     assert proc.stderr.count(HINT) == 1 and "in a separate step" in proc.stderr and "absolute path" in proc.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # xargs builds the command line of the gh it starts at run time, with or without a verb in the text
+    "cat title.txt | xargs gh pr create --body y --head",
+    "head -1 title.txt | xargs -I{} gh pr create --title {} --body y",
+    "cat args.txt | xargs gh pr",
+    "cat args.txt | xargs -I{} gh pr create --title {}",
+    "echo create --title Zorblax-branch --body y | xargs gh pr",
+    "echo api repos/o/r/pulls/1/merge -X PUT | xargs gh",
+    "cat title.txt | /usr/bin/xargs glab mr create --description",
+    "cat title.txt | gxargs gh pr create --body y --head",
+    "cat title.txt | xargs \\\n  gh pr create --body y --head",
+    "xargs -a body.md gh pr create --title x --body y",  # GNU xargs -a adds the words of the file
+    "echo xargs gh",  # the hook does not parse: the words xargs and then gh, in this order, block
+    # the command line is a quoted argument of a shell that xargs starts, or the gh word is quoted itself
+    "cat title.txt | xargs -I{} sh -c 'gh pr create --title {} --body y'",
+    "cat title.txt | xargs -I{} bash -c \"gh pr create --title {} --body y\"",
+    "cat title.txt | xargs -I{} \"gh\" pr create --title {}",
+    # a read: there is no pull request and no body, so the reason does not speak of one
+    "printf '%s\\n' 1 2 | xargs -n1 gh pr view",
+    "gh pr list --json number -q '.[].number' | xargs -n1 gh pr view",
+])
+def test_xargs_that_starts_gh_blocks_with_exit_2_and_no_body_file_advice(repo_with_terms, command):
+    (repo_with_terms / "title.txt").write_text("Zorblax-branch\n", encoding="utf-8")
+    proc = run_hook(bash_payload(repo_with_terms, command), repo_with_terms)
+    assert proc.returncode == 2, proc.stderr
+    assert XARGS in proc.stderr
+    assert HINT not in proc.stderr and "pull request" not in proc.stderr and "body" not in proc.stderr, proc.stderr
 
 
 @pytest.mark.parametrize("command", [
@@ -511,6 +527,21 @@ def test_a_body_file_that_the_command_writes_or_names_elsewhere_blocks(repo_with
 ])
 def test_a_body_file_with_an_unusual_name_written_elsewhere_blocks(repo_with_terms, name, command):
     (repo_with_terms / name).write_text("Clean text.\n", encoding="utf-8")
+    proc = run_hook(bash_payload(repo_with_terms, command), repo_with_terms)
+    assert proc.returncode == 2, proc.stderr
+    assert STALE in proc.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # an odd escaped quote opens a quoted part for a reader that pairs quotes and does not read backslashes: the write
+    # ends up inside one long word. The words are read a second way, split at blanks, so that the write is still seen
+    "echo 5\\\" && cp notes.md b.md && gh pr create --title \"Fix\" --body-file b.md",
+    "echo \"Support 5\\\" screens\" && cp notes.md b.md && gh pr create --title \"Fix\" --body-file b.md",
+    "echo it\\'s && cp notes.md b.md && gh pr create --title 'Fix' --body-file b.md",
+    "echo 5\\\" && cat notes.md >b.md && gh pr create --title \"Fix\" --body-file b.md",
+])
+def test_an_odd_escaped_quote_does_not_hide_a_write_of_the_body_file(repo_with_terms, command):
+    (repo_with_terms / "b.md").write_text("Clean text.\n", encoding="utf-8")
     proc = run_hook(bash_payload(repo_with_terms, command), repo_with_terms)
     assert proc.returncode == 2, proc.stderr
     assert STALE in proc.stderr
@@ -580,6 +611,8 @@ def test_pr_text_written_in_the_command_passes(repo_with_terms, command):
     "echo ghost | xargs echo",  # ghost is not gh
     "gh pr list --json number | xargs -n1 echo",  # gh comes before xargs: xargs does not start it
     "gh pr create --title x --body y; ls | xargs rm",
+    "ls | xargs -a gh-args.txt echo",  # gh-args.txt, gh_files and gh.exe are other words
+    "ls | xargs echo gh_files gh.exe",
 ])
 def test_xargs_without_a_gh_or_glab_word_after_it_passes(repo_with_terms, command):
     assert dev_guard.decide(bash_payload(repo_with_terms, command)) is None
