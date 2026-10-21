@@ -15,6 +15,7 @@ did not write (a symlink counts as one), and refuses when core.hooksPath
 is set, even to an empty value, because git would then ignore the hook.
 It is a tool of this repository, not part of the plugin.
 """
+import shlex
 import shutil
 import subprocess
 import sys
@@ -22,7 +23,9 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 SOURCE_ROOT = Path(__file__).resolve().parent.parent
+# python3 -I drops the script's own folder from sys.path, so both folders are added by hand
 sys.path.insert(0, str(SOURCE_ROOT / "lib"))
+sys.path.insert(0, str(SOURCE_ROOT / "tools"))
 
 from pe_guard.filters import GUARD_DATA_DIR  # noqa: E402
 import privacy_check  # noqa: E402
@@ -30,12 +33,6 @@ import privacy_check  # noqa: E402
 HOOK_MARKER = "pragmatic-engineering privacy pre-push"
 COPY_SUBDIR = GUARD_DATA_DIR + "/step-zero"  # relative to the git common dir
 COPIED: Tuple[str, ...] = ("tools/privacy_check.py", "tools/dev_guard.py", "lib/pe_guard")
-UNSET_HOOKS_PATH = {
-    "local": "git config --unset core.hooksPath",
-    "worktree": "git config --worktree --unset core.hooksPath",
-    "global": "git config --global --unset core.hooksPath",
-    "system": "git config --system --unset core.hooksPath",
-}
 
 
 class InstallError(Exception):
@@ -106,7 +103,7 @@ def _refuse_custom_hooks_path(repo: Path) -> None:
     Only exit status 1 means "not set". An empty value exits 0 with no output and
     makes git run no hook, and a git that cannot answer must not be read as "not set".
     """
-    proc = _git(repo, "config", "--show-scope", "--get", "core.hooksPath")
+    proc = _git(repo, "config", "--show-origin", "--show-scope", "--get", "core.hooksPath")
     if proc.returncode == 1:
         return
     if proc.returncode != 0:
@@ -114,16 +111,22 @@ def _refuse_custom_hooks_path(repo: Path) -> None:
             "cannot read core.hooksPath (git config exited %d): %s"
             % (proc.returncode, proc.stderr.strip())
         )
-    scope = proc.stdout.split("\t", 1)[0]
-    command = UNSET_HOOKS_PATH.get(scope)
-    if command is None:
-        raise InstallError(
-            "core.hooksPath is set in the %s configuration, so git would ignore this hook; "
-            "remove it where it is defined" % scope
+    scope, origin, _value = proc.stdout.split("\t", 2)
+    kind, _, name = origin.partition(":")
+    if kind == "file":
+        # The origin names the file that holds the value, an included one too, so
+        # --file always edits the right place; --global would miss an included file.
+        source = str(repo / name)  # git prints the clone's own config relative to its top
+        advice = (
+            "the user can remove it from their own terminal with: "
+            "git config --file %s --unset core.hooksPath" % shlex.quote(source)
         )
+    else:
+        source = kind  # "command line": no file to edit
+        advice = "remove it where it is defined"
     raise InstallError(
-        "core.hooksPath is set, so git would ignore this hook; the user can remove it "
-        "from their own terminal with: %s" % command
+        "core.hooksPath is set in the %s configuration (%s), so git would ignore this hook; %s"
+        % (scope, source, advice)
     )
 
 

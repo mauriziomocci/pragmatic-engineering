@@ -5,6 +5,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -127,12 +128,40 @@ def test_install_refuses_a_symlink_at_pre_push(tmp_path, target_has_the_marker):
     assert_nothing_installed(repo)
 
 
-def test_install_refuses_when_a_custom_hooks_directory_is_configured(tmp_path):
+def set_hooks_path(where: str, repo: Path, tmp_path: Path, monkeypatch) -> Path:
+    """Put core.hooksPath into one config file and return that file.
+
+    Global and system configuration are scratch files in tmp_path, so the
+    user's own git configuration is never read or written. ``included`` puts
+    the value in a file that the global configuration pulls in.
+    """
+    scratch = {name: tmp_path / ("%s.cfg" % name) for name in ("global", "system", "included")}
+    for path in scratch.values():
+        path.write_text("", encoding="utf-8")
+    scratch["global"].write_text("[include]\n\tpath = %s\n" % scratch["included"], encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(scratch["global"]))
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(scratch["system"]))
+    monkeypatch.delenv("GIT_CONFIG_NOSYSTEM", raising=False)
+    holder = {**scratch, "local": repo / ".git" / "config"}[where]
+    with holder.open("a", encoding="utf-8") as handle:
+        handle.write("[core]\n\thooksPath = .githooks\n")
+    return holder
+
+
+@pytest.mark.parametrize("where", ["local", "global", "system", "included"])
+def test_install_names_the_file_that_sets_core_hooks_path_and_prints_the_command_that_removes_it(
+    tmp_path, monkeypatch, where
+):
+    """The printed command must work: a value from an included file survives `git config --global --unset`."""
     repo = prepared_clone(tmp_path)
-    git(repo, "config", "core.hooksPath", ".githooks")
-    with pytest.raises(idh.InstallError, match="git config --unset core.hooksPath"):
+    holder = set_hooks_path(where, repo, tmp_path, monkeypatch)
+    with pytest.raises(idh.InstallError, match="core.hooksPath is set") as refusal:
         idh.install(repo)
+    message = str(refusal.value)
+    assert str(holder) in message
     assert_nothing_installed(repo)
+    subprocess.run(shlex.split(message.split("with: ", 1)[1]), cwd=str(repo), check=True)
+    assert idh.install(repo).exists()
 
 
 def test_install_refuses_an_empty_core_hooks_path(tmp_path):
@@ -144,27 +173,13 @@ def test_install_refuses_an_empty_core_hooks_path(tmp_path):
     assert_nothing_installed(repo)
 
 
-@pytest.mark.parametrize("scope", ["global", "system"])
-def test_install_prints_the_unset_command_of_the_scope_that_sets_core_hooks_path(tmp_path, monkeypatch, scope):
-    """Scratch config files only: the user's own git configuration is never read or written."""
-    repo = prepared_clone(tmp_path)
-    for name in ("global", "system"):
-        config = tmp_path / ("%s.cfg" % name)
-        config.write_text("[core]\n\thooksPath = .githooks\n" if name == scope else "", encoding="utf-8")
-        monkeypatch.setenv("GIT_CONFIG_%s" % name.upper(), str(config))
-    monkeypatch.delenv("GIT_CONFIG_NOSYSTEM", raising=False)
-    with pytest.raises(idh.InstallError, match="git config --%s --unset core.hooksPath" % scope):
-        idh.install(repo)
-    assert_nothing_installed(repo)
-
-
-def test_install_refuses_a_hooks_path_that_no_git_config_command_unsets(tmp_path, monkeypatch):
-    """A value given through the environment has the scope 'command'; there is no unset command to print."""
+def test_install_refuses_a_hooks_path_that_no_file_holds(tmp_path, monkeypatch):
+    """A value given through the environment has no file to edit, so no command is printed."""
     repo = prepared_clone(tmp_path)
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", ".githooks")
-    with pytest.raises(idh.InstallError, match="set in the command configuration") as refusal:
+    with pytest.raises(idh.InstallError, match=r"in the command configuration \(command line\)") as refusal:
         idh.install(repo)
     assert "--unset" not in str(refusal.value)
     assert_nothing_installed(repo)
@@ -236,6 +251,21 @@ def test_a_push_is_refused_when_the_terms_file_is_unavailable(tmp_path, terms_lo
     assert git(tmp_path / "remote.git", "for-each-ref") == ""
 
 
+def test_a_push_is_refused_when_python_is_not_on_the_path(tmp_path, monkeypatch):
+    """The stub exits 127 when it cannot start python3; a guard that skips the check then would fail open."""
+    repo = prepared_clone(tmp_path)
+    idh.install(repo)
+    commit(repo, {"notes.txt": "clean\n"}, "notes")
+    only_git = tmp_path / "only-git"
+    only_git.mkdir()
+    (only_git / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(only_git))
+    proc = push(repo)
+    assert proc.returncode != 0
+    assert "python3" in proc.stderr
+    assert git(tmp_path / "remote.git", "for-each-ref") == ""
+
+
 def test_hook_runs_for_pushes_from_a_linked_worktree(tmp_path):
     repo = prepared_clone(tmp_path)
     idh.install(repo)
@@ -273,11 +303,22 @@ def test_main_refuses_a_foreign_pre_push(tmp_path, capsys):
     assert captured.out == ""
 
 
-def test_main_refuses_a_directory_outside_a_repository(tmp_path, capsys):
+def test_main_refuses_a_directory_outside_a_repository(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LC_ALL", "C")  # the reason below is git's own wording, in English
     outside = tmp_path / "plain"
     outside.mkdir()
     assert idh.main([str(outside)]) == 1
-    assert capsys.readouterr().err.startswith("install_dev_hooks: ")
+    assert "not a git repository" in capsys.readouterr().err
+
+
+def test_installer_runs_as_a_script_in_isolated_mode(tmp_path):
+    """`python3 -I` leaves the script's folder off sys.path; the installer must find its imports itself."""
+    repo = prepared_clone(tmp_path)
+    script = REPO_ROOT / "tools" / "install_dev_hooks.py"
+    proc = subprocess.run([sys.executable, "-I", str(script), str(repo)],
+                          cwd=str(tmp_path), capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[0] == "installed %s" % (repo / ".git" / "hooks" / "pre-push")
 
 
 def test_main_reports_a_missing_git_as_a_refusal(tmp_path, monkeypatch, capsys):
