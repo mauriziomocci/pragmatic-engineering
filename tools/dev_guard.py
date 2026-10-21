@@ -24,19 +24,22 @@ file and pass its absolute path: a here-document or a here-string (any <<),
 standard input as the body file (-, /dev/stdin, /dev/fd/0), any dollar sign
 followed by a character (a substitution, a variable, arithmetic, $'...',
 $"...", zsh's $=name), a backtick, a process substitution, a tilde or zsh's
-=command, also after empty quotes, and the word xargs, which appends text that
-comes from elsewhere to the command it runs. A body file blocks too when it is
-attached to its option (-Fbody.md); when it is named by a relative path after a
-cd, pushd or chdir; when it is missing, a device, a pipe, a folder or a file
-under /dev or /proc; and when its name, or just its last component, is a word
-of the rest of the command (in any letter case, quotes taken off), because the
-hook reads the file before the command runs and a cp or a redirect in the same
-command would leave it with a text the command no longer sends. A
-backslash-newline is removed before the command is checked, as the shell
-removes it. The privacy scan reads the command three ways: as written (inside
-single quotes the shell keeps the backslash-newline), with the
-backslash-newlines removed, and with each '\\'' turned into an apostrophe, the
-way the shell joins 'Dell'\\''Acqua'.
+=command, also after empty quotes. So does the word xargs when a gh or glab
+word follows it, in any command and with or without a pull request verb in the
+text: xargs builds the command line of the gh it starts at run time. A body
+file blocks too when it is attached to its option (-Fbody.md); when it is named
+by a relative path after a cd, pushd or chdir; when it is missing, a device, a
+pipe, a folder or a file under /dev or /proc; and when its name, or just its
+last component, is a word of the rest of the command (a quoted part stays in
+its word, quotes taken off, in any letter case; the pieces of a word split at =
+and : count too), because the hook reads the file before the command runs and a
+cp or a redirect in the same command would leave it with a text the command no
+longer sends. A backslash-newline is removed before the command is checked, as
+the shell removes it. The privacy scan reads the command three ways, and every
+term found in any of them blocks: as written (inside single quotes the shell
+keeps the backslash-newline), with the backslash-newlines removed, and with the
+quoting removed as the shell removes it, so that Zorb""lax, 'Zorb''lax',
+Zorb\\lax and 'Dell'\\''Acqua' read as the words gh gets.
 
 Open limits, declared and pinned in OPEN_FORMS of tests/test_dev_guard.py:
 
@@ -53,8 +56,8 @@ Open limits, declared and pinned in OPEN_FORMS of tests/test_dev_guard.py:
 - a step of the same command that writes the body file without spelling its
   name as the option does (``sh gen.sh && gh pr create --body-file body.md``),
   or a value glued to a short option (``curl -sob.md``);
-- quote removal, backslash removal, brace expansion and globs that build a term
-  from literal parts (``Zorb""lax``, ``Zorbl{b,a}x``) and reach gh as the term;
+- brace expansion (``Zorbl{b,a}x``) and globs that build a term from literal
+  parts or from a file name and reach gh as the term;
 - gh fills a pull request from places the command does not show (flags of gh
   2.102.0, read in the help of ``gh pr create``, ``edit`` and ``comment``, not
   run against GitHub): ``--fill``, ``--fill-first`` and ``--fill-verbose`` take
@@ -117,12 +120,13 @@ _SPECIAL_FILE_REASON = (
     "cannot read as the command would"
 )
 _STDIN_NAMES = ("-", "/dev/stdin", "/dev/fd/0")  # body file names that mean standard input
-# The option and the name given to --body-file or -F as the shell passes it: the whole word, quoted parts and all, up
-# to a blank or an operator character (-; is standard input, then a separator), so that "-"x is the file -x and ""- is
-# standard input; filters.remove_quotes then takes the quotes off.
-_BODY_FILE = re.compile(
-    r"(?P<option>--body-file|(?<!\S)-F)(?:\s+|=)(?P<name>(?:\"[^\"]*\"|'[^']*'|[^\s\"';&|<>()])+)"
-)
+# A word of the command as the shell reads it: quoted parts kept whole, whatever they hold, up to a blank or an
+# operator character (-; is standard input, then a separator), so that "-"x is the file -x and ""- is standard input.
+# filters.remove_quotes then takes the quotes off.
+_SHELL_WORD = r"(?:\"[^\"]*\"|'[^']*'|[^\s\"';&|<>()])+"
+_WORDS = re.compile(_SHELL_WORD)
+# The option and the name given to --body-file or -F, the name being one such word.
+_BODY_FILE = re.compile(r"(?P<option>--body-file|(?<!\S)-F)(?:\s+|=)(?P<name>%s)" % _SHELL_WORD)
 # Folders of devices and of process data: a body file there is a stream (the hook would read its own input, or wait)
 # or a file of another process, never the text the command sends.
 _SPECIAL_FOLDERS = ("/dev", "/proc")
@@ -131,7 +135,9 @@ _SPECIAL_FOLDERS = ("/dev", "/proc")
 # an accepted over-block.
 _ATTACHED_BODY_FILE = re.compile(r"(?<!\S)-(?!-)(?!F(?:\s|=|$))\S*?F")
 _CD = re.compile(r"\b(?:cd|pushd|chdir)\b")  # chdir is zsh's
-_XARGS = re.compile(r"\bxargs\b")
+_XARGS = re.compile(r"\bg?xargs\b")  # gxargs is GNU xargs from Homebrew
+# A gh or glab word, also with a path in front: at the start of a word, not the start of ghost or gh-x.
+_CLIENT_WORD = re.compile(r"(?<![^\s;&|<>()])(?:\S*/)?(?:gh|glab)(?![\w.-])", re.IGNORECASE)
 # Text the shell produces at run time or reads otherwise than as written: a dollar sign followed by anything but a
 # blank (a substitution, a parameter, arithmetic, an ANSI-C or locale string, zsh's $=name and its other flags), a
 # backtick, a process substitution (zsh also writes =(...)), zsh's =command (the path of the command), a tilde at the
@@ -139,9 +145,8 @@ _XARGS = re.compile(r"\bxargs\b")
 _EXPANSION = re.compile(
     r"\$\S|`|[<>]\(|(?<!\S)=\S|(?<![^\s=:])~|" + filters.EMPTY_QUOTES_BEFORE_EXPANSION
 )
-# Where a word of the command ends: at a blank, a separator, a redirection, a parenthesis, or an = or : (of an
-# assignment or an option value).
-_WORD_BREAK = re.compile(r"[\s;&|<>()=:]+")
+# Where the pieces of a word start: after the = of an assignment or an option value, or the : of a path list.
+_VALUE_BREAK = re.compile(r"[=:]+")
 
 
 def _strings(value: Any) -> List[str]:
@@ -230,15 +235,27 @@ def _is_special_file(cwd: Path, name: str) -> bool:
 def _names_body_file_elsewhere(command: str, names: List[str]) -> bool:
     """Whether the command writes or names a body file anywhere but as the value of --body-file or -F.
 
-    The words of the rest of the command go into one set, built once, each with its quotes taken off and in lower case
-    (the disk of a Mac ignores the case), together with the last component of each. A name is found when it, or its
-    last component, is one of them: ``cp x /tmp/b.md``, ``>b.md`` and ``tee "B".md`` name b.md, ``gh pr`` does not name
-    ``--body-file``. A short name is a word of many commands (``pr``): an accepted over-block.
+    The words of the rest of the command, read with the grammar of the option's value (a quoted part stays in its
+    word, whatever it holds), go into one set, built once, each with its quotes taken off and in lower case (the disk
+    of a Mac ignores the case). The set also holds the pieces of each word split at = and :, and the last component
+    of each piece. A name is found when it, or its last component, is in the set: ``cp x /tmp/b.md``, ``>b.md``,
+    ``tee "B".md`` and ``cp x "pr body.md"`` name the files b.md and pr body.md. ``--body-file`` does not name
+    ``body``; ``gh pr`` names ``pr``, an accepted over-block.
     """
     elsewhere = _BODY_FILE.sub(r"\g<option>", command)
-    words = {filters.remove_quotes(word).lower() for word in _WORD_BREAK.split(elsewhere) if word}
-    spelt = words | {os.path.basename(word) for word in words}
+    words = {filters.remove_quotes(word).lower() for word in _WORDS.findall(elsewhere)}
+    pieces = words | {piece for word in words for piece in _VALUE_BREAK.split(word) if piece}
+    spelt = pieces | {os.path.basename(piece) for piece in pieces}
     return any((os.path.basename(name) or name).lower() in spelt for name in names)
+
+
+def _xargs_starts_client(command: str) -> bool:
+    """Whether a gh or glab word follows the word xargs: xargs builds the command line of that gh at run time.
+
+    Only the first xargs is searched from: a gh after a later one is after this one too, so the time stays linear.
+    """
+    xargs = _XARGS.search(command)
+    return xargs is not None and _CLIENT_WORD.search(command, xargs.end()) is not None
 
 
 def _check_pr_text(cwd: Path, sources: List[Tuple[str, str]]) -> Optional[str]:
@@ -272,8 +289,6 @@ def _unreadable_text(cwd: Path, command: str, names: List[str]) -> Optional[str]
         return _HERE_DOCUMENT_REASON
     if _EXPANSION.search(command):
         return _EXPANSION_REASON
-    if _XARGS.search(command):
-        return _XARGS_REASON
     if _ATTACHED_BODY_FILE.search(command):
         return _ATTACHED_REASON
     if any(name in _STDIN_NAMES for name in names):
@@ -289,16 +304,21 @@ def _unreadable_text(cwd: Path, command: str, names: List[str]) -> Optional[str]
 
 def _check_shell(cwd: Path, text: str) -> Optional[str]:
     reason = filters.check_shell_command(text)
-    if reason or not filters.pr_command_kind(text):
+    if reason:
         return reason
     command = filters.without_line_continuations(text)
+    if _xargs_starts_client(command):
+        return "%s; %s" % (_XARGS_REASON, BODY_HINT)
+    if not filters.pr_command_kind(command):
+        return None
     names = list(dict.fromkeys(_body_file_names(command)))
     reason = _unreadable_text(cwd, command, names)
     if reason:
         return "%s; %s" % (reason, BODY_HINT)
-    # What the shell sends is one of three readings: inside single quotes it keeps a backslash-newline, and it joins
-    # 'Dell'\''Acqua' into Dell'Acqua.
-    readings = dict.fromkeys((text, command, command.replace("'\\''", "'")))
+    # What gh receives is one of three readings of the text: inside single quotes the shell keeps a backslash-newline,
+    # elsewhere it removes it, and it removes the quoting too (Zorb""lax and 'Dell'\''Acqua' become words). A term
+    # in any of them is a finding; none of them decides that the command is clean.
+    readings = dict.fromkeys((text, command, filters.remove_shell_quoting(text)))
     return _check_pr_text(cwd, [("the command", reading) for reading in readings] + _body_files(cwd, names))
 
 

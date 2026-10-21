@@ -36,7 +36,9 @@ a read the first version blocked:
 program supplies the command word or the arguments of the call: ``sh -c '$0 api
 .../merge -X PUT' gh`` (the shell fills ``$0`` with the word after the quoted
 text) and ``echo api .../merge -X PUT | xargs gh`` (xargs appends what echo
-prints to the gh it starts).
+prints to the gh it starts). This filter leaves both open; the project hook of
+step zero (tools/dev_guard.py) blocks the second, as it blocks any gh or glab
+word after xargs.
 """
 import re
 from pathlib import PurePath
@@ -342,6 +344,38 @@ def remove_quotes(word: str) -> str:
     A backslash stays, and so does the dollar sign of ``$'...'``; the text inside the quotes is kept as it is.
     """
     return _QUOTES.sub(r"\1\2", word)
+
+
+# What the shell removes from a command before it hands the words on: a backslash outside quotes (it keeps the next
+# character, and a backslash-newline goes whole), the quotes of a single-quoted part (its text is literal), and the
+# quotes of a double-quoted part, where a backslash goes only before a quote, a backslash, a dollar sign, a backtick
+# or a newline. Each character has one reading, so a part that never closes costs one scan of the rest of the text.
+_QUOTING = re.compile(r"\\(\r?\n|.)|'([^']*)'|\"((?:[^\"\\]|\\.)*)\"", re.DOTALL)
+_DOUBLE_QUOTE_ESCAPE = re.compile(r"\\(\r?\n|[\"\\$`])")
+
+
+def _without_newline(escaped: str) -> str:
+    return "" if escaped.endswith("\n") else escaped
+
+
+def _quoting_removed(match: "re.Match[str]") -> str:
+    escaped, single, double = match.groups()
+    if escaped is not None:
+        return _without_newline(escaped)
+    if single is not None:
+        return single
+    return _DOUBLE_QUOTE_ESCAPE.sub(lambda inner: _without_newline(inner.group(1)), double)
+
+
+def remove_shell_quoting(text: str) -> str:
+    """The text with the quoting taken off as the shell takes it off, so that ``Zorb""lax``, ``'Zorb''lax'``,
+    ``Zorb\\lax`` and ``'Dell'\\''Acqua'`` read as the words gh gets.
+
+    Unlike ``remove_quotes`` it also drops the backslashes the shell drops. It models nothing else (no expansion, no
+    word splitting, no ``$'...'``), so it is for adding a reading of a text to be searched, never for deciding that a
+    command is clean.
+    """
+    return _QUOTING.sub(_quoting_removed, text)
 
 
 def without_line_continuations(text: str) -> str:

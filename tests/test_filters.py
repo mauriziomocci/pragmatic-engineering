@@ -412,7 +412,7 @@ OPEN_FORMS = [
     "sh -c 'gh ap\\i repos/o/r/pulls/1/merge -X PUT'" + CHAINED_READ,
     "printf 'gh api repos/o/r/pulls/1/merge%s' ' -X PUT' | sh" + CHAINED_READ,
     # the program name or the arguments come from another command: $0 is the word after the quoted text, and xargs
-    # appends the words echo prints to the gh it starts
+    # appends the words echo prints to the gh it starts (the project hook of step zero blocks xargs followed by gh)
     "sh -c '$0 api repos/o/r/pulls/1/merge -X PUT' gh" + CHAINED_READ,
     "echo api repos/o/r/pulls/1/merge -X PUT | xargs gh" + CHAINED_READ,
 ]
@@ -791,6 +791,43 @@ def test_pr_commands_are_recognised(command, expected):
 ])
 def test_remove_quotes_takes_off_the_quotes_and_nothing_else(word, expected):
     assert filters.remove_quotes(word) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("plain words", "plain words"),
+    ("'a b' \"c d\"", "a b c d"),
+    ("Zorb\"\"lax", "Zorblax"),  # empty quotes vanish
+    ("'Zorb''lax'", "Zorblax"),
+    ("Zorb\\lax", "Zorblax"),  # outside quotes a backslash keeps the next character
+    ("Z\\o\\r\\b\\l\\a\\x", "Zorblax"),
+    ("'Fix Dell'\\''Acqua'", "Fix Dell'Acqua"),  # the three common ways to write an apostrophe
+    ("'Fix Dell'\"'\"'Acqua'", "Fix Dell'Acqua"),
+    ("Fix\\ Dell\\'Acqua", "Fix Dell'Acqua"),
+    ("\"Fix Dell\"\\''Acqua'\" import\"", "Fix Dell'Acqua import"),
+    ("'a\\b'", "a\\b"),  # single quotes keep everything, a backslash too
+    ("\"a\\\"b\"", "a\"b"),  # in double quotes a backslash goes before a quote, a backslash, a dollar and a backtick
+    ("\"a\\\\b\"", "a\\b"),
+    ("\"a\\$b\"", "a$b"),
+    ("\"a\\`b\"", "a`b"),
+    ("\"a\\nb\"", "a\\nb"),  # and stays before anything else
+    ("\"a\\\nb\"", "ab"),  # a backslash-newline goes, in double quotes and outside quotes
+    ("a\\\nb", "ab"),
+    ("a\\\r\nb", "ab"),
+    ("'a\\\nb'", "a\\\nb"),  # but not inside single quotes
+    ("\"abc", "\"abc"),  # a quote that is never closed stays
+    ("it's", "it's"),
+    ("''", ""),
+    ("", ""),
+])
+def test_remove_shell_quoting_gives_the_text_the_shell_passes_on(text, expected):
+    assert filters.remove_shell_quoting(text) == expected
+
+
+@pytest.mark.parametrize("text", ["'" * 100000, "\"" * 100001, "\\" * 100001, "'a\\''" * 40000, "\"a\\\"\"" * 40000])
+def test_remove_shell_quoting_is_linear(text):
+    started = time.perf_counter()
+    filters.remove_shell_quoting(text)
+    assert time.perf_counter() - started < 1.0
 
 
 @pytest.mark.parametrize("text,expected", [

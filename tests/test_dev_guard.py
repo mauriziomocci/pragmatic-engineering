@@ -273,7 +273,6 @@ def test_pr_body_the_hook_cannot_read_blocks(repo_with_terms, command):
     "gh pr create --title x --body y <<'EOF' \\\n  --head \"$(cat title.txt)\"\nClean.\nEOF",
     "gh pr create --title x --body y \\<<'EOF'\ngh pr edit 1 --body \"$(cat body.md)\"\nEOF",
     "gh pr create --body-file - --title \"a \\\" <<'EOF'\n$(cat body.md)\"\nEOF",
-    "xargs -a body.md gh pr create --title x --body-file - <<'EOF'\nClean.\nEOF",
 ])
 def test_pr_command_with_a_here_document_or_a_here_string_blocks_with_the_hint(repo_with_terms, command):
     (repo_with_terms / "body.md").write_text("Made for Zorblax.\n", encoding="utf-8")
@@ -325,11 +324,27 @@ def test_a_single_quoted_backslash_newline_is_checked_as_written_too(repo_with_t
     "gh pr create --title 'Fix Dell'\\''Acqua import' --body y",  # the usual apostrophe inside single quotes
     "gh pr create --title \"Fix Dell'Acqua import\" --body y",
     "gh pr create --title Fix --body 'for Dell'\\''Acqua'\\''s team'",
+    "gh pr create --title 'Fix Dell'\"'\"'Acqua import' --body y",  # the other usual idiom
+    "gh pr create --title Fix\\ Dell\\'Acqua --body y",  # a backslash before each blank and the apostrophe
+    "gh pr create --title \"Fix Dell\"\\''Acqua'\" import\" --body y",  # three kinds of quoting in one word
 ])
 def test_a_term_with_an_apostrophe_is_found_however_the_apostrophe_is_written(repo_with_apostrophe_term, command):
-    """The shell joins 'Fix Dell', an escaped apostrophe and 'Acqua import' into Fix Dell'Acqua import."""
+    """The shell joins the pieces and removes the quoting: gh gets Fix Dell'Acqua import."""
     reason = dev_guard.decide(bash_payload(repo_with_apostrophe_term, command))
     assert reason and "term \"Dell'Acqua\" in the command" in reason
+
+
+@pytest.mark.parametrize("command", [
+    "gh pr create --title Zorb\"\"lax --body y",  # empty quotes in the middle of the term
+    "gh pr create --title 'Zorb''lax' --body y",
+    "gh pr create --title Zorb\\lax --body y",  # a backslash before a letter is dropped
+    "gh pr create --title \"Zor\"b'l'ax --body y",
+    "gh pr comment 1 --body Z\\o\\r\\b\\l\\a\\x",
+])
+def test_a_term_split_by_quotes_or_backslashes_is_found(repo_with_terms, command):
+    """The shell removes the quoting before gh sees the words, so gh gets Zorblax."""
+    reason = dev_guard.decide(bash_payload(repo_with_terms, command))
+    assert reason and 'term "Zorblax" in the command' in reason
 
 
 def test_pr_body_file_of_a_command_with_options_between_its_words_is_checked(repo_with_terms):
@@ -426,9 +441,19 @@ HOOK_BLOCKS = [
     ("cat body.md | gh pr revert 5 --body-file -", STDIN),
     ("gh pr revert 5 --body \"$(cat body.md)\"", EXPANSION),
     ("gh pr reopen 5 --comment \"$(cat body.md)\"", EXPANSION),
-    # xargs appends text that comes from elsewhere to a command it runs
+    # xargs builds the command line of the gh it starts at run time, with or without a verb in the text
     ("cat title.txt | xargs gh pr create --body y --head", XARGS),
     ("head -1 title.txt | xargs -I{} gh pr create --title {} --body y", XARGS),
+    ("cat args.txt | xargs gh pr", XARGS),
+    ("cat args.txt | xargs -I{} gh pr create --title {}", XARGS),
+    ("echo create --title Zorblax-branch --body y | xargs gh pr", XARGS),
+    ("echo api repos/o/r/pulls/1/merge -X PUT | xargs gh", XARGS),
+    ("printf '%s\\n' 1 2 | xargs -n1 gh pr view", XARGS),
+    ("cat title.txt | /usr/bin/xargs glab mr create --description", XARGS),
+    ("cat title.txt | gxargs gh pr create --body y --head", XARGS),
+    ("cat title.txt | xargs \\\n  gh pr create --body y --head", XARGS),
+    ("xargs -a body.md gh pr create --title x --body y", XARGS),  # GNU xargs -a adds the words of the file
+    ("echo xargs gh", XARGS),  # the hook does not parse: the words xargs and then gh, in this order, block
     # zsh's chdir changes folder as cd does
     ("chdir sub && gh pr create --title x --body-file pr.md", CHANGES_FOLDER),
     # a body file attached to its option; one that is not there, however the name is spelt (the shell rewrites \-)
@@ -470,6 +495,25 @@ def test_a_body_file_that_the_command_writes_or_names_elsewhere_blocks(repo_with
     assert proc.returncode == 2, proc.stderr
     assert STALE in proc.stderr and HINT in proc.stderr
     assert proc.stderr.count("in a separate step") == 1  # the hint says it once, the reason does not repeat it
+
+
+@pytest.mark.parametrize("name,command", [
+    # the name is one shell word whatever it holds: a blank inside quotes, a colon, an equals sign, a semicolon inside
+    # quotes. The words of the rest of the command are read with the same grammar, so the name is found there
+    ("pr body.md", "cp notes.md \"pr body.md\" && gh pr create --title x --body-file \"pr body.md\""),
+    ("pr body.md", "cp notes.md 'pr body.md' && gh pr create --title x --body-file 'pr body.md'"),
+    ("b:1.md", "cp notes.md b:1.md && gh pr create --title x --body-file b:1.md"),
+    ("a=b.md", "cp notes.md a=b.md && gh pr create --title x --body-file a=b.md"),
+    ("a;b.md", "cp notes.md 'a;b.md' && gh pr create --title x --body-file 'a;b.md'"),
+    # and a name that is only a piece of a word there: the value of an assignment or of an option
+    ("b.md", "dd if=notes.md of=b.md && gh pr create --title x --body-file b.md"),
+    ("b.md", "cp notes.md out:b.md && gh pr create --title x --body-file b.md"),
+])
+def test_a_body_file_with_an_unusual_name_written_elsewhere_blocks(repo_with_terms, name, command):
+    (repo_with_terms / name).write_text("Clean text.\n", encoding="utf-8")
+    proc = run_hook(bash_payload(repo_with_terms, command), repo_with_terms)
+    assert proc.returncode == 2, proc.stderr
+    assert STALE in proc.stderr
 
 
 def test_a_body_file_the_command_is_about_to_create_is_said_to_be_written_elsewhere(repo_with_terms):
@@ -528,6 +572,16 @@ def test_every_body_file_of_a_command_is_read(repo_with_terms):
     "gh pr create --title 'Costs $ 5' --body y",  # a dollar sign before a blank expands nothing
 ])
 def test_pr_text_written_in_the_command_passes(repo_with_terms, command):
+    assert dev_guard.decide(bash_payload(repo_with_terms, command)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "ls | xargs rm",
+    "echo ghost | xargs echo",  # ghost is not gh
+    "gh pr list --json number | xargs -n1 echo",  # gh comes before xargs: xargs does not start it
+    "gh pr create --title x --body y; ls | xargs rm",
+])
+def test_xargs_without_a_gh_or_glab_word_after_it_passes(repo_with_terms, command):
     assert dev_guard.decide(bash_payload(repo_with_terms, command)) is None
 
 
@@ -603,12 +657,18 @@ LONG_COMMANDS = [
     ("gh pr create --title x --body y " + "-a " * 70000, False),  # short options with no F in them
     ("a/" * 100000 + "gh pr create --title x --body y", False),  # a long path in front of gh
     ("gh pr create --title x --body-file " + '""' * 100000 + "-", True),  # one body file word
+    ("gh pr create --title x --body-file b.md" + " \"a\"'b'" * 25000, True),  # one name, then 50000 quoted words
+    ("gh pr create --title x --body-file b.md" + " a:b=c" * 33000, True),  # one name, then words with : and =
+    ("gh pr create --title x --body y " + "'a'\\''b' " * 20000, False),  # quote removal of a long command
+    ("gh pr create --title x --body y; " + "xargs " * 30000, False),  # xargs with no gh after it
+    ("xargs " * 30000 + "gh pr view 1", True),  # xargs, then gh at the end
 ]
 
 
 @pytest.mark.parametrize("command,blocked", LONG_COMMANDS, ids=[
     "here-documents", "stdin-names", "one-name-repeated", "one-long-name", "distinct-names", "equals", "tilde",
-    "empty-quotes", "short-options", "client-path", "glued-quotes",
+    "empty-quotes", "short-options", "client-path", "glued-quotes", "quoted-words", "colon-words", "quote-removal",
+    "xargs-alone", "xargs-then-gh",
 ])
 def test_long_commands_are_read_in_linear_time(repo_with_terms, command, blocked):
     """A hook that times out lets the tool run: a check that costs a second per 200 KB is too slow."""
@@ -660,9 +720,7 @@ OPEN_FORMS = [
     # a step of the same command that writes the body file without spelling its name as the option does
     ("sh gen.sh && gh pr create --title t --body-file body.md", "clean\n", "clean\n"),
     ("curl -sobody.md https://x && gh pr create --title t --body-file body.md", "clean\n", "clean\n"),  # glued value
-    # quote removal, backslash removal, brace expansion and globs build a term from literal parts
-    ("gh pr create --title Zorb\"\"lax --body y", "clean\n", "clean\n"),
-    ("gh pr create --title Zorb\\lax --body y", "clean\n", "clean\n"),
+    # brace expansion builds a term from literal parts (globs do the same with a file named after the term)
     ("gh pr comment 1 --body=Zorbl{b,a}x", "clean\n", "clean\n"),
     # a gh call inside a script file is never seen, like a call held in a variable, an alias or a function
     ("bash make-pr.sh", "clean\n", "clean\n"),
