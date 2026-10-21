@@ -52,3 +52,18 @@ def test_repository_files_carry_no_invisible_characters():
                 if unicodedata.category(char) == "Cf":
                     offenders.append("%s:%d: U+%04X" % (name, number, ord(char)))
     assert offenders == []
+
+
+README = REPO_ROOT / "README.md"
+
+
+def test_readme_drops_the_retired_understanding_gate():
+    text = README.read_text(encoding="utf-8").lower()
+    assert "understanding gate" not in text
+    assert "comprehension gate" not in text
+
+
+def test_readme_names_every_repository_tool():
+    text = README.read_text(encoding="utf-8")
+    missing = [p.name for p in sorted((REPO_ROOT / "tools").glob("*.py")) if p.name not in text]
+    assert missing == []
