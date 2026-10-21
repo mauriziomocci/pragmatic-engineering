@@ -688,6 +688,15 @@ def test_merge_request_mcp_tools(name, expected):
     ("glab mr merge 4", "merge"),
     ("gh pr view 5", None),
     ("echo gh pr", None),
+    # the text of a comment, a review or a closing comment is as public as a body: these are updates too
+    ("gh pr comment 1 --body x", "update"),
+    ("gh pr review 1 --request-changes --body x", "update"),
+    ("gh pr close 1 --comment x", "update"),
+    ("glab mr note 1 -m x", "update"),
+    ("gh -R o/r pr comment 1 -F body.md", "update"),
+    ("glab mr -R o/r note 1 -m x", "update"),
+    ("gh issue comment 1 --body x", None),
+    ("gh pr note 1", None),
     # options between the words belong to gh, glab and their subcommand: they do not hide the command
     ("gh -R o/r pr create --title x", "create"),
     ("gh pr -R o/r create --title x", "create"),
@@ -722,6 +731,34 @@ def test_merge_request_mcp_tools(name, expected):
 ])
 def test_pr_commands_are_recognised(command, expected):
     assert filters.pr_command_kind(command) == expected
+
+
+@pytest.mark.parametrize("word,expected", [
+    ("plain", "plain"),
+    ('"quoted"', "quoted"),
+    ("'single'", "single"),
+    ("\"two words\"", "two words"),
+    ('"-"x', "-x"),  # the shell joins the quoted part and the rest into one word
+    ("\"\"-", "-"),
+    ("a'b'\"c\"", "abc"),
+    ("'it\"s'", 'it"s'),  # a quote of the other kind inside a quoted part is text
+    ("\"it's\"", "it's"),
+    ("lone'quote", "lone'quote"),  # a quote that is never closed stays
+])
+def test_remove_quotes_gives_the_word_the_shell_passes(word, expected):
+    assert filters.remove_quotes(word) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("a\\\nb", "ab"),
+    ("a\\\r\nb", "ab"),
+    ("$\\\n(cat x)", "$(cat x)"),
+    ("a \\\n b", "a  b"),
+    ("a\nb", "a\nb"),
+    ("a\\b", "a\\b"),
+])
+def test_without_line_continuations_joins_the_lines_as_the_shell_does(text, expected):
+    assert filters.without_line_continuations(text) == expected
 
 
 @pytest.mark.parametrize("command", [

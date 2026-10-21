@@ -128,16 +128,21 @@ _WRITE_METHODS = frozenset({"post", "put", "patch", "delete"})
 # or a fragment graphql is data, and a REST endpoint with ?x=/graphql is still that endpoint.
 _GRAPHQL = re.compile(r"(?:[^?#]*/)?graphql/?(?:[?#].*)?", _I | re.DOTALL)
 _MUTATION = re.compile(r"\bmutation\b", _I)
-_PR_VERB = re.compile(r"(create|new|edit|update|merge)\b", _I)
 _LINE_CONTINUATION = re.compile(r"\\\r?\n")
-# The subcommand word and the verbs of the pull or merge request commands of each client, see pr_command_kind.
+# What each verb of the pull or merge request commands does to the request, see pr_command_kind. A comment, a review
+# and a closing comment are updates: their text is as public as a body.
+_PR_KIND = {
+    "create": "create", "new": "create", "edit": "update", "update": "update", "merge": "merge",
+    "comment": "update", "review": "update", "close": "update", "note": "update",
+}
+_PR_VERB = re.compile(r"(%s)\b" % "|".join(_PR_KIND), _I)
+# The subcommand word and the verbs of the pull or merge request commands of each client.
 _PR_SUBCOMMANDS = {
-    "gh": ("pr", frozenset({"create", "new", "edit", "merge"})),
-    "glab": ("mr", frozenset({"create", "new", "update", "merge"})),
+    "gh": ("pr", frozenset({"create", "new", "edit", "merge", "comment", "review", "close"})),
+    "glab": ("mr", frozenset({"create", "new", "update", "merge", "note"})),
 }
 _MCP_TOOL = re.compile(r"mcp__.+__([A-Za-z0-9_-]+)")
 _SETTINGS_NAME = re.compile(r"settings.*\.json", _I)
-_PR_KIND = {"create": "create", "new": "create", "edit": "update", "update": "update", "merge": "merge"}
 
 
 def check_shell_command(command: str) -> Optional[str]:
@@ -207,7 +212,7 @@ def _api_calls(text: str) -> List[Tuple[List[str], bool]]:
     modelled = _MODELLED.fullmatch(text) is not None
     calls: List[Tuple[List[str], bool]] = []
     for statement in _STATEMENT.findall(text):
-        words = [_QUOTES.sub(r"\1\2", word) for word in _WORD.findall(statement)]
+        words = [remove_quotes(word) for word in _WORD.findall(statement)]
         command = next((i for i, word in enumerate(words) if not _ASSIGNMENT.match(word)), len(words))
         found, position = [], 0
         while position < len(words):
@@ -324,8 +329,26 @@ def mr_action_kind(tool_name: str) -> Optional[str]:
     return MR_ACTION_MCP_SUFFIXES.get(suffix) if suffix else None
 
 
+def remove_quotes(word: str) -> str:
+    """A word as the shell passes it on: its single and double quoted parts without their quotes, the text kept."""
+    return _QUOTES.sub(r"\1\2", word)
+
+
+def without_line_continuations(text: str) -> str:
+    """The text with every backslash-newline removed, as the shell removes it before it reads the words.
+
+    It joins what it cuts in two (``$`` and ``(cat x)``, ``Zorb`` and ``lax``). Inside single quotes the shell keeps the
+    pair, so a text read this way may differ from what a single-quoted argument holds: callers that must see both
+    read the text twice.
+    """
+    return _LINE_CONTINUATION.sub("", text)
+
+
 def pr_command_kind(command: str) -> Optional[str]:
     """'create', 'update' or 'merge' for gh pr / glab mr commands in a shell text, for the first one found.
+
+    A comment, a review or a closing comment (``gh pr comment``, ``gh pr review``, ``gh pr close``, ``glab mr note``)
+    counts as an 'update': its text is as public as a body.
 
     The words of the text are read once, with every reading that is still possible kept alive, so the time is linear
     in the text (a pattern tried again from every gh of ``gh -a gh -a ...`` would not be). A command is a client word
@@ -340,7 +363,7 @@ def pr_command_kind(command: str) -> Optional[str]:
     """
     # (client, still before the subcommand word?, did an option come last, so that the next word may be its value?)
     readings: Set[Tuple[str, bool, bool]] = set()
-    for word in _LINE_CONTINUATION.sub("", command or "").split():
+    for word in without_line_continuations(command or "").split():
         client = _CLIENT.fullmatch(word)
         option = word.startswith("-")
         verb = _PR_VERB.match(word)
