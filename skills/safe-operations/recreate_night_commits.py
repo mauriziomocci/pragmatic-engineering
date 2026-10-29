@@ -10,10 +10,10 @@ commit of ``<base>..HEAD`` already on a remote-tracking branch, because publishe
 branches are read as they are after the last fetch); a backup tag that already exists. Then it tags the tip, runs
 ``git rebase --force-rebase --ignore-date --rebase-merges <base>`` in a temporary worktree of its own and runs four
 checks on the result, stopping at the first that fails (``rebase.updateRefs`` is pinned off, so no other local branch
-moves). Only when all four pass does the branch move to the result, with
-``git update-ref`` guarded by the tip read before the run. The user's working tree and index are never read or written:
-the new tree is the tag's, so they stay consistent, and uncommitted changes and untracked files, ignored or not, are
-safe. On any failure after the tag the branch has not moved, and the message says how to delete the tag.
+moves). Only when all four pass does the branch move to the result, with ``git update-ref`` guarded by the tip read
+before the run. The user's working tree and index are never read or written: the new tree is the tag's, so they stay
+consistent, and uncommitted changes and untracked files, ignored or not, are safe. On any failure after the tag the
+branch has not moved, and the message says how to delete the tag.
 
 Every day uses the hours of ``pe.officeHours``, weekends and ``pe.holidays`` included, so a commit re-created on a
 weekend morning carries a date inside the weekday hours, which the date check accepts.
@@ -69,7 +69,8 @@ def parse_window(value: str) -> Window:
 
 
 def _run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], capture_output=True, text=True)
+    """``surrogateescape`` keeps the bytes of a commit message that is not valid text, so it still compares exactly."""
+    return subprocess.run(["git", *args], capture_output=True, text=True, errors="surrogateescape")
 
 
 def git(*args: str) -> str:
@@ -137,7 +138,10 @@ def branch_is_unchanged(tag: str) -> Tuple[str]:
 @contextmanager
 def temporary_worktree(tag: str) -> Iterator[str]:
     """A detached worktree of ``tag`` in a folder of the script's own, removed on success and on every failure."""
-    folder = tempfile.mkdtemp(prefix="recreate-night-commits-")
+    try:
+        folder = tempfile.mkdtemp(prefix="recreate-night-commits-")
+    except OSError as error:
+        raise Refusal("worktree", "the temporary folder cannot be made: %s" % error) from error
     try:
         git("worktree", "add", "--detach", folder, tag)
         yield folder

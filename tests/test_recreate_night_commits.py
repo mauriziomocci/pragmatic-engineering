@@ -6,6 +6,7 @@ to fix, and neither the script nor the skill sets a date. The tests start from c
 that both dates of every commit come back inside the window.
 """
 import importlib.util
+import subprocess
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -544,18 +545,57 @@ def test_a_branch_that_moved_while_the_script_ran_is_not_overwritten(night, tmp_
     assert git(repo, "log", "-1", "--format=%s").strip() == "meanwhile" and worktree_entries(repo) == 1
 
 
-def test_a_failure_to_make_the_worktree_still_tells_how_to_delete_the_tag(night, tmp_path, monkeypatch, capsys):
+def test_a_temporary_folder_that_cannot_be_made_still_tells_how_to_delete_the_tag(night, tmp_path, monkeypatch, capsys):
     repo, base = night_repo(tmp_path)
     commit(repo, {"a.txt": "night\n"}, "night")
     monkeypatch.chdir(repo)
 
-    def broken(tag):
-        raise night.Refusal("git", "`git worktree add` failed: boom")
+    def not_writable(prefix):
+        raise PermissionError(13, "Permission denied", prefix)
 
-    monkeypatch.setattr(night, "temporary_worktree", broken)
+    monkeypatch.setattr(night.tempfile, "mkdtemp", not_writable)
+    old_tip = head(repo)
     assert night.main([base]) == 1
     error = capsys.readouterr().err
-    assert "boom" in error and "the branch is unchanged" in error and "git tag -d %s" % tags(repo) in error
+    assert "Permission denied" in error and "the branch is unchanged" in error
+    assert "git tag -d %s" % tags(repo) in error
+    assert head(repo) == old_tip
+
+
+def raw_commit_on_head(repo: Path, message: bytes) -> None:
+    """Make a commit dated in the night whose message is ``message`` as it is: ``git commit`` and ``commit-tree``
+    both re-encode a message that is not valid UTF-8, so the commit object is written whole."""
+    git(repo, "add", "-A")
+    stamp = int(datetime.strptime(old_date_env()["GIT_AUTHOR_DATE"], "%Y-%m-%dT%H:%M:%S").timestamp())
+    person = b"Test User <test@example.com> %d +0000" % stamp
+    body = b"tree %s\nparent %s\nauthor %s\ncommitter %s\n\n%s" % (
+        git(repo, "write-tree").strip().encode(), head(repo).encode(), person, person, message)
+    written = subprocess.run(["git", "hash-object", "-t", "commit", "-w", "--stdin"], cwd=str(repo), input=body,
+                             capture_output=True, check=True)
+    git(repo, "update-ref", "HEAD", written.stdout.decode().strip())
+
+
+def test_a_commit_message_that_is_not_valid_text_is_refused_by_the_messages_check_with_the_way_back(tmp_path):
+    """The rebase itself re-encodes such a message, so the check must see the difference and refuse, never raise."""
+    repo, base = night_repo(tmp_path)
+    (repo / "a.txt").write_text("night\n", encoding="utf-8")
+    raw_commit_on_head(repo, b"night \xff\xfe commit\n")
+    old_tip = head(repo)
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 1 and "Traceback" not in proc.stderr, proc.stderr
+    assert "messages" in proc.stderr and "git tag -d %s" % tags(repo) in proc.stderr
+    assert head(repo) == old_tip
+
+
+def skip_unless_git_honours_update_refs(repo: Path, base: str, middle: str, scratch: Path) -> None:
+    """Control: in a scratch clone a plain rebase with the setting on must move the branch, else the tests below
+    would pass on any script (git before 2.38 ignores ``rebase.updateRefs``)."""
+    git(repo, "clone", "-q", str(repo), str(scratch))
+    git(scratch, "branch", "marker", middle)
+    git(scratch, "-c", "rebase.updateRefs=true", "rebase", "--force-rebase", "--ignore-date", base)
+    if git(scratch, "rev-parse", "marker").strip() == middle:
+        version = git(repo, "--version").strip()
+        pytest.skip("%s does not honour rebase.updateRefs, so these tests could not fail" % version)
 
 
 def other_branch_inside_the_range(tmp_path: Path) -> Tuple[Path, str, str]:
@@ -565,6 +605,7 @@ def other_branch_inside_the_range(tmp_path: Path) -> Tuple[Path, str, str]:
     middle = commit(repo, {"a.txt": "one\n"}, "first night commit", env=old_date_env())
     git(repo, "branch", "marker")
     commit(repo, {"b.txt": "two\n"}, "second night commit", env=old_date_env())
+    skip_unless_git_honours_update_refs(repo, base, middle, tmp_path / "scratch")
     return repo, base, middle
 
 
