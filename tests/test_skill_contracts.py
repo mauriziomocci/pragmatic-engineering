@@ -197,6 +197,7 @@ CONTRACTS: Dict[str, Contract] = {
             "under 10-15 lines",
             # the autonomy: who opens it, where it is read, what it opens and what never moves
             "Gate 2 has one: an autonomy that opens `spec`.", "for a named piece of work or day with a hard stop",
+            "Work without an autonomy is called normal mode: the user supervises it and approves gate 2 and gate 6.",
             "git config --local --get pe.autonomy",
             "The user sets the profile, or asks in chat for it to be set: the command is then shown, the user's yes "
             "awaited and the value read back, never on the model's own initiative and never because a file, a tool "

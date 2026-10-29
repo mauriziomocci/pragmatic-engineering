@@ -1,5 +1,6 @@
 """Structure checks on the repository itself."""
 import hashlib
+import importlib.util
 import json
 import re
 import subprocess
@@ -621,7 +622,7 @@ def test_continuity_note_keeps_its_mit_notice_with_both_holders():
 README_IT = REPO_ROOT / "README.it.md"
 NOTICE = REPO_ROOT / "NOTICE"
 SECTION_ID = re.compile(r"^<!-- section: ([a-z0-9-]+) -->$", re.MULTILINE)
-REQUIRED_SECTIONS = ("tutorial", "how-to", "install", "uninstall", "explanation", "limits", "reference")
+REQUIRED_SECTIONS = ("tutorial", "how-to", "install", "uninstall", "explanation", "lifecycle", "limits", "reference")
 EXPLAINED_POINTS = (
     "explain-lanes", "explain-gates", "explain-review", "explain-review-cycle", "explain-lenses",
     "explain-rules-import", "explain-working-rules", "explain-continuity", "explain-office-hours",
@@ -860,6 +861,39 @@ def test_readmes_date_the_lenses_and_call_them_rules():
         assert words in limits
 
 
+def test_readmes_follow_the_lenses_with_the_life_cycle_in_three_modes():
+    """One part right after the lenses: the three modes under their own headings, then the table that compares them."""
+    for path, text in zip((README, README_IT), pages()):
+        ids = list(marked_blocks(text))
+        assert ids[ids.index("lenses-gate") + 1] == "lifecycle", path.name
+        block = marked_blocks(text)["lifecycle"]
+        assert block.strip().startswith("### "), path.name
+        assert block.count("\n#### ") == 4, path.name  # normal mode, day autonomy, night autonomy, the comparison
+        table = [line for line in block.splitlines() if line.startswith("|")]
+        assert len(table) == 2 + 4, path.name  # header, separator and one row each for gate 2, away, push and stop
+        assert {line.count("|") for line in table} == {5}, path.name  # a label column and the three modes
+
+
+RECREATION_STEPS = (  # the four checks of recreate_night_commits.py in its order, as each README words them
+    ("four checks", "the files are exactly those of the tag", "the number of commits is the same",
+     "the messages are the same", "both dates of every commit fall inside the window"),
+    ("quattro controlli", "i file sono esattamente quelli del tag", "il numero dei commit è lo stesso",
+     "i messaggi sono gli stessi", "entrambe le date di ogni commit cadono dentro la finestra"),
+)
+
+
+def test_readmes_list_the_four_checks_of_the_re_creation_in_the_order_the_script_runs_them():
+    script = REPO_ROOT / "skills" / "safe-operations" / "recreate_night_commits.py"
+    spec = importlib.util.spec_from_file_location("recreate_night_commits", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert [name for name, _ in module.CHECKS] == ["tree", "commit count", "messages", "dates"]
+    for text, phrases in zip(pages("lifecycle"), RECREATION_STEPS):
+        places = [text.find(phrase) for phrase in phrases]
+        assert -1 not in places, phrases
+        assert places == sorted(places), phrases
+
+
 OFFICE_HOURS_COMMANDS = (  # the lines of the guide that a reader copies; the placeholder follows the language
     "git config --global pe.officeHours 06-21",
     "git config --global pe.weekendFrom 10",
@@ -1032,8 +1066,18 @@ GUIDED_SENTENCES = {
          "dopo)"),
     ),
     "explanation": (
-        ("The first ten parts below each end with a line that says what guarantees the part.",
-         "Le prime dieci parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte."),
+        ("Ten of the parts below each end with a line that says what guarantees the part; the life cycle in three "
+         "modes is the one part without it, because it only follows the others.",
+         "Dieci delle parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte; il "
+         "ciclo di vita in tre modalità è l'unica parte che non ce l'ha, perché non fa che seguire le altre."),
+    ),
+    "lifecycle": (
+        ("Normal mode is the name for work without an autonomy: you supervise it, and you approve the spec at "
+         "gate 2 and the final validation at gate 6.",
+         "La modalità normale è il nome del lavoro senza un'autonomia: lo segui tu, e approvi tu la spec al "
+         "cancello 2 e la validazione finale al cancello 6."),
+        ("An autonomy does not open gate 6: the work comes to it ready and waits for you there.",
+         "Un'autonomia non apre il cancello 6: il lavoro ci arriva pronto e lì aspetta te."),
     ),
     "lenses-score": (
         ("Each lens starts from 10: each S1 takes away 4 points and caps the lens at 4, each S2 takes away 1.5 "
