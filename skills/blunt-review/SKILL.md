@@ -63,9 +63,9 @@ After the defects, name the pattern that generates them. "Three defects, all thr
 
 ## Burden of proof on adding
 
-The default answer to "should we add this?" is no, whether the thing is a function, a layer, a parameter, a dependency, a tool, an option or an abstraction. Whoever adds it proves the need. The order of preference is fixed: delete existing code > do nothing > extend something that already exists > write something new. The last is allowed only after the first three are ruled out, and the author says so.
+The default answer to "should we add this?" is no, whether the thing is a function, a layer, a parameter, a dependency, a tool, an option, an abstraction, a rule or a part of a spec. Whoever adds it proves the need: over-engineering is the defect. The order of preference is fixed: delete existing code > do nothing > extend something that already exists > write something new. The last is allowed only after the first three are ruled out, and the author says so.
 
-Signs that the burden is not met are the ones in the taste lens, plus a configuration nobody sets and a feature for a future nobody asked for. The question that settles it is what breaks if it is deleted. If nothing breaks, the finding is to delete it. The same holds in design: every component of a spec earns its place.
+Signs that the burden is not met are the ones in the taste lens, plus a configuration nobody sets and a feature for a future nobody asked for. The question that settles it is what breaks if it is deleted. If nothing breaks, the finding is to delete it.
 
 The exception is explicit. Code that makes a property hold (tests, guards, input validation, error handling) is not accumulation, and "less code" is never an argument to skip a test, drop a guard or swallow an error. This is not fanaticism: the target is fewer moving parts, not fewer characters. Deleting error handling, replacing a clear name with a cryptic one, or inlining until nothing reads makes code shorter and worse.
 

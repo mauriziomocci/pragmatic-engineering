@@ -106,13 +106,19 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "066d5b86d7401ec320a9903ad2b1f392b8077dcf3228715e1d30eed521395378"
+RULES_SHA256 = "ede52c9c41540e92a68ecb6aaef5998d20b6c7c6970631c19908396b0d874b84"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
 MIGRATION_REQUIREMENTS = {
-    "self-review": ("Every agent", "following `blunt-review`"),
-    "burden-of-proof": ("Every agent", "burden of proving"),
+    "self-review": (
+        "Every agent", "Own work is reviewed before a commit is proposed, every review following `blunt-review`.",
+    ),
+    "burden-of-proof": (
+        "Every agent",
+        "Whoever adds code, a dependency, a rule, an option or a part of a spec carries the burden of proving it is "
+        "needed, and over-engineering is the defect",
+    ),
     "no-bug-left": ("Every agent", "closure statement"),
     "english-identifiers": ("Every agent", "in English"),
     "docs-same-commit": ("Every agent", "same commit"),
@@ -121,7 +127,12 @@ MIGRATION_REQUIREMENTS = {
     "evidence": ("Every agent", "never taken as evidence"),
     "reuse": ("Every agent", "the reuse statement"),
     "production-go": ("Every agent", "its own explicit go", "the blast radius and the way back"),
-    "candour": ("Every agent", "proposals to validate"),
+    "candour": (
+        "Every agent",
+        "the user's ideas are proposals to validate, not instructions to record: test each against feasibility, cost, "
+        "sequence and risk, say first where it does not convince and the smallest next step (hard on the idea, never "
+        "on the person), then record it with those caveats",
+    ),
     "scope": ("Every agent", "no emoji anywhere", "no documentation file unless asked"),
     "taste-gates": ("Every agent", "about 40 lines"),
     "api-contract": ("Every agent", "never changes shape", "or by a profile while unreleased and unused"),
@@ -130,10 +141,16 @@ MIGRATION_REQUIREMENTS = {
         "Every agent", "git config --get pe.officeHours", "explicit authorisation in chat", "and never pushed",
     ),
     "lenses": (
-        "Main session", "never traded", "known defects", "other than a trivial text fix",
-        "as a proposal to the user",
+        "Main session", "never traded", "known defects", "as a proposal to the user",
+        "a change to an interface or to API responses, other than a trivial text fix, gets one round of the UX and "
+        "review lenses before the spec",
     ),
-    "quality-gate": ("Main session", "at least 8/10", "integration or release", "each with its cost"),
+    "quality-gate": (
+        "Main session",
+        "Before integration or release every lens the work touches scores at least 8/10 with `quality-scoring`, "
+        "from an independent review on evidence",
+        "each with its cost",
+    ),
     "user-away": (
         "Main session", "wait for the user", "git config --local --get pe.autonomy",
         "unless the user's words or the profile narrow them", "deletions outside the worktree",
@@ -244,10 +261,9 @@ def test_rules_point_to_a_home_that_holds_them(marker, skill, home):
 
 def test_rules_stay_short():
     # Every session and every subagent reads the whole file: each added word is paid for in all of them.
-    # 9,500 until the autonomy of user-away came in; 9,650 since it was aligned with the rules the plugin
-    # carries, which open the autonomy unless the user's words narrow it and let deletions inside the worktree
-    # go on while the user is away.
-    assert len(rules_text()) <= 9650
+    # 9,500 again since the subtraction pass of 29 October 2026: the autonomy of user-away had raised the cap
+    # to 9,650, and cutting repetition paid for it, so a new rule now has to remove words before it adds any.
+    assert len(rules_text()) <= 9500
 
 
 def test_sections_rejects_a_repeated_heading():

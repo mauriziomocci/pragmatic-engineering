@@ -8,7 +8,6 @@ import pytest
 from support import (
     A1_SKILLS,
     REPO_ROOT,
-    SUPERPOWERS_SKILLS,
     parse_frontmatter,
     sections,
     unknown_references,
@@ -112,6 +111,10 @@ CONTRACTS: Dict[str, Contract] = {
             "Ruff has no rule for the 40 lines", "S1 or S2 in `quality-scoring`", "Every finding carries its lens and its class",
             "five S3 give 7.5 with the verdict `pass`", "reads the score, not only the verdict",
             "is itself the finding (see `documentation-quality`)",  # the four kinds live in that skill
+            # the burden covers more than code, and names the defect it fights
+            'The default answer to "should we add this?" is no, whether the thing is a function, a layer, a '
+            "parameter, a dependency, a tool, an option, an abstraction, a rule or a part of a spec.",
+            "Whoever adds it proves the need: over-engineering is the defect.",
         ),
         absent=(
             "Delivering work", "Pythonic",
@@ -134,11 +137,15 @@ CONTRACTS: Dict[str, Contract] = {
     "development-workflow": Contract(
         sections=(
             "The three lanes", "Feature lane: phases and gates", "One chain per feature",
-            "Superpowers skills by phase", "Three-step design", "Tasks, models and escalation",
+            "Three-step design", "Tasks, models and escalation",
             "Role lenses", "Budget", "Instruction layers", "Rule cycle", "Shared files", "Phase 6 and the merge request",
             "Closure", "Continuity",
         ),
-        phrases=tuple("superpowers:" + name for name in sorted(SUPERPOWERS_SKILLS)) + (
+        phrases=(
+            # the superpowers skills of the phases; the others need no word here (their own descriptions say when)
+            "superpowers:brainstorming", "superpowers:writing-plans", "superpowers:subagent-driven-development",
+            "superpowers:test-driven-development", "superpowers:verification-before-completion",
+            "superpowers:finishing-a-development-branch",
             "speckit-specify", "speckit-clarify", "speckit-plan", "speckit-tasks", "speckit-implement",
             "spec-kit 0.8.9", "docs/superpowers/specs/", "specs/NNN-slug/", "is it clear?",
             "Opus", "Sonnet", "Haiku", "tracer bullet", "spike", "work log", "merge-base",
@@ -151,7 +158,9 @@ CONTRACTS: Dict[str, Contract] = {
             "an agreement without an independent check is a finding", "possible theatre", "Never traded",
             "scope is cut, never quality", "30 minutes", "five costs", "never decided in the user's absence",
             "Decision log", "found by a lens or later by people", "quality-scoring", "interface-quality",
-            '"contract unchanged"', '"fix or defer?"', "transactions, security, permissions and migrations",
+            '"contract unchanged"', "transactions, security, permissions and migrations",
+            'With a lens below 8 the gate stops and asks "fix or defer?": the PM lens proposes to the user the fix '
+            "or a tracked deferral, each with its cost.",
             "under 10-15 lines",
             # the autonomy: who opens it, where it is read, what it opens and what never moves
             "Gate 2 has one: an autonomy that opens `spec`.", "for a named piece of work or day with a hard stop",
@@ -254,8 +263,9 @@ CONTRACTS: Dict[str, Contract] = {
             "`06-21` runs from 06:00 up to 20:59",  # the end hour is outside the window
             # one command re-creates every commit with both dates of the moment; a cherry-pick of the range keeps one
             '`git rebase --exec "git commit --amend --no-edit --reset-author" <base>`',
-            "An autonomy that opens `design`",
-            "the authorisation with its hard stop is still needed: a chat autonomy that covers the night is one, a profile never is",
+            "An autonomy that opens `design` lifts the letter and the parking, the lenses deciding as "
+            "`development-workflow` says, and the authorisation with its hard stop is still needed: a chat autonomy "
+            "that covers the night is one, a profile never is.",
         ),
     ),
     "quality-scoring": Contract(
