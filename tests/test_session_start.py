@@ -56,35 +56,11 @@ def test_sync_rules_updates_when_changed(tmp_path):
     assert "new rules" in (data / "rules.md").read_text(encoding="utf-8")
 
 
-def test_import_line_uses_the_home_shortcut(tmp_path):
-    home = tmp_path / "home"
-    data_rules = home / ".claude" / "plugins" / "data" / "pe" / "rules.md"
-    assert ss.import_line(data_rules, home) == "@~/.claude/plugins/data/pe/rules.md"
-
-
-def test_import_line_outside_home_is_absolute(tmp_path):
-    data_rules = tmp_path / "elsewhere" / "rules.md"
-    assert ss.import_line(data_rules, tmp_path / "home") == "@" + data_rules.as_posix()
-
-
 def write_claude_md(home: Path, text: str) -> Path:
     path = home / ".claude" / "CLAUDE.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path
-
-
-def test_import_lines_empty_when_both_lines_are_present(tmp_path):
-    home = tmp_path / "home"
-    data_rules = home / ".claude" / "plugins" / "data" / "pe" / "rules.md"
-    write_claude_md(home, "# Mine\n\n@~/.claude/plugins/data/pe/rules.md\n%s\n" % EXPECTED_SAFETY_LINE)
-    assert ss.import_lines(data_rules, home) == []
-
-
-def test_import_lines_when_claude_md_missing(tmp_path):
-    home = tmp_path / "home"
-    data_rules = home / ".claude" / "plugins" / "data" / "pe" / "rules.md"
-    assert ss.import_lines(data_rules, home) == ["@~/.claude/plugins/data/pe/rules.md", EXPECTED_SAFETY_LINE]
 
 
 def default_data_rules(home: Path) -> Path:
@@ -96,6 +72,31 @@ def make_unreadable(path: Path) -> None:
     if os.access(str(path), os.R_OK):
         path.chmod(stat.S_IRUSR | stat.S_IWUSR)
         pytest.skip("running with privileges that ignore file permissions")
+
+
+def test_import_line_uses_the_home_shortcut(tmp_path):
+    home = tmp_path / "home"
+    assert ss.import_line(default_data_rules(home), home) == "@~/.claude/plugins/data/pe/rules.md"
+
+
+def test_import_line_outside_home_is_absolute(tmp_path):
+    data_rules = tmp_path / "elsewhere" / "rules.md"
+    expected = "@" + data_rules.as_posix().replace(" ", "\\ ")
+    assert ss.import_line(data_rules, tmp_path / "home") == expected
+
+
+def test_import_lines_empty_when_both_lines_are_present(tmp_path):
+    home = tmp_path / "home"
+    write_claude_md(home, "# Mine\n\n@~/.claude/plugins/data/pe/rules.md\n%s\n" % EXPECTED_SAFETY_LINE)
+    assert ss.import_lines(default_data_rules(home), home) == []
+
+
+def test_import_lines_when_claude_md_missing(tmp_path):
+    home = tmp_path / "home"
+    assert ss.import_lines(default_data_rules(home), home) == [
+        "@~/.claude/plugins/data/pe/rules.md",
+        EXPECTED_SAFETY_LINE,
+    ]
 
 
 def test_import_lines_does_not_hide_an_unreadable_claude_md(tmp_path):
@@ -128,7 +129,8 @@ def test_import_lines_finds_the_safety_line_when_the_file_wraps_it(tmp_path):
 def test_import_lines_accepts_the_absolute_import(tmp_path):
     home = tmp_path / "home"
     data_rules = default_data_rules(home)
-    write_claude_md(home, "@%s\n%s\n" % (data_rules.as_posix(), EXPECTED_SAFETY_LINE))
+    escaped = data_rules.as_posix().replace(" ", "\\ ")
+    write_claude_md(home, "@%s\n%s\n" % (escaped, EXPECTED_SAFETY_LINE))
     assert ss.import_lines(data_rules, home) == []
 
 
@@ -152,9 +154,8 @@ def test_import_lines_takes_the_escaped_import_and_refuses_the_unescaped_one(tmp
 
 def test_import_lines_asks_only_for_the_missing_safety_line(tmp_path):
     home = tmp_path / "home"
-    data_rules = home / ".claude" / "plugins" / "data" / "pe" / "rules.md"
     write_claude_md(home, "See @~/.claude/plugins/data/pe/rules.md for the rules.\n")
-    assert ss.import_lines(data_rules, home) == [EXPECTED_SAFETY_LINE]
+    assert ss.import_lines(default_data_rules(home), home) == [EXPECTED_SAFETY_LINE]
 
 
 def test_build_output_is_none_when_there_is_nothing_to_say():
