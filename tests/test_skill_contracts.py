@@ -121,6 +121,21 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         absent=(".specify/specs", "global CLAUDE.md", "memory backup"),
     ),
+    "autonomous-execution": Contract(
+        sections=(
+            "Authorisation", "Preconditions", "Per-task loop", "Unrelated bugs and repository hygiene",
+            "Decisions taken alone", "Closure: the internal phase 6", "Red flags",
+        ),
+        phrases=(
+            "never to merge", "blunt-reviewer", "blunt-review", "merge-base", "adversarial-review-panel",
+            "superpowers:subagent-driven-development", "superpowers:test-driven-development",
+            "Decisions taken alone", "Observations on the spec", "MERGEABLE", "NOT MERGEABLE",
+            "engineering-principles", "partial closure", "how to check the CI", "safe-operations",
+            "conflicts with the target",
+        ),
+        user_only=True,
+        absent=("git-commit-assistant", "/opt/homebrew", "Autorizzazione", "carve-out"),
+    ),
 }
 
 
