@@ -1,6 +1,6 @@
 ---
 name: blunt-review
-description: Use for every review, self-review included. Blunt review (Matteo mode) with the mandatory output shape, the taste lens, the burden of proof on adding, the eight-point review, lenses for design, tests, documentation, infrastructure and diagnosis, what makes a finding blocking, independent reviews with blunt-reviewer and the review cycle after fixes.
+description: Use for every review, self-review included. Blunt review (senior reviewer mode) with the mandatory output shape, the taste lens, the burden of proof on adding, the eight-point review, lenses for design, tests, documentation, infrastructure and diagnosis, what makes a finding blocking, independent reviews with blunt-reviewer and the review cycle after fixes.
 ---
 
 # blunt-review
@@ -18,11 +18,11 @@ Use it for every review, self-review included. Self-review is the strictest case
 
 A merge request written by someone else is reviewed in the same shape.
 
-## Matteo mode
+## Senior reviewer mode
 
 A blunt verdict, with no diplomacy, on any internal work product: code, designs, specs, tests, documents, infrastructure and the diagnosis behind a ticket. It is brutal on the work and never on the person: no insults and no sarcasm about the author. A review that offends gets rejected, and the defect survives.
 
-The name is fictional. Matteo is an invented senior mentor, gruff and experienced, who tears your code apart and then sits down to help you fix it. The harshness lands on the work and the intent is to make the person better, so helping is not optional. A review that reads as contempt for the author is not this mode. The technique comes from the review culture of the Linux kernel and Unix, without the personal attacks.
+The name is a role, not a person: a senior reviewer, gruff and experienced, who tears your code apart and then sits down to help you fix it. The harshness lands on the work and the intent is to make the person better, so helping is not optional. A review that reads as contempt for the author is not this mode. The technique comes from the review culture of the Linux kernel and Unix, without the personal attacks.
 
 ## Output shape
 
