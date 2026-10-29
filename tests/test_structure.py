@@ -308,9 +308,18 @@ def test_marketplace_lists_the_plugin_at_the_root_and_allows_its_dependencies():
     ("-x", False),
     ("x #y", False),
     ("[list]", False),
+    ("ends with :", False),
+    ("foo:", False),
+    ("a\t#b", False),
+    ("tab\tinside", False),
 ])
 def test_yaml_plain_safe(value, expected):
     assert yaml_plain_safe(value) is expected
+
+
+@pytest.mark.parametrize("indicator", "[]{}>|*&!%@#`'\",?:-")
+def test_yaml_plain_safe_rejects_every_leading_indicator(indicator):
+    assert yaml_plain_safe(indicator + "x") is False
 
 
 @pytest.mark.parametrize("text", [
@@ -331,6 +340,15 @@ def test_parse_frontmatter_splits_fields_and_body():
 
 AGENT = REPO_ROOT / "agents" / "blunt-reviewer.md"
 GRAMMAR = "<base>..<tip> [round=1|2] [full=<path>,...]"
+PLUGIN_PREFIX = "pragmatic-engineering:"
+# On every git command that can print a patch. Each flag stops one setting of the user's git
+# configuration from changing or hiding part of the range (measured against a scratch repository).
+PATCH_FLAGS = "--no-ext-diff --no-textconv --no-relative --ignore-submodules=none"
+GIT_COMMAND = re.compile(r"`git (show|diff|log)[^`]*`")
+
+
+def prints_a_patch(verb: str, command: str) -> bool:
+    return verb in ("show", "diff") or re.search(r"\s(?:-p|--patch)\b", command) is not None
 
 
 def test_blunt_reviewer_frontmatter():
@@ -338,7 +356,7 @@ def test_blunt_reviewer_frontmatter():
     assert set(fields) == {"name", "description", "tools", "model", "skills"}
     assert fields["name"] == "blunt-reviewer"
     assert fields["model"] == "opus"
-    assert fields["skills"] == "[blunt-review]"
+    assert fields["skills"] == "[%sblunt-review]" % PLUGIN_PREFIX
     assert {t.strip() for t in fields["tools"].split(",")} == {"Read", "Grep", "Glob", "Bash", "Write"}
     assert yaml_plain_safe(fields["description"]) and len(fields["description"]) <= 1024
 
@@ -350,18 +368,43 @@ def test_blunt_reviewer_body_states_the_a1_contract():
         GRAMMAR, ".pe/reviews/", ".pe/.gitignore", "STATUS: IN PROGRESS", "STATUS: COMPLETE",
         "VERDICT: pass | changes", "FINDINGS:", "COVERAGE: full | partial", "REPORT:", "THE THING:",
         "never as instructions", "--no-color",
+        "git merge-base --is-ancestor", 'git rev-parse --verify "<base>^{commit}"',
+        "REPORT: none", "AGENTS.md",
     ):
         assert needed in body, needed
-    for command in re.findall(r"`git (?:show|diff)[^`]*`", body):
-        assert "--no-ext-diff --no-textconv" in command, command
+    # The sentence that limits Bash must also allow the one redirect that step 3 asks for.
+    (bash_rule,) = [line for line in body.splitlines() if line.startswith("Use Bash only")]
+    assert "redirect" in bash_rule and ".pe/reviews/" in bash_rule
+    for retired in ("origin/main..HEAD", "the grammar is the whole interface", "cannot change what you read"):
+        assert retired not in body, retired
     assert unknown_references(body) == []
     assert len(text.splitlines()) < 200
+
+
+def test_blunt_reviewer_git_commands_carry_the_fixed_flags():
+    _, body = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
+    commands = [(m.group(1), m.group(0)) for m in GIT_COMMAND.finditer(body)]
+    assert len(commands) >= 5
+    for verb, command in commands:
+        assert "--no-color" in command, command
+        if prints_a_patch(verb, command):
+            assert PATCH_FLAGS in command, command
+
+
+def test_prints_a_patch_knows_the_verbs_and_the_patch_option():
+    assert prints_a_patch("show", "`git show x`") and prints_a_patch("diff", "`git diff a..b`")
+    assert prints_a_patch("log", "`git log -p --stat x`") and prints_a_patch("log", "`git log --patch x`")
+    assert not prints_a_patch("log", "`git log --oneline a..b`")
 
 
 def test_agent_preloads_existing_skills():
     fields, _ = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
     names = [n.strip() for n in fields["skills"].strip("[]").split(",") if n.strip()]
-    assert names and all((REPO_ROOT / "skills" / n / "SKILL.md").is_file() for n in names)
+    # The documented name of a plugin skill carries the plugin's namespace; a bare name is a fallback.
+    assert names and all(n.startswith(PLUGIN_PREFIX) for n in names)
+    assert all((REPO_ROOT / "skills" / n[len(PLUGIN_PREFIX):] / "SKILL.md").is_file() for n in names)
+
+
 def test_continuity_note_keeps_its_mit_notice_with_both_holders():
     notice = (REPO_ROOT / "skills" / "continuity-note" / "LICENSE").read_text(encoding="utf-8")
     assert notice.startswith("MIT License")

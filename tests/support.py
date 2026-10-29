@@ -191,9 +191,14 @@ def parse_frontmatter(text: str) -> Tuple[Dict[str, str], str]:
 
 
 def yaml_plain_safe(value: str) -> bool:
-    """True when ``value`` reads as one YAML plain scalar, so Claude Code parses it as written."""
+    """True when ``value`` carries no YAML indicator that changes its meaning as a plain scalar.
+
+    It does not look at the type: "true" and "123" pass, and read as a boolean and a number.
+    A trailing colon and any tab are rejected because YAML takes them for a mapping key or for
+    separation space.
+    """
     if not value or value != value.strip():
         return False
-    if value[0] in "[]{}>|*&!%@#`'\",?:-":
+    if value[0] in "[]{}>|*&!%@#`'\",?:-" or value[-1] == ":" or "\t" in value:
         return False
     return ": " not in value and " #" not in value
