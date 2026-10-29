@@ -31,32 +31,45 @@ def sync_rules(root: Path, data: Path) -> bool:
     if target.is_file() and target.read_bytes() == content:
         return False
     data.mkdir(parents=True, exist_ok=True)
+    # Write beside the target, then rename: a crash never leaves a truncated copy that CLAUDE.md imports.
     partial = data / (RULES_NAME + ".partial")
     partial.write_bytes(content)
     os.replace(str(partial), str(target))
     return True
 
 
+def _escape_spaces(path: str) -> str:
+    """CLAUDE.md ends an import path at the first space unless a backslash comes before it."""
+    return path.replace(" ", "\\ ")
+
+
 def import_line(data_rules_path: Path, home: Path) -> str:
     """The @-import for the copy, with ~/ when it lives under the home folder."""
     try:
-        return "@~/" + data_rules_path.relative_to(home).as_posix()
+        return "@~/" + _escape_spaces(data_rules_path.relative_to(home).as_posix())
     except ValueError:
-        return "@" + data_rules_path.as_posix()
+        return "@" + _escape_spaces(data_rules_path.as_posix())
 
 
 def import_lines(data_rules_path: Path, home: Path) -> List[str]:
-    """Lines that ~/.claude/CLAUDE.md still needs: the import, then the safety line."""
+    """Lines that ~/.claude/CLAUDE.md still needs: the import, then the safety line.
+
+    A missing file needs both. A file that cannot be read raises, so that the
+    caller names the real problem instead of calling the lines missing. Bytes
+    that are not valid UTF-8 are replaced, so they matter only inside one of
+    the two lines. A hard-wrapped safety line still counts: line breaks read
+    as spaces.
+    """
     try:
-        text = (home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        text = (home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
         text = ""
     wanted = import_line(data_rules_path, home)
-    accepted = (wanted, "@" + data_rules_path.as_posix())
+    accepted = (wanted, "@" + _escape_spaces(data_rules_path.as_posix()))
     missing = []
     if not any(token in text for token in accepted):
         missing.append(wanted)
-    if SAFETY_LINE not in text:
+    if SAFETY_LINE not in " ".join(text.split()):
         missing.append(SAFETY_LINE)
     return missing
 
@@ -78,8 +91,8 @@ def build_output(updated: bool, missing: List[str]) -> Optional[Dict[str, Any]]:
         )
     if missing:
         notes.append(
-            "pragmatic-engineering: ~/.claude/CLAUDE.md does not carry these lines yet. Tell the user and "
-            "suggest adding them, after a dated backup of the file, a diff and the user's go:\n" + "\n".join(missing)
+            "pragmatic-engineering: ~/.claude/CLAUDE.md does not carry these lines yet; the user adds them "
+            "after a dated backup of the file and a diff:\n" + "\n".join(missing)
         )
     if not notes:
         return None
@@ -93,10 +106,6 @@ def _notice(text: str) -> Dict[str, Any]:
 
 def main() -> int:
     """Run the check for any session start and report; the exit status is always 0."""
-    try:
-        json.loads(sys.stdin.read() or "{}")
-    except ValueError:
-        pass  # the input only says why the session started; the work is the same
     try:
         root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or Path(__file__).resolve().parent.parent)
         data_value = os.environ.get("CLAUDE_PLUGIN_DATA")

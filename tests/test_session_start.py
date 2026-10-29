@@ -2,6 +2,7 @@
 import json
 import os
 import stat
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -86,17 +87,67 @@ def test_import_lines_when_claude_md_missing(tmp_path):
     assert ss.import_lines(data_rules, home) == ["@~/.claude/plugins/data/pe/rules.md", EXPECTED_SAFETY_LINE]
 
 
-def test_import_lines_when_claude_md_unreadable(tmp_path):
-    home = tmp_path / "home"
-    data_rules = home / ".claude" / "plugins" / "data" / "pe" / "rules.md"
-    path = write_claude_md(home, "@~/.claude/plugins/data/pe/rules.md\n")
+def default_data_rules(home: Path) -> Path:
+    return home / ".claude" / "plugins" / "data" / "pe" / "rules.md"
+
+
+def make_unreadable(path: Path) -> None:
     path.chmod(0)
+    if os.access(str(path), os.R_OK):
+        path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        pytest.skip("running with privileges that ignore file permissions")
+
+
+def test_import_lines_does_not_hide_an_unreadable_claude_md(tmp_path):
+    home = tmp_path / "home"
+    path = write_claude_md(home, "@~/.claude/plugins/data/pe/rules.md\n%s\n" % EXPECTED_SAFETY_LINE)
+    make_unreadable(path)
     try:
-        if os.access(str(path), os.R_OK):
-            pytest.skip("running with privileges that ignore file permissions")
-        assert ss.import_lines(data_rules, home) == ["@~/.claude/plugins/data/pe/rules.md", EXPECTED_SAFETY_LINE]
+        with pytest.raises(PermissionError):
+            ss.import_lines(default_data_rules(home), home)
     finally:
         path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+
+def test_import_lines_reads_a_claude_md_that_is_not_utf8(tmp_path):
+    home = tmp_path / "home"
+    text = "# Caffè\n@~/.claude/plugins/data/pe/rules.md\n%s\n" % EXPECTED_SAFETY_LINE
+    path = write_claude_md(home, "")
+    path.write_bytes(text.encode("latin-1"))
+    assert ss.import_lines(default_data_rules(home), home) == []
+
+
+def test_import_lines_finds_the_safety_line_when_the_file_wraps_it(tmp_path):
+    home = tmp_path / "home"
+    wrapped = textwrap.fill(EXPECTED_SAFETY_LINE, width=60)
+    assert "\n" in wrapped
+    write_claude_md(home, "@~/.claude/plugins/data/pe/rules.md\n%s\n" % wrapped)
+    assert ss.import_lines(default_data_rules(home), home) == []
+
+
+def test_import_lines_accepts_the_absolute_import(tmp_path):
+    home = tmp_path / "home"
+    data_rules = default_data_rules(home)
+    write_claude_md(home, "@%s\n%s\n" % (data_rules.as_posix(), EXPECTED_SAFETY_LINE))
+    assert ss.import_lines(data_rules, home) == []
+
+
+def test_import_line_escapes_a_space_in_the_path(tmp_path):
+    home = tmp_path / "home"
+    inside = home / ".claude" / "my data" / "rules.md"
+    outside = tmp_path / "data dir" / "rules.md"
+    assert ss.import_line(inside, home) == "@~/.claude/my\\ data/rules.md"
+    assert ss.import_line(outside, home) == "@" + outside.as_posix().replace(" ", "\\ ")
+
+
+def test_import_lines_takes_the_escaped_import_and_refuses_the_unescaped_one(tmp_path):
+    home = tmp_path / "home"
+    data_rules = tmp_path / "data dir" / "rules.md"
+    escaped = "@" + data_rules.as_posix().replace(" ", "\\ ")
+    write_claude_md(home, "%s\n%s\n" % (escaped, EXPECTED_SAFETY_LINE))
+    assert ss.import_lines(data_rules, home) == []
+    write_claude_md(home, "@%s\n%s\n" % (data_rules.as_posix(), EXPECTED_SAFETY_LINE))
+    assert ss.import_lines(data_rules, home) == [escaped]
 
 
 def test_import_lines_asks_only_for_the_missing_safety_line(tmp_path):
@@ -117,6 +168,15 @@ def test_build_output_speaks_to_claude_and_to_the_user():
     assert out["systemMessage"] == context
     assert "@~/x/rules.md" in context and EXPECTED_SAFETY_LINE in context
     assert "next session" in context
+
+
+def test_build_output_states_facts_and_gives_no_order_to_claude():
+    out = ss.build_output(False, ["@~/x/rules.md", EXPECTED_SAFETY_LINE])
+    assert out["hookSpecificOutput"]["additionalContext"] == (
+        "pragmatic-engineering: ~/.claude/CLAUDE.md does not carry these lines yet; "
+        "the user adds them after a dated backup of the file and a diff:\n"
+        "@~/x/rules.md\n" + EXPECTED_SAFETY_LINE
+    )
 
 
 @pytest.mark.parametrize("source", ["startup", "resume", "clear", "compact", "fork"])
@@ -160,11 +220,45 @@ def test_main_without_the_data_variable_explains_and_does_not_fail(tmp_path, mon
     assert "data folder" in proc.stdout
 
 
-def test_main_with_invalid_input_does_not_fail(tmp_path):
+@pytest.mark.parametrize("stdin", ["not json", "", "[1]", "null"])
+def test_main_does_the_same_work_whatever_the_input_says(tmp_path, stdin):
     home, data = tmp_path / "home", tmp_path / "data"
     home.mkdir()
     env = {"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT), "CLAUDE_PLUGIN_DATA": str(data)}
-    assert run_script(SCRIPT, [], cwd=home, stdin="not json", env=env).returncode == 0
+    proc = run_script(SCRIPT, [], cwd=home, stdin=stdin, env=env)
+    assert proc.returncode == 0, proc.stderr
+    assert (data / "rules.md").read_bytes() == (REPO_ROOT / "rules.md").read_bytes()
+    assert "the rules check failed" not in proc.stdout
+    assert "does not carry these lines yet" in proc.stdout
+
+
+def test_main_names_an_unreadable_claude_md_and_does_not_fail(tmp_path):
+    home, data = tmp_path / "home", tmp_path / "home" / ".claude" / "plugins" / "data" / "pe"
+    path = write_claude_md(home, "@~/.claude/plugins/data/pe/rules.md\n%s\n" % EXPECTED_SAFETY_LINE)
+    make_unreadable(path)
+    try:
+        proc = run_hook(home, data)
+    finally:
+        path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    assert proc.returncode == 0, proc.stderr
+    assert "the rules check failed (PermissionError" in proc.stdout
+    assert "does not carry these lines yet" not in proc.stdout
+
+
+def test_main_with_a_read_only_data_folder_explains_and_does_not_fail(tmp_path):
+    home, data = tmp_path / "home", tmp_path / "data"
+    home.mkdir()
+    data.mkdir()
+    (data / "rules.md").write_text("PE-RULES v1\nstale\n", encoding="utf-8")
+    data.chmod(stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        if os.access(str(data), os.W_OK):
+            pytest.skip("running with privileges that ignore file permissions")
+        proc = run_hook(home, data)
+    finally:
+        data.chmod(stat.S_IRWXU)
+    assert proc.returncode == 0, proc.stderr
+    assert "the rules check failed (PermissionError" in proc.stdout
 
 
 def test_main_with_the_rules_file_missing_from_the_plugin_explains_and_does_not_fail(tmp_path):
