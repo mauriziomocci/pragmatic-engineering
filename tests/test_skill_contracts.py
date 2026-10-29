@@ -90,16 +90,20 @@ CONTRACTS: Dict[str, Contract] = {
         phrases=(
             "THE THING:", "THE DECISION:", "no findings", "file:line", "a role, not a person",
             "delete existing code > do nothing > extend something that already exists > write something new",
-            "what breaks if it is deleted", "in doubt it is blocking", "blunt-reviewer", "round=2", "full=",
+            "what breaks if it is deleted", "in doubt the more severe class holds", "blunt-reviewer", "round=2", "full=",
             "Round 1", "Round 2", "superpowers:receiving-code-review", "adversarial-review-panel",
             "mcp-code-review",
             "<tip before the fixes>..<tip after the fixes>", "the range of the latest fixes",  # what each round gets
             "REPORT: none", "Docstrings are complete",
+            "C901, PLR0912, PLR0915 and PLR1702", "before a branch is integrated", "# taste-exempt: <reason>",
+            "Ruff has no rule for the 40 lines", "S1 or S2 in `quality-scoring`", "Every finding carries its lens and its class",
+            "five S3 give 7.5 with the verdict `pass`", "reads the score, not only the verdict",
         ),
         absent=(
             "Delivering work", "Pythonic",
             "whole range",  # round 1 is the range of the fixes, not of the work
             "a dependency that duplicates",  # not in the rule it summarises
+            "in doubt it is blocking",  # one scale: the classes of quality-scoring decide
         ),
     ),
     "adversarial-review-panel": Contract(
@@ -318,6 +322,25 @@ def test_cited_skills_exist(name):
 def test_extra_files(name):
     for extra in CONTRACTS[name].extra_files:
         assert (SKILLS_DIR / name / extra).is_file(), extra
+
+
+# What makes a finding blocking: the S1 and S2 examples of quality-scoring, which blunt-review must repeat.
+ONE_SCALE = {
+    "S1": (
+        "a scenario that fails", "an invariant contradicted by the code", "a security or privacy problem",
+        "an operation with no way back",
+    ),
+    "S2": ("a missing or tautological test on a behaviour that changed", "a document contradicted by the code"),
+}
+
+
+def test_blocking_findings_use_the_one_scale_of_quality_scoring():
+    blocking = sections(parse_frontmatter(skill_text("blunt-review"))[1])["Blocking findings"]
+    classes = sections(parse_frontmatter(skill_text("quality-scoring"))[1])["Classes"]
+    rows = {row.split("|")[1].strip()[:2]: row for row in classes.splitlines() if row.startswith("| S")}
+    for grade, phrases in ONE_SCALE.items():
+        for phrase in phrases:
+            assert phrase in blocking and phrase in rows[grade], (grade, phrase)
 
 
 def test_status_line_has_one_spelling():

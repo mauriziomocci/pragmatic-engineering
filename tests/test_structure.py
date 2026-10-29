@@ -423,6 +423,16 @@ def test_blunt_reviewer_body_states_the_a1_contract():
     assert len(text.splitlines()) < 200
 
 
+FINDINGS_LINE = "FINDINGS: <n> (<b> blocking; <lens> S1=<a> S2=<c> S3=<d>; ...)"
+
+
+def test_findings_line_has_one_spelling():
+    """The main session computes the scores from this line, so the agent and both references spell it alike."""
+    _, body = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
+    assert FINDINGS_LINE in body
+    assert [text for text in pages("reference") if "`%s`" % FINDINGS_LINE not in text] == []
+
+
 def test_blunt_reviewer_git_commands_carry_the_fixed_flags():
     _, body = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
     commands = [(m.group(1), m.group(0)) for m in GIT_COMMAND.finditer(body)]

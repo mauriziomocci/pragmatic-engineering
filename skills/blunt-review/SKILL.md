@@ -1,6 +1,6 @@
 ---
 name: blunt-review
-description: Use for every review, self-review included. Blunt review (senior reviewer mode) with the mandatory output shape, the taste lens, the burden of proof on adding, the eight-point review, lenses for design, tests, documentation, infrastructure and diagnosis, what makes a finding blocking, independent reviews with blunt-reviewer and the review cycle after fixes.
+description: Use for every review, self-review included. Blunt review (senior reviewer mode) with the mandatory output shape, the taste lens with its thresholds and two gates, the burden of proof on adding, the eight-point review, lenses for design, tests, documentation, infrastructure and diagnosis, what makes a finding blocking on the one scale of quality-scoring, independent reviews with blunt-reviewer and the review cycle after fixes.
 ---
 
 # blunt-review
@@ -53,7 +53,9 @@ A real review does not stop at bugs, which get fixed. It hunts the wrong structu
 - a property declared without a mechanical guard: an invariant written in a document and not enforced by a test gets violated silently;
 - code that should not have been written: a forwarding layer, an abstraction with one implementation, a parameter always passed the same value, a helper called once. Ask what breaks if it is deleted; if nothing does, that is the finding.
 
-Signals to justify or fix, not mechanical bans: functions over about 40 lines or nested deeper than 3 levels; logic duplicated across modules, such as a parallel twin of a helper, a permission check or an error path; names that do not read as a sentence with the API around them; comments that say what instead of why.
+Signals to justify or fix, not mechanical bans: functions over about 40 lines or nested deeper than 3 levels; the language's complexity checks, which in Python are the ruff rules C901, PLR0912, PLR0915 and PLR1702; a new catch-all exception handler; a new function that duplicates an existing one, or logic duplicated across modules, such as a parallel twin of a helper, a permission check or an error path; names that do not read as a sentence with the API around them; comments that say what instead of why. A long function without branching can stay when the review says why.
+
+Two gates apply these thresholds, before a commit is proposed and again before a branch is integrated: first a mechanical measurement of the changed files only, against the base branch; then a blunt review of the delta, with the thresholds written in its request. Each hit is fixed or justified in writing with `file:line`. Ruff has no rule for the 40 lines, so the measurement before the commit and the review count them. In a project with a CI the same mechanical check fails the pipeline on changed code, from the first pipeline of every new project. An exemption is a comment `# taste-exempt: <reason>` on the line that defines the function or opens the handler, and the review judges the reason. Elegance never removes a test, a guard, input validation or error handling.
 
 ## Systemic before local
 
@@ -133,9 +135,11 @@ The split is deliberate. The diagnosis is internal and gets the full review: is 
 
 ## Blocking findings
 
-A finding is blocking when it describes a scenario that fails, a security or privacy problem, a missing or tautological test on a behaviour that changed, an invariant or a document contradicted by the code, or an operation with no way back; in doubt it is blocking.
+A finding is blocking when it is of class S1 or S2 in `quality-scoring`, and there is one scale: a scenario that fails, an invariant contradicted by the code, a security or privacy problem and an operation with no way back are S1; a missing or tautological test on a behaviour that changed and a document contradicted by the code are S2; in doubt the more severe class holds. Every finding carries its lens and its class.
 
-The verdict is `changes` only when there is at least one blocking finding. Findings that are not blocking go into the commit of the fixes when there is one, otherwise into the merge request description together with the decision taken. A review whose coverage is `partial` is split into smaller parts, or the user accepts it; with `REPORT: none` nothing was reviewed because the range was invalid, and the remedy is a correct range.
+The verdict and the score come from the same findings and answer two questions. The verdict is `changes` only when there is at least one blocking finding: it says whether another round of review is needed. The score of each lens, computed with `quality-scoring`, says whether the work may be integrated: one S1 or S2 takes the lens below 8 by itself, while five S3 give 7.5 with the verdict `pass`. Whoever reads phase 6 reads the score, not only the verdict.
+
+Findings that are not blocking go into the commit of the fixes when there is one, otherwise into the merge request description together with the decision taken. A review whose coverage is `partial` is split into smaller parts, or the user accepts it; with `REPORT: none` nothing was reviewed because the range was invalid, and the remedy is a correct range.
 
 ## Independent review with blunt-reviewer
 
