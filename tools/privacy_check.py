@@ -272,6 +272,31 @@ def _scan_paths(repo: Path, sha: str, terms: Sequence[str], result: ScanResult) 
             result.findings.extend(scan_text(path, terms, "commit %s path %s" % (short, path)))
 
 
+def _scan_patch_lines(lines: Iterable[bytes], short: str, terms: Sequence[str], result: ScanResult) -> None:
+    """Scan the lines a patch adds, each with its path and its line number in the new file; list the binaries."""
+    path = "?"
+    new_line = 0
+    in_header = False
+    for raw in lines:
+        line = raw.decode("utf-8", "replace").rstrip("\r\n")
+        if line.startswith("diff --git "):
+            in_header = True
+        elif in_header and line.startswith("+++ "):
+            # git appends a tab to ---/+++ lines when the path has a space.
+            path = _strip_side_prefix(line[4:].rstrip("\t"))
+        elif line.startswith("Binary files ") and line.endswith(" differ"):
+            names = line[len("Binary files "):-len(" differ")]
+            result.skipped_binaries.append("%s %s" % (short, names))
+        elif line.startswith("@@ "):
+            in_header = False
+            match = _HUNK.match(line)
+            new_line = int(match.group(1)) if match else 0
+        elif not in_header and line.startswith("+"):
+            where = "commit %s %s:%d" % (short, path, new_line)
+            result.findings.extend(scan_text(line[1:], terms, where))
+            new_line += 1
+
+
 def _scan_patch(repo: Path, sha: str, terms: Sequence[str], result: ScanResult) -> None:
     """Stream one commit's patch (first parent for merges) and scan the lines it adds.
 
@@ -288,9 +313,6 @@ def _scan_patch(repo: Path, sha: str, terms: Sequence[str], result: ScanResult) 
         "--no-relative", "--root", "--diff-merges=first-parent",
         "-U0", "--inter-hunk-context=0", "--src-prefix=a/", "--dst-prefix=b/", sha,
     ]
-    path = "?"
-    new_line = 0
-    in_header = False
     with tempfile.TemporaryFile() as errors:
         try:
             proc = subprocess.Popen(command, cwd=str(repo), stdout=subprocess.PIPE, stderr=errors)
@@ -299,24 +321,7 @@ def _scan_patch(repo: Path, sha: str, terms: Sequence[str], result: ScanResult) 
                 "cannot run git show %s: %s" % (short, exc.strerror or exc.__class__.__name__)
             ) from exc
         assert proc.stdout is not None
-        for raw in proc.stdout:
-            line = raw.decode("utf-8", "replace").rstrip("\r\n")
-            if line.startswith("diff --git "):
-                in_header = True
-            elif in_header and line.startswith("+++ "):
-                # git appends a tab to ---/+++ lines when the path has a space.
-                path = _strip_side_prefix(line[4:].rstrip("\t"))
-            elif line.startswith("Binary files ") and line.endswith(" differ"):
-                names = line[len("Binary files "):-len(" differ")]
-                result.skipped_binaries.append("%s %s" % (short, names))
-            elif line.startswith("@@ "):
-                in_header = False
-                match = _HUNK.match(line)
-                new_line = int(match.group(1)) if match else 0
-            elif not in_header and line.startswith("+"):
-                where = "commit %s %s:%d" % (short, path, new_line)
-                result.findings.extend(scan_text(line[1:], terms, where))
-                new_line += 1
+        _scan_patch_lines(proc.stdout, short, terms, result)
         status = proc.wait()
         if status != 0:
             errors.seek(0)

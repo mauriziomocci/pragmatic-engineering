@@ -57,18 +57,23 @@ def test_repository_files_carry_no_generic_privacy_pattern():
     assert offenders == []
 
 
+def format_characters(text: str) -> List[str]:
+    """``<line>: U+<code>`` for every Unicode format character (category Cf) of ``text``."""
+    return [
+        "%d: U+%04X" % (number, ord(char))
+        for number, line in enumerate(text.splitlines(), 1)
+        for char in line
+        if unicodedata.category(char) == "Cf"
+    ]
+
+
 def test_repository_files_carry_no_invisible_characters():
     """A byte-order mark, a zero-width or a bidirectional control character hides text.
 
     They are Unicode format characters (category Cf); a test that needs one
     writes it as an escape sequence instead of the raw character.
     """
-    offenders = []
-    for name, text in repository_texts():
-        for number, line in enumerate(text.splitlines(), 1):
-            for char in line:
-                if unicodedata.category(char) == "Cf":
-                    offenders.append("%s:%d: U+%04X" % (name, number, ord(char)))
+    offenders = ["%s:%s" % (name, hit) for name, text in repository_texts() for hit in format_characters(text)]
     assert offenders == []
 
 

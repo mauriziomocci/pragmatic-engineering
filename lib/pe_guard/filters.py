@@ -42,7 +42,7 @@ word after xargs.
 """
 import re
 from pathlib import PurePath
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple
 from urllib.parse import unquote
 
 SHELL_TOOLS: Tuple[str, ...] = ("Bash", "PowerShell", "Monitor", "mcp__terminal__run_in_terminal")
@@ -223,17 +223,7 @@ def _api_calls(text: str) -> List[Tuple[List[str], bool]]:
     for statement in _STATEMENT.findall(text):
         words = [remove_quotes(word) for word in _WORD.findall(statement)]
         command = next((i for i, word in enumerate(words) if not _ASSIGNMENT.match(word)), len(words))
-        found, position = [], 0
-        while position < len(words):
-            end = position + 1
-            if _CLIENT.fullmatch(words[position]):
-                while end < len(words) and words[end].startswith("-"):  # an option, then its value if one follows
-                    end += 1
-                    if end < len(words) and words[end] != "api" and not words[end].startswith("-"):
-                        end += 1
-                if end < len(words) and words[end] == "api":
-                    found.append((position, end))
-            position = end
+        found = _client_api_spans(words)
         for (client, api), following in zip(found, [client for client, _ in found[1:]] + [len(words)]):
             plain = modelled and client == command and api == client + 1
             calls.append((words[client + 1:api] + words[api + 1:following], plain))
@@ -243,20 +233,46 @@ def _api_calls(text: str) -> List[Tuple[List[str], bool]]:
     return calls
 
 
-def _read_api_call(arguments: List[str]) -> Tuple[bool, bool]:
-    """Whether the parser can judge one gh/glab api call, and whether the call writes to pull or merge requests, or may.
+def _client_api_spans(words: List[str]) -> List[Tuple[int, int]]:
+    """The index of the client word and of the api word of every gh/glab api call among the words of one statement."""
+    spans: List[Tuple[int, int]] = []
+    position = 0
+    while position < len(words):
+        end = position + 1
+        if _CLIENT.fullmatch(words[position]):
+            end = _after_client_options(words, position)
+            if end < len(words) and words[end] == "api":
+                spans.append((position, end))
+        position = end
+    return spans
 
-    The arguments are read as gh's flag parser reads them (``-X PUT``, ``-XPUT``, ``-X=PUT`` with one ``=`` stripped,
-    ``--method=PUT``, and so for every option that takes a value), so ``-X GET`` inside a field value is a value, not
-    the method. The call can be judged when it has one endpoint and only options gh api has: an option it does not
-    have (a glab-only flag, bundled short options like ``-iX``) or a second positional argument leaves open which
-    argument is what, and so do PowerShell's arrays and splatting, which turn ``a,-X`` and ``@a`` into several
-    arguments.
 
-    The call writes when it sends a method other than GET, or fields without an explicit GET, and its text names pulls
-    or merge requests, percent-encoding decoded as the server decodes it; or when its endpoint is GraphQL (``graphql``,
-    ``/graphql``, a URL or a host ending in graphql) and it sends a mutation naming a pull or merge request, or a query
-    read from a file (``may``: a file cannot be inspected).
+def _after_client_options(words: List[str], client: int) -> int:
+    """The index of the first word after the options that follow the client word, each with its value if one follows."""
+    end = client + 1
+    while end < len(words) and words[end].startswith("-"):
+        end += 1
+        if end < len(words) and words[end] != "api" and not words[end].startswith("-"):
+            end += 1
+    return end
+
+
+class _ApiArguments(NamedTuple):
+    """The arguments of one gh/glab api call, read as gh's flag parser reads them."""
+
+    endpoint: Optional[str]
+    method: Optional[str]
+    fields: bool
+    from_file: bool
+    judged: bool
+
+
+def _parse_api_arguments(arguments: List[str]) -> _ApiArguments:
+    """Read the arguments as gh's flag parser does: ``-X PUT``, ``-XPUT``, ``-X=PUT`` with one ``=`` stripped,
+    ``--method=PUT``, and so for every option that takes a value.
+
+    ``judged`` is False when the call has an option gh api does not have or a second positional argument, or uses
+    PowerShell's arrays or splatting, because then which argument is what stays open.
     """
     endpoint = method = None
     judged = not any(argument.startswith("@") or ",-" in argument for argument in arguments)
@@ -280,14 +296,34 @@ def _read_api_call(arguments: List[str]) -> Tuple[bool, bool]:
             judged = False
         else:
             endpoint = argument
+    return _ApiArguments(endpoint, method, fields, from_file, judged)
+
+
+def _read_api_call(arguments: List[str]) -> Tuple[bool, bool]:
+    """Whether the parser can judge one gh/glab api call, and whether the call writes to pull or merge requests, or may.
+
+    The arguments are read as gh's flag parser reads them (``-X PUT``, ``-XPUT``, ``-X=PUT`` with one ``=`` stripped,
+    ``--method=PUT``, and so for every option that takes a value), so ``-X GET`` inside a field value is a value, not
+    the method. The call can be judged when it has one endpoint and only options gh api has: an option it does not
+    have (a glab-only flag, bundled short options like ``-iX``) or a second positional argument leaves open which
+    argument is what, and so do PowerShell's arrays and splatting, which turn ``a,-X`` and ``@a`` into several
+    arguments.
+
+    The call writes when it sends a method other than GET, or fields without an explicit GET, and its text names pulls
+    or merge requests, percent-encoding decoded as the server decodes it; or when its endpoint is GraphQL (``graphql``,
+    ``/graphql``, a URL or a host ending in graphql) and it sends a mutation naming a pull or merge request, or a query
+    read from a file (``may``: a file cannot be inspected).
+    """
+    parsed = _parse_api_arguments(arguments)
     call = unquote(" ".join(arguments))
-    if _GRAPHQL.fullmatch(unquote(endpoint or "")):
+    if _GRAPHQL.fullmatch(unquote(parsed.endpoint or "")):
         # GraphQL always travels as a POST, so only the query tells a read from a write.
-        writes = from_file or bool(_MUTATION.search(call) and _MR_ENDPOINT.search(call))
+        writes = parsed.from_file or bool(_MUTATION.search(call) and _MR_ENDPOINT.search(call))
     else:
         # With an explicit GET, fields are query parameters, not a request body.
-        writes = (method in _WRITE_METHODS or (fields and method != "get")) and bool(_MR_ENDPOINT.search(call))
-    return judged and endpoint is not None, writes
+        method = parsed.method
+        writes = (method in _WRITE_METHODS or (parsed.fields and method != "get")) and bool(_MR_ENDPOINT.search(call))
+    return parsed.judged and parsed.endpoint is not None, writes
 
 
 def _is_git_dir(part: str) -> bool:
@@ -388,6 +424,10 @@ def without_line_continuations(text: str) -> str:
     return _LINE_CONTINUATION.sub("", text)
 
 
+# (client, still before the subcommand word?, did an option come last, so that the next word may be its value?)
+_Reading = Tuple[str, bool, bool]
+
+
 def pr_command_kind(command: str) -> Optional[str]:
     """'create', 'update' or 'merge' for gh pr / glab mr commands in a shell text, for the first one found.
 
@@ -405,24 +445,28 @@ def pr_command_kind(command: str) -> Optional[str]:
     the two halves, so a verb cut in two by it is read whole. Quoted command words stay unseen, see the module
     docstring.
     """
-    # (client, still before the subcommand word?, did an option come last, so that the next word may be its value?)
-    readings: Set[Tuple[str, bool, bool]] = set()
+    readings: Set[_Reading] = set()
     for word in without_line_continuations(command or "").split():
         client = _CLIENT.fullmatch(word)
-        option = word.startswith("-")
-        verb = _PR_VERB.match(word)
         following = {(client.group(1).lower(), True, False)} if client else set()
-        for name, before_subcommand, after_option in readings:
-            subcommand, verbs = _PR_SUBCOMMANDS[name]
-            if before_subcommand:
-                if word.lower() == subcommand:
-                    following.add((name, False, False))
-                if option or after_option:
-                    following.add((name, True, option))
-            else:
-                if verb and verb.group(1).lower() in verbs:
-                    return _PR_KIND[verb.group(1).lower()]
-                if option or after_option:
-                    following.add((name, False, option))
+        for reading in readings:
+            kind, after_word = _read_word(reading, word)
+            if kind:
+                return kind
+            following.update(after_word)
         readings = following
     return None
+
+
+def _read_word(reading: _Reading, word: str) -> Tuple[Optional[str], List[_Reading]]:
+    """The kind of the command when ``word`` is the verb that completes ``reading``, else the readings it leaves."""
+    name, before_subcommand, after_option = reading
+    subcommand, verbs = _PR_SUBCOMMANDS[name]
+    option = word.startswith("-")
+    if before_subcommand:
+        after_word = [(name, False, False)] if word.lower() == subcommand else []
+        return None, after_word + ([(name, True, option)] if option or after_option else [])
+    verb = _PR_VERB.match(word)
+    if verb and verb.group(1).lower() in verbs:
+        return _PR_KIND[verb.group(1).lower()], []
+    return None, [(name, False, option)] if option or after_option else []
