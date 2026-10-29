@@ -627,6 +627,7 @@ EXPLAINED_POINTS = (
     "explain-rules-import", "explain-continuity", "explain-office-hours", "explain-communication",
 )
 GUARANTEE_LABELS = ("**Guaranteed by:**", "**Garantito da:**")  # README.md, README.it.md
+LENS_PARTS = ("lenses-roles", "lenses-together", "lenses-score", "lenses-gate")  # the subsections of explain-lenses
 
 
 def marked_blocks(text: str):
@@ -635,6 +636,12 @@ def marked_blocks(text: str):
     ids = parts[1::2]
     assert len(set(ids)) == len(ids), "a section id is repeated"
     return dict(zip(ids, parts[2::2]))
+
+
+def lens_group(text: str) -> str:
+    """The section on the lenses with its four subsections: one explained point, whose guarantee closes the last."""
+    blocks = marked_blocks(text)
+    return "".join(blocks[name] for name in ("explain-lenses",) + LENS_PARTS)
 
 
 def pages(section: str = ""):
@@ -680,6 +687,7 @@ def test_readmes_say_what_guarantees_each_explained_point():
         blocks = marked_blocks(text)
         explained = [name for name in blocks if name.startswith("explain-")]
         assert explained == list(EXPLAINED_POINTS), path.name
+        blocks["explain-lenses"] = lens_group(text)
         assert [name for name in explained if blocks[name].count(label) != 1] == [], path.name
 
 
@@ -810,8 +818,29 @@ def test_notice_credits_what_this_version_reuses():
         assert needed in text, needed
 
 
+def test_readmes_split_the_lenses_into_four_subsections_in_the_same_order():
+    for path, text in zip((README, README_IT), pages()):
+        ids = list(marked_blocks(text))
+        start = ids.index("explain-lenses") + 1
+        assert ids[start:start + len(LENS_PARTS)] == list(LENS_PARTS), path.name
+        assert [name for name in LENS_PARTS if not marked_blocks(text)[name].strip().startswith("#### ")] == []
+
+
+def test_readmes_give_the_score_formula_that_quality_scoring_defines():
+    """The pinned sentences of the READMEs state these figures, so a change of the skill turns this red."""
+    skill = skill_text("quality-scoring")
+    for rule in (
+        "each S1 takes 4 points away and caps the lens at 4",
+        "each S2 takes 1.5 points away and caps the lens at 7",
+        "each S3 takes 0.5 points away",
+        "the floor is 1, and the result is rounded down to the half point",
+        "So 8 means no S1, no S2 and at most four S3.",
+    ):
+        assert rule in skill, rule
+
+
 def test_readmes_date_the_lenses_and_call_them_rules():
-    for lenses, date in zip(pages("explain-lenses"), ("29 October 2026", "29 ottobre 2026")):
+    for lenses, date in zip(map(lens_group, pages()), ("29 October 2026", "29 ottobre 2026")):
         assert date in lenses and "`CALIBRATING`" in lenses
         assert "`quality-scoring`" in lenses and "`interface-quality`" in lenses
     for limits, words in zip(pages("limits"), ("not mechanisms", "non meccanismi")):
@@ -988,6 +1017,21 @@ GUIDED_SENTENCES = {
          "after them)",
          "`<tip before the fixes>..<tip after the fixes>` (dall'ultimo commit prima delle correzioni all'ultimo "
          "dopo)"),
+    ),
+    "lenses-score": (
+        ("Each lens starts from 10: each S1 takes away 4 points and caps the lens at 4, each S2 takes away 1.5 "
+         "points and caps it at 7, each S3 takes away 0.5 points, the lowest score is 1 and the result is rounded "
+         "down to the half point, so 8 means no S1, no S2 and at most four S3.",
+         "Ogni lente parte da 10: ogni S1 toglie 4 punti e limita la lente a 4, ogni S2 toglie 1,5 punti e la "
+         "limita a 7, ogni S3 toglie 0,5 punti, il voto minimo è 1 e il risultato si arrotonda per difetto al "
+         "mezzo punto, quindi 8 significa nessun S1, nessun S2 e al più quattro S3."),
+    ),
+    "lenses-gate": (
+        ("Choosing the deferral is the go to ship the work with a deferred defect, and that go stays with you: "
+         "during an autonomy the PM lens may only park an open blocking finding or propose a deferral to you.",
+         "Scegliere il rinvio è il via a consegnare il lavoro con un difetto rinviato, e quel via resta a te: "
+         "durante un'autonomia la lente PM può solo mettere da parte un rilievo bloccante ancora aperto o "
+         "proporti un rinvio."),
     ),
     "limits": (
         ("the autonomy (including the rule that the model sets its profile only when you ask)",
