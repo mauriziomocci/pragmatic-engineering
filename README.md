@@ -118,6 +118,8 @@ The exact lists of the hidden forms and of the `gh` flags are in the module docs
 
 Tests: `python3 -m pytest -q` from the repository root. Requirements: Python 3.9 or later, pytest 7 or later, git 2.32 or later. The end-to-end check of the import starts Claude Code, so the default run leaves it out (tests marked `e2e`); run it on request with `python3 -m pytest -m e2e tests/e2e -v`.
 
+The workflow `.github/workflows/ci.yml` runs the same suite on every push and pull request, on Python 3.9 and on the latest Python, and fails on a red. A second job runs ruff 0.12.8 with the rules C901, PLR0912, PLR0915 and PLR1702, in preview mode and with nesting limited to 3, on the Python files the change touches against the default branch, and fails on any finding. Two kinds of test do not run there: the end-to-end tests, which need Claude Code's credentials, and the check of the pinned superpowers names, which skips itself where superpowers is not installed. Ruff has no rule for functions over 40 lines: they are measured before the commit and in review.
+
 <!-- section: explanation -->
 ## How it works
 
@@ -201,7 +203,7 @@ The limits that describe Claude Code's own behaviour (which agents load `CLAUDE.
 - Superpowers installs by itself only when the official marketplace is already registered in your Claude Code; otherwise this plugin stays disabled until you add it (see the install guide).
 - The version is pinned in the manifest, so an update reaches you only when the version string changes and you ask for it, unless you turn auto-update on.
 - If you already have a plugin named superpowers from another marketplace, Claude Code's documentation says that both appear as enabled and that the hooks of one of them are left out; this has not been tried here.
-- Tried on macOS only.
+- The plugin was tried on macOS only; the CI runs the repository's tests on Linux.
 
 <!-- section: reference -->
 ## Reference

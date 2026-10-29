@@ -657,3 +657,30 @@ def test_notice_credits_what_this_version_reuses():
     text = NOTICE.read_text(encoding="utf-8")
     for needed in ("superpowers", "Jesse Vincent", "MIT", "continuity-note", "Matt Pocock", "diataxis.fr"):
         assert needed in text, needed
+
+
+CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+# The complexity check of the CI, with the four ruff rules that blunt-review names and nesting at most 3.
+COMPLEXITY_CHECK = (
+    "xargs -0 -r ruff check --preview --no-cache --select C901,PLR0912,PLR0915,PLR1702 "
+    "--config 'lint.pylint.max-nested-blocks = 3'"
+)
+
+
+def test_ci_runs_the_suite_on_the_oldest_and_the_latest_python():
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert 'python: ["3.9", "3.x"]' in text and "python -m pytest -q" in text
+    assert "e2e" in text and "superpowers" in text  # the comment that says what does not run there
+
+
+def test_ci_checks_the_complexity_of_the_changed_python_files():
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert '"ruff==0.12.8"' in text and COMPLEXITY_CHECK in text
+    assert "fetch-depth: 0" in text and "shell: bash" in text  # the base needs the history, the pipe needs pipefail
+    assert "--diff-filter=d" in text and "-- '*.py'" in text
+    assert "git hash-object -t tree /dev/null" in text  # a root commit has no parent to compare with
+
+
+def test_readmes_name_the_ci_workflow():
+    for path in (README, README_IT):
+        assert "`.github/workflows/ci.yml`" in path.read_text(encoding="utf-8"), path.name

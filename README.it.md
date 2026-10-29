@@ -118,6 +118,8 @@ Gli elenchi esatti delle forme nascoste e dei flag di `gh` sono nei docstring de
 
 Prove: `python3 -m pytest -q` dalla radice del repository. Requisiti: Python 3.9 o successivo, pytest 7 o successivo, git 2.32 o successivo. La prova da capo a fondo dell'import avvia Claude Code, quindi l'esecuzione predefinita la lascia fuori (prove marcate `e2e`); si lancia su richiesta con `python3 -m pytest -m e2e tests/e2e -v`.
 
+Il flusso `.github/workflows/ci.yml` esegue la stessa suite a ogni push e a ogni pull request, su Python 3.9 e sull'ultimo Python, e fallisce con un rosso. Un secondo job esegue ruff 0.12.8 con le regole C901, PLR0912, PLR0915 e PLR1702, in modalità preview e con l'annidamento limitato a 3, sui file Python che la modifica tocca rispetto al ramo predefinito, e fallisce con qualunque rilievo. Due tipi di prova lì non girano: le prove da capo a fondo, che chiedono le credenziali di Claude Code, e il controllo dei nomi fissati di superpowers, che si salta da sé dove superpowers non è installato. Ruff non ha una regola per le funzioni oltre le 40 righe: si misurano prima del commit e in revisione.
+
 <!-- section: explanation -->
 ## Come funziona
 
@@ -201,7 +203,7 @@ I limiti che descrivono il comportamento di Claude Code (quali agenti caricano `
 - Superpowers si installa da sé solo se il marketplace ufficiale è già registrato nel tuo Claude Code; altrimenti questo plugin resta disabilitato finché non lo aggiungi (vedi la guida all'installazione).
 - La versione è fissata nel manifesto, quindi un aggiornamento ti raggiunge solo quando cambia la stringa di versione e tu lo chiedi, a meno che tu attivi l'aggiornamento automatico.
 - Se hai già un plugin chiamato superpowers da un altro marketplace, la documentazione di Claude Code dice che entrambi risultano abilitati e che gli hook di uno dei due vengono lasciati fuori; qui non è stato provato.
-- Provato solo su macOS.
+- Il plugin è stato provato solo su macOS; la CI esegue le prove del repository su Linux.
 
 <!-- section: reference -->
 ## Riferimento
