@@ -147,6 +147,18 @@ CONTRACTS: Dict[str, Contract] = {
             "no quiz",
         ),
     ),
+    "continuity-note": Contract(
+        sections=(
+            "When this is the right tool", "What goes in (and what stays out)", "Document structure",
+            "Rules that make a handoff trustworthy", "Where to save it", "The progress note",
+            "Status line of deliverable files",
+        ),
+        phrases=(
+            "Redact secrets", "reference, don't duplicate", ".pe/progress.md", "STATUS: IN PROGRESS",
+            "STATUS: COMPLETE", "## Next steps",
+        ),
+        extra_files=("LICENSE",),
+    ),
 }
 
 
