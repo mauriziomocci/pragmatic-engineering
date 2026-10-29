@@ -111,12 +111,12 @@ Each kind of work fails in its own ways. These lenses come on top of the output 
 
 ### Documentation
 
-The dominant failure is describing a system that no longer exists.
+The dominant failure is describing a system that no longer exists. The first four checks below use the words of `documentation-quality`, which this agent cannot load, and the two copies stay equal.
 
-- A document contradicted by the code: check the claim against the source, not against the previous version of the document.
-- Counts and lists that drifted: "two skills" above four entries, a catalogue missing last month's addition.
-- The missing limit: a document that states only what works is marketing; say which case a control does not cover.
-- Instructions for a command that does not exist yet, or paths and flags nobody ran again.
+- A document describes the system as it is today: a claim is checked against the code, never against the previous version of the document.
+- A command, a flag or a path that does not exist is not described as present. Instructions for such a command, or paths and flags nobody ran again, are the finding.
+- A document that describes a control says what the control does not cover, because stating only what works is marketing.
+- Counts, lists and examples are checked against the code. Drift is "two skills" above four entries, or a catalogue missing last month's addition.
 - Structure before prose: a page mixing tutorial, how-to, reference and explanation is itself the finding (see `documentation-quality`).
 
 ### Infrastructure

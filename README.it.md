@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-pragmatic-engineering è un metodo di ingegneria per Claude Code, messo in ordine. Porta regole di lavoro a ogni agente di una sessione con una sola riga di import nel tuo `CLAUDE.md`, e aggiunge tredici skill che coprono le fasi e le tre corsie del lavoro, più un agente, `blunt-reviewer`, che rivede un intervallo git in modo indipendente e schietto. La versione 0.1.0 è il nucleo del metodo: le regole, le skill, il revisore e un hook `SessionStart` che tiene le regole al loro posto. Questa versione non ha nessun controllo meccanico sulle merge request: la revisione prima di una merge request è una regola per il modello, non un cancello.
+pragmatic-engineering è un metodo di ingegneria per Claude Code, messo in ordine. Porta regole di lavoro a ogni agente di una sessione con una sola riga di import nel tuo `CLAUDE.md`, e aggiunge skill che coprono le fasi e le tre corsie del lavoro, più un agente, `blunt-reviewer`, che rivede un intervallo git in modo indipendente e schietto. La versione 0.1.0 è il nucleo del metodo: le regole, le skill, il revisore e un hook `SessionStart` che tiene le regole al loro posto. Questa versione non ha nessun controllo meccanico sulle merge request: la revisione prima di una merge request è una regola per il modello, non un cancello.
 
 Questa pagina segue i quattro tipi di documentazione di Diataxis (<https://diataxis.fr>), una sezione per ciascuno: un tutorial, le guide pratiche, una spiegazione e un riferimento, con i limiti noti fra gli ultimi due. Per ogni parte del metodo la spiegazione dice che cosa la garantisce: un meccanismo, cioè codice che gira qualunque cosa faccia il modello, oppure solo una regola per il modello, cioè un testo che il modello deve seguire e che nessuno controlla.
 
@@ -261,7 +261,7 @@ Claude Code carica una skill quando il compito corrisponde alla sua descrizione,
 | `continuity-note` | La nota di continuità, la nota di avanzamento e la riga di stato dei file di consegna. | Quando il lavoro passa a un altro agente o a un'altra sessione, e a ogni traguardo nella sua forma breve. |
 | `safe-operations` | Verificare il bersaglio, prova a secco, dire il raggio d'azione e la via del ritorno, un via a parte per la produzione, mai interrogare in ciclo, verificare a ogni livello. | Prima di un comando o di uno strumento che cambia un sistema esterno e, con l'orario d'ufficio impostato, prima di un push, di una merge request, di una pipeline, di una modifica a un tracker o di un messaggio. |
 | `interface-quality` | I dieci principi di un'interfaccia semplice, le misure prima di un cambio (ogni stato, due temi, 375, 768 e 1280 px, WCAG AA misurato), lo studio UX prima del codice, la lente UX e la lente utente. | Ogni cambio di un'interfaccia, e delle risposte, dei messaggi e della documentazione di un'API. |
-| `documentation-quality` | I quattro tipi di documentazione e le due domande che li distinguono, la pagina d'ingresso, documenti che descrivono solo ciò che esiste e ne dicono i limiti, il manuale per chi usa un prodotto ogni giorno. | Scrivere, dividere o riorganizzare documentazione; non per docstring, commenti o messaggi a persone. |
+| `documentation-quality` | I quattro tipi di documentazione e le due domande che li distinguono, la pagina d'ingresso, documenti che descrivono solo ciò che esiste e ne dicono i limiti, il manuale di un'interfaccia di amministrazione. | Scrivere, dividere, riorganizzare o rivedere documentazione; non per docstring, commenti o messaggi a persone. |
 
 ### Agente
 
