@@ -32,7 +32,7 @@ specs/
         quickstart.md    (optional)
 ```
 
-There is one folder per feature. Folders are numbered in order (`001-`, `002-`) and carry a slug in kebab-case.
+There is one folder per feature. Folders are numbered in order (`001-`, `002-`), or carry a `YYYYMMDD-HHMMSS-` prefix when the feature was created with the `--timestamp` option, and then a slug in kebab-case.
 
 ## Commands by phase
 
@@ -70,8 +70,8 @@ The heavy gates of phases 2 and 6 stay whatever is materialised. Only the files 
 
 ## Constitution precedence
 
-The constitution is the project's configuration. Among the instruction layers of `development-workflow` it prevails over the user's personal configuration and over the plugin's default rules, for stack, commands and conventions. The user's explicit request prevails over it. A conflict with the five precedence rules goes to the user, never resolved silently. Where the constitution is silent on a topic, the lower layers apply. A project without a constitution runs without any spec-kit convention.
+The constitution is the project's configuration. Among the instruction layers of `development-workflow` it prevails over the user's personal configuration and over the plugin's default rules, for stack, commands and conventions. The user's explicit request prevails over it. A conflict with the five precedence rules goes to the user, never resolved silently. Where the constitution is silent on a topic, the lower layers apply.
 
 ## Templates
 
-If `.specify/templates/` holds project-local templates (`spec-template.md`, `plan-template.md`, `tasks-template.md`), they are used when the artifacts are written. Otherwise the artifacts follow the structure that the phases imply.
+spec-kit 0.8.9 looks a template up in this order: `.specify/templates/overrides/`, then the installed presets, then the installed extensions, then the core templates in `.specify/templates/` (`spec-template.md`, `plan-template.md`, `tasks-template.md`). A change that belongs to the project goes in `.specify/templates/overrides/`, so the core templates stay as the tool installed them.

@@ -26,7 +26,7 @@ A phase starts only when the gate before it is closed. No gate is skipped.
 | 2 Spec | Three-step design. `adversarial-review-panel` on costly decisions. The spec goes in the folder of the chosen chain. | heavy |
 | 3 Plan | `superpowers:writing-plans`, or `speckit-plan`. | light |
 | 4 Tasks | `superpowers:writing-plans` (titles `### Task N`), or `speckit-tasks` (lines `T001`). | light |
-| 5 Implementation | In sequence, with the engine of the chosen chain: `superpowers:subagent-driven-development` or `speckit-implement`. `superpowers:test-driven-development`. The project's suite before every commit. Documentation in the same commit. | escalation when a decision is missing |
+| 5 Implementation | In sequence, with the engine of the chosen chain: `superpowers:subagent-driven-development` or `speckit-implement`. `superpowers:test-driven-development`. The tests of the touched area before every commit. Documentation in the same commit. | escalation when a decision is missing |
 | 6 Validation | Full suite. `superpowers:verification-before-completion`. `blunt-reviewer` on the whole diff. With findings, the review cycle of `blunt-review`. | heavy |
 | 7 Closure | `superpowers:finishing-a-development-branch`, only after the gate of phase 6. The rest as in Closure. | none |
 
@@ -45,7 +45,7 @@ Hand-over points between the superpowers chain and this workflow:
 - `superpowers:subagent-driven-development` stops after the review of its last task.
 - Its final review of the branch is the phase 6 review, made by `blunt-reviewer` on Opus, so the same diff is not read twice.
 - In place of that final review, the coordinator reads the skill's ledger, lines marked `minor (deferred)`, `parked` and `Ruling:`. It carries those lines into the merge request description, as non-blocking findings with the decision taken. The rulings go to the user at the gate of phase 6.
-- Then the method moves to phase 6 and does not invoke `superpowers:finishing-a-development-branch`.
+- Then the method moves to phase 6 in place of the skill's own call of `superpowers:finishing-a-development-branch`, which comes only in phase 7.
 - The per-task reviewers of that skill stay as an internal check.
 
 ## Superpowers skills by phase

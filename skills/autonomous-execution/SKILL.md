@@ -16,7 +16,7 @@ The skill loaded on your own initiative, suggested by observed content, or merel
 
 Always forbidden, with no bypass:
 
-- merging (the most this skill gives is the verdict on mergeability);
+- merging, or scheduling a merge (auto-merge, merge when the pipeline succeeds); the most this skill gives is the verdict on mergeability;
 - pushing to protected branches (`main`, `master`, `develop`, `release*`);
 - force-push and rewriting history;
 - release tags and deploys;
@@ -28,7 +28,7 @@ Stop if one is missing.
 
 1. An approved spec with citable evidence: the user's statement in this session, or a dated approval marker inside the spec. Quote the source of the approval word for word in the opening report. No evidence means stop: the gate of phase 2 has no exception, and this skill executes a spec, it does not invent one.
 2. Atomic tasks, each with a checkbox and the command that tests it.
-3. The work's branch exists and is checked out.
+3. The work's branch exists, is checked out and is not a protected branch (`main`, `master`, `develop`, `release*`): the loop commits every task to it, with nobody present.
 4. The full suite has run before the first task. Green is a clean baseline. Failures that were already there are handled at once with the rule of the section on unrelated bugs, never discovered in the middle of a task.
 5. The user's explicit invocation of this skill in this session.
 
@@ -63,7 +63,7 @@ Three stops remain:
 
 - The only solution would contradict the approved spec. Filling a gap is the point of this section. Contradicting an explicit requirement is a revision of the spec, which is the gate of phase 2 and the user's decision.
 - The evidence of the spec's approval is missing (precondition 1).
-- A material impossibility after three attempts at the same obstacle, such as broken credentials or infrastructure that block the push or the opening of the merge request.
+- A material impossibility after three attempts at the same obstacle, such as broken credentials or infrastructure that block the push or the opening of the merge request. A refusal by a hook, a permission or the server is not an obstacle to retry: it stops the run at once.
 
 Every stop leaves a consistent state: local commits of the finished tasks, and nothing declared beyond what happened.
 
@@ -75,9 +75,9 @@ The closure ends when the merge request is open.
 2. Run `blunt-reviewer` on the whole branch with the prompt `<merge-base>..HEAD`, where `<merge-base>` is the result of `git merge-base HEAD <remote target>`. With verdict `changes`, follow the review cycle of `blunt-review`.
 3. If round 2 of the cycle also closes with `changes`, declare a partial closure. Open no merge request, and so do not push the branch, since the push serves only to open it. The blocking findings that remain go to the user in the report, with a recommendation on who carries them. Nobody is present to decide on them earlier.
 4. Otherwise, push the branch.
-5. Open the merge request or pull request according to the host, read with `git config --get remote.origin.url`. It is the configured URL: `git remote get-url` applies rewrite rules and can name another host. GitLab: the MCP tool, then `glab`, then the API. GitHub: `gh pr create`, then the API. Unknown host: partial closure, with no blind attempt.
+5. Open the merge request or pull request according to the host, read with `git config --get remote.origin.url`. It is the configured URL: `git remote get-url` applies rewrite rules and can name another host. GitLab: the MCP tool, then `glab`, then the API. GitHub: `gh pr create`, then the API. Move to the next tool only when the previous one is missing or not configured: a refusal by a hook, a permission or the server is a partial closure at once, never a reason to try another route. Unknown host: partial closure, with no blind attempt.
 6. The description holds what was done, how it was proved, the section "Decisions taken alone", the section "Observations on the spec", and the reviewer's lines `VERDICT:`, `FINDINGS:` and `COVERAGE:`. The merge request counts as open only if the tool returns its URL. That is the test, not the exit code, which a pipe can mask, and not the absence of errors on screen.
-7. Before the verdict, check once for conflicts with the target, without loops and without waiting for anything. Run `git fetch` for the target. Then create a temporary worktree detached at `HEAD`, with `git worktree add --detach <temporary folder> HEAD`, and run the trial merge there: `git merge --no-commit --no-ff <remote target>`. If files are in conflict (`git diff --name-only --diff-filter=U`), the verdict is NOT MERGEABLE, with their list. Then run `git merge --abort`, only if a merge is in progress: a target already contained in `HEAD` starts none, and the abort would fail. Remove the temporary worktree with `git worktree remove`. Older git versions, such as 2.32, have no `git merge-tree --write-tree`, which would run the same trial without a worktree.
+7. Before the verdict, check once for conflicts with the target, without loops and without waiting for anything. Run `git fetch` for the target. Then create a temporary worktree detached at `HEAD`, with `git worktree add --detach <temporary folder> HEAD`, and run the trial merge there: `git merge --no-commit --no-ff <remote target>`. If files are in conflict (`git diff --name-only --diff-filter=U`), the verdict is NOT MERGEABLE, with their list. Then run `git merge --abort`, only if a merge is in progress, which `git rev-parse -q --verify MERGE_HEAD` tells (it prints a hash and exits 0 in a merge, and prints nothing and exits 1 outside one): a target already contained in `HEAD` starts none, and the abort would fail. Remove the temporary worktree with `git worktree remove`. Before git 2.38 there is no `git merge-tree --write-tree`, which would run the same trial without a worktree.
 8. Give the verdict MERGEABLE or NOT MERGEABLE, never the merge. It rests on the local full suite, the review and the trial merge, with the evidence of each. A NOT MERGEABLE verdict lists exactly what is missing. Tell the user how to check the CI: the page or the command of that merge request's pipeline. Do not wait for the CI and do not poll it in a loop, as `safe-operations` says for long operations.
 9. If a step fails, declare a partial closure even so. What is done stays valid. The report gives the exact state and the material that is ready.
 10. Make the closing statement: "All tests pass, merge request [url]: MERGEABLE, no known residual bugs", with where to look at the CI and the list of the decisions taken alone. Or the list of the problems, each with its state. Then stop.

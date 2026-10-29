@@ -116,9 +116,11 @@ CONTRACTS: Dict[str, Contract] = {
             "blunt-reviewer", "semver", "safe-operations",
             "evidence-based-investigation", "spec-driven-layout", "continuity-note", "teach",
             "autonomous-execution", "blunt-review", "adversarial-review-panel",
+            "The tests of the touched area before every commit",  # one test scope per commit, as the task routine
+            "which comes only in phase 7",
         ),
         claude_md_sections=("Feature lane: phases and gates", "Instruction layers", "Rule cycle", "Shared files"),
-        absent=("phase-model-skill-mapping", "--no-ff", "Jira"),
+        absent=("phase-model-skill-mapping", "--no-ff", "Jira", "The project's suite before every commit"),
     ),
     "spec-driven-layout": Contract(
         sections=(
@@ -129,8 +131,14 @@ CONTRACTS: Dict[str, Contract] = {
             "specs/NNN-slug/", ".specify/memory/constitution.md", ".specify/templates/", "spec-kit 0.8.9",
             "speckit-specify", "speckit-clarify", "speckit-plan", "speckit-tasks", "speckit-implement",
             "development-workflow",
+            "YYYYMMDD-HHMMSS",  # the numbering of a project created with --timestamp
+            ".specify/templates/overrides/",  # first in spec-kit's template lookup order
         ),
-        absent=(".specify/specs", "global CLAUDE.md", "memory backup"),
+        absent=(
+            ".specify/specs", "global CLAUDE.md", "memory backup",
+            "runs without any spec-kit convention",  # a leftover of spec-kit as opt-in
+            "Otherwise the artifacts follow",  # specify init always fills .specify/templates/
+        ),
     ),
     "autonomous-execution": Contract(
         sections=(
@@ -143,9 +151,13 @@ CONTRACTS: Dict[str, Contract] = {
             "Decisions taken alone", "Observations on the spec", "MERGEABLE", "NOT MERGEABLE",
             "engineering-principles", "partial closure", "how to check the CI", "safe-operations",
             "conflicts with the target",
+            "is not a protected branch",  # an unattended run never commits its tasks onto main
+            "never a reason to try another route", "stops the run at once",  # a refusal is not a detour
+            "auto-merge",  # scheduling a merge is merging
+            "git 2.38", "git rev-parse -q --verify MERGE_HEAD",
         ),
         user_only=True,
-        absent=("git-commit-assistant", "/opt/homebrew", "Autorizzazione", "carve-out"),
+        absent=("git-commit-assistant", "/opt/homebrew", "Autorizzazione", "carve-out", "such as 2.32"),
     ),
     "teach": Contract(
         sections=(
