@@ -109,6 +109,18 @@ CONTRACTS: Dict[str, Contract] = {
         claude_md_sections=("Feature lane: phases and gates", "Instruction layers", "Rule cycle", "Shared files"),
         absent=("phase-model-skill-mapping", "--no-ff", "Jira"),
     ),
+    "spec-driven-layout": Contract(
+        sections=(
+            "When to use", "Where spec-kit keeps its files", "Commands by phase", "Phases and artifacts",
+            "How much to materialise", "Constitution precedence", "Templates",
+        ),
+        phrases=(
+            "specs/NNN-slug/", ".specify/memory/constitution.md", ".specify/templates/", "spec-kit 0.8.9",
+            "speckit-specify", "speckit-clarify", "speckit-plan", "speckit-tasks", "speckit-implement",
+            "development-workflow",
+        ),
+        absent=(".specify/specs", "global CLAUDE.md", "memory backup"),
+    ),
 }
 
 
