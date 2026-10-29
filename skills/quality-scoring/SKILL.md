@@ -49,9 +49,9 @@ In doubt between two classes, take the more severe one; the second reviewer lowe
 
 ## Mechanical thresholds
 
-Each breach is a finding of the class in brackets. The checks are named for any language, with Python as the example.
+Each breach is a finding of the class in brackets. The checks are named for any language, and Python is used for example.
 
-- `code`, `legacy` and `architecture`: a function over 40 lines or nested deeper than 3 (S3); the language's complexity checks, in Python the ruff rules C901, PLR0912, PLR0915 and PLR1702 (S3); a new catch-all handler (S3); a new lint suppression or `# taste-exempt:` comment without a reason (S3); a new entry in the ignore list of the import contracts (S2); a query to the data layer from a view or a template (S2).
+- `code`, `legacy` and `architecture`: a function over 40 lines or nested deeper than 3 (S3); the language's complexity checks, for example in Python the ruff rules C901, PLR0912, PLR0915 and PLR1702 (S3); a new catch-all handler (S3); a new lint suppression or `# taste-exempt:` comment without a reason (S3); a new entry in the ignore list of the import contracts (S2); a query to the data layer from a view or a template (S2).
 - `api`: a route without an explicit permission check for its kind of caller (S1 on a write, S2 on a read); an error body outside the single error shape (S2); a public route without a rate limit (S2); a delivered contract whose shape changed with neither the user's go given after the notice nor the autonomy exception that `engineering-principles` describes (S1); a schema or a document that disagrees with the code (S2).
 - `docs`: every claim checked against the code; each false instruction (S2); each drifted number or path (S3); a documentation build that fails in strict mode (S2).
 - `clarity`: for each touched page, the elements, choices and words counted before and after; growth with nothing removed (S3); more than one primary action or job on a page (S2); a dead end in an empty, error or missing-permission state (S2).

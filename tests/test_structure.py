@@ -274,6 +274,72 @@ def test_rules_point_to_a_home_that_holds_them(marker, skill, home):
     assert home in skill_text(skill)
 
 
+# Language neutrality: the plugin holds for every language, framework and database, so the rules name none and a skill
+# or an agent names one only as an example. Names that are also common English words here (Go, C, Spring, Rails as a
+# noun, Make) are left out on purpose: a whole-word, case-sensitive match on them would flag ordinary prose.
+LANGUAGE_NAMES = (
+    "Python", "Django", "Flask", "FastAPI", "pytest", "ruff", "mypy", "JavaScript", "TypeScript", "Node.js", "npm",
+    "React", "Vue", "Angular", "Java", "Kotlin", "Gradle", "Maven", "JUnit", "Golang", "Rust", "cargo", "C#", ".NET",
+    "dotnet", "PHP", "Laravel", "Composer", "C++", "Ruby", "Rails", "Swift", "PostgreSQL", "Postgres", "MySQL",
+    "SQLite", "MongoDB", "ESLint", "Prettier",
+)
+EXAMPLE_MARKERS = ("for example", "for instance", "such as", "e.g.")
+LANGUAGE_NAME = re.compile(
+    r"(?<!\w)(?:%s)(?!\w)" % "|".join(re.escape(name) for name in sorted(LANGUAGE_NAMES, key=len, reverse=True))
+)
+LIST_ITEM = re.compile(r"\s*(?:[-*]|\d+\.|\|)\s")
+SENTENCE_END = re.compile(r"(?<=[.!?])(?<!e\.g\.)(?<!i\.e\.)\s+")
+
+
+def sentences(text: str) -> List[str]:
+    """The sentences of ``text``: a blank line or a list item starts a new block, a wrapped line joins its block."""
+    blocks: List[List[str]] = [[]]
+    for line in text.splitlines():
+        if not line.strip() or LIST_ITEM.match(line):
+            blocks.append([])
+        if line.strip():
+            blocks[-1].append(line.strip())
+    return [part for block in blocks for part in SENTENCE_END.split(" ".join(block)) if part]
+
+
+def unmarked_language_sentences(text: str) -> List[str]:
+    """The sentences of ``text`` that name a language, framework, database or tool and carry no example marker."""
+    return [
+        sentence for sentence in sentences(text)
+        if LANGUAGE_NAME.search(sentence) and not any(marker in sentence.lower() for marker in EXAMPLE_MARKERS)
+    ]
+
+
+def test_rules_name_no_language_framework_database_or_tool():
+    assert LANGUAGE_NAME.findall(rules_text()) == []
+
+
+def test_skills_and_agents_name_a_language_only_as_an_example():
+    offenders = [
+        "%s: %s" % (path, sentence)
+        for path, text in repository_texts()
+        if (path.parts[0] == "skills" and path.name == "SKILL.md") or (path.parts[0] == "agents" and path.suffix == ".md")
+        for sentence in unmarked_language_sentences(text)
+    ]
+    assert offenders == []
+
+
+@pytest.mark.parametrize("added", ["Python", "pytest", "C#", "C++", ".NET", "Node.js", "SQLite"])
+def test_the_neutrality_check_catches_a_name_and_accepts_it_with_a_marker(added):
+    unmarked = "The suite runs with %s on every push." % added
+    assert unmarked_language_sentences(unmarked) == [unmarked]
+    assert unmarked_language_sentences("The suite runs, for example, with %s on every push." % added) == []
+    assert LANGUAGE_NAME.findall(rules_text() + "\n- A rule that names %s." % added) == [added]
+
+
+def test_the_neutrality_check_reads_a_sentence_across_wrapped_lines_and_stops_at_a_list_item():
+    wrapped = "Use the tools of the stack,\nfor example pytest\nand its plugins. Done."
+    assert unmarked_language_sentences(wrapped) == []
+    assert unmarked_language_sentences("- for example one\n- Python by itself") == ["- Python by itself"]
+    assert unmarked_language_sentences("It names Python. For example, it names Go.") == ["It names Python."]
+    assert unmarked_language_sentences("It names Pythonic style and cargoes.") == []
+
+
 def test_rules_stay_short():
     # Every session and every subagent reads the whole file: each added word is paid for in all of them.
     # 9,500 again since the subtraction pass of 29 October 2026: the autonomy of user-away had raised the cap

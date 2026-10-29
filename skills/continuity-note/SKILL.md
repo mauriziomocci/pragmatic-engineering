@@ -70,7 +70,7 @@ on orders.created_at; the slow query is in reports/daily.py:88".
 
 ## Key decisions and why
 Choices already made and the reasoning, so the reader doesn't relitigate them
-or accidentally undo them. "Chose Postgres over SQLite because the test suite
+or accidentally undo them. For example, "Chose Postgres over SQLite because the test suite
 needs concurrent writes."
 
 ## Gotchas and constraints
@@ -83,7 +83,7 @@ NOT the contents. "src/auth/jwt.py - token logic, the bug is here."
 
 ## How to verify
 Commands or checks that confirm the current state, and how the reader will
-know future work succeeded. "Run `pytest tests/auth/`; all green = done."
+know future work succeeded. For example, "Run `pytest tests/auth/`; all green = done."
 
 ## Open questions
 Unknowns and decisions that need the user. Be explicit that these are blockers
