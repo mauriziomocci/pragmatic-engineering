@@ -106,7 +106,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "acb34cdffe36d1ecd9f61c750d155fb1ce23688d49cdd01bcb837e388ca34c5d"
+RULES_SHA256 = "066d5b86d7401ec320a9903ad2b1f392b8077dcf3228715e1d30eed521395378"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -116,7 +116,7 @@ MIGRATION_REQUIREMENTS = {
     "no-bug-left": ("Every agent", "closure statement"),
     "english-identifiers": ("Every agent", "in English"),
     "docs-same-commit": ("Every agent", "same commit"),
-    "heavy-gates": ("Main session", "explicit written approval", "an autonomy naming spec approval"),
+    "heavy-gates": ("Main session", "explicit written approval", "an autonomy opening spec approval"),
     "suite-before-commit": ("Every agent", "zero failures"),
     "evidence": ("Every agent", "never taken as evidence"),
     "reuse": ("Every agent", "the reuse statement"),
@@ -124,7 +124,7 @@ MIGRATION_REQUIREMENTS = {
     "candour": ("Every agent", "proposals to validate"),
     "scope": ("Every agent", "no emoji anywhere", "no documentation file unless asked"),
     "taste-gates": ("Every agent", "about 40 lines"),
-    "api-contract": ("Every agent", "never changes shape", "or by a profile while no client uses it"),
+    "api-contract": ("Every agent", "never changes shape", "or by a profile while unreleased and unused"),
     "isolated-sessions": ("Every agent", "stops only what it started"),
     "office-hours": (
         "Every agent", "git config --get pe.officeHours", "explicit authorisation in chat", "and never pushed",
@@ -137,7 +137,7 @@ MIGRATION_REQUIREMENTS = {
     "user-away": (
         "Main session", "wait for the user", "git config --local --get pe.autonomy",
         "unless the user's words or the profile narrow them", "deletions outside the worktree",
-        "in chat with a hard stop", "by profile only, a contract no client uses",
+        "in chat with a hard stop", "by profile only, an unreleased contract no client uses",
     ),
     "budget": ("Main session", "15% of the weekly limit"),
 }

@@ -53,12 +53,14 @@ CONTRACTS: Dict[str, Contract] = {
             "the tests of the touched area", "before the push", "proven with the real command it runs",
             "stops only what it started, by name",
             "an autonomy profile that opens `contract`",
-            "until the API's first release or first client",
+            "until the API's first release or first client, the lenses may change its shape, with its documentation and "
+            "the test's delivered schema updated in the same commit, and the spec quotes the decision log entry",
             # independent work that needs its own context: one phrase, so the order is pinned too,
             # and no claim that every host has the tools
             "in this order: a new session through the desktop app's `start_session` tool, when the session has it; "
             "otherwise a `spawn_task` chip the user opens with one click; otherwise a subagent in its own git worktree",
             "not of the plugin, which cannot add them",
+            "other than a lens or a review, which stays the subagent its skill names",
         ),
         absent=(
             "the suite that the project's configuration declares", "Dependencies point one way",
@@ -152,16 +154,19 @@ CONTRACTS: Dict[str, Contract] = {
             '"contract unchanged"', '"fix or defer?"', "transactions, security, permissions and migrations",
             "under 10-15 lines",
             # the autonomy: who opens it, where it is read, what it opens and what never moves
-            "Gate 2 has one", "for a named piece of work or day with a hard stop",
-            "git config --local --get pe.autonomy", "a profile only the user sets",
-            "never from the global value or a versioned file", "a review cycle closed on `pass`",
-            "unless the user's words or the profile narrow them",
-            "by profile only, `contract`", "nothing else moves", "the user's answer in chat prevails",
+            "Gate 2 has one: an autonomy that opens `spec`.", "for a named piece of work or day with a hard stop",
+            "git config --local --get pe.autonomy", "a profile only the user sets, never an agent even when asked",
+            "never from the global value or a versioned file",
+            "hands the lenses `spec` (gate 2, after the three-step design and a review cycle closed on `pass`), "
+            "`schema` (data model) and `design` (outside the window) unless the user's words or the profile narrow them, "
+            "and, by profile only, `contract`",
+            "deletions outside the worktree, merges into protected branches", "nothing else moves", "the user's answer in chat prevails",
         ),
         claude_md_sections=("Feature lane: phases and gates", "Instruction layers", "Rule cycle", "Shared files"),
         absent=(
             "phase-model-skill-mapping", "--no-ff", "Jira", "The project's suite before every commit",
             "Gate 2 has none",  # an autonomy that opens spec is its one exception
+            "`publish`",  # publishing is not an opening of the plugin, a declared difference from the master
         ),
     ),
     "spec-driven-layout": Contract(
@@ -247,7 +252,8 @@ CONTRACTS: Dict[str, Contract] = {
             "`06-21` runs from 06:00 up to 20:59",  # the end hour is outside the window
             # one command re-creates every commit with both dates of the moment; a cherry-pick of the range keeps one
             '`git rebase --exec "git commit --amend --no-edit --reset-author" <base>`',
-            "An autonomy that opens `design`", "the authorisation with its hard stop is still needed",
+            "An autonomy that opens `design`",
+            "the authorisation with its hard stop is still needed: a chat autonomy that covers the night is one, a profile never is",
         ),
     ),
     "quality-scoring": Contract(
