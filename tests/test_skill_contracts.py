@@ -136,6 +136,17 @@ CONTRACTS: Dict[str, Contract] = {
         user_only=True,
         absent=("git-commit-assistant", "/opt/homebrew", "Autorizzazione", "carve-out"),
     ),
+    "teach": Contract(
+        sections=(
+            "When to use", "Brief explanations", "Teaching code in six layers", "Resuming a session",
+            "What teach never does",
+        ),
+        phrases=(
+            "is it clear?", "The problem", "The path through the code", "Choices and discarded alternatives",
+            "A concrete case", "Limits", "How to check it yourself", "continuity-note", "file::function",
+            "no quiz",
+        ),
+    ),
 }
 
 
