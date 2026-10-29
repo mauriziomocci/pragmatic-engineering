@@ -955,6 +955,7 @@ def test_readmes_open_with_a_table_of_contents_that_lists_the_same_headings():
         assert [anchor for _, anchor in entries if anchor not in headings] == [], path.name
         listed = {anchor for _, anchor in entries}
         assert [anchor for anchor, (level, _) in headings.items() if level <= 3 and anchor not in listed] == []
+        assert [anchor for indent, anchor in entries if indent != 2 * (headings[anchor][0] - 2)] == [], path.name
         tables.append([(indent,) + headings[anchor] for indent, anchor in entries])
     assert tables[0] == tables[1]
 
@@ -1152,17 +1153,13 @@ GUIDED_SENTENCES = {
          "Nessuna lente è d'accordo per principio: ciascuna ricontrolla le affermazioni dell'altra su screenshot, "
          "misure e codice prima di accettarle,"),
         ("A disagreement that survives the round before the spec goes to you, or to the PM lens under an autonomy "
-         "that opens `spec`, and to the project's designer where there is one, with both positions written down; it "
-         "survives when both lenses can claim the point, for example a control that the UX lens wants on the page "
-         "and that the review lens shows would run a query growing with the data. One that comes up later, inside "
-         "an approved spec, goes to the PM lens whenever you are away, with no autonomy needed, as the next "
-         "paragraph says.",
+         "that opens `spec`, and to the project's designer where there is one, with both positions written down; the "
+         "skills do not define yet when a disagreement survives. One that comes up later, inside an approved spec, "
+         "goes to the PM lens whenever you are away, with no autonomy needed, as the next paragraph says.",
          "Un disaccordo che resiste al giro prima della spec va a te, o alla lente PM sotto un'autonomia che apre "
-         "`spec`, e al designer del progetto dove c'è, con le due posizioni scritte; resiste quando entrambe le "
-         "lenti possono rivendicare il punto, per esempio un controllo che la lente UX vuole nella pagina e che, "
-         "secondo la lente di revisione, eseguirebbe una query che cresce con i dati. Uno che nasce dopo, dentro una "
-         "spec approvata, va alla lente PM ogni volta che non ci sei, senza bisogno di un'autonomia, come dice il "
-         "paragrafo seguente."),
+         "`spec`, e al designer del progetto dove c'è, con le due posizioni scritte; le skill non definiscono ancora "
+         "quando un disaccordo resiste. Uno che nasce dopo, dentro una spec approvata, va alla lente PM ogni volta che "
+         "non ci sei, senza bisogno di un'autonomia, come dice il paragrafo seguente."),
     ),
     "explain-working-rules": (
         ("A delivered API contract, one that is merged, running in an environment or documented to the developers of "
