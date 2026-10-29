@@ -1,4 +1,5 @@
 """Structure checks on the repository itself."""
+import hashlib
 import json
 import re
 import subprocess
@@ -93,12 +94,8 @@ EXPECTED_RULE_MARKERS = {
     "Main session": {"explain", "no-quiz", "lanes", "heavy-gates", "backup-diff-go"},
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
-RULES_PREAMBLE = (
-    "These are the working rules the user chose. The user's own instructions (their CLAUDE.md files, "
-    "project configuration and explicit requests) prevail on conflict; a conflict with the five "
-    "precedence rules goes to the user and is never resolved silently. Most rules name the skill "
-    "where they live; the others live here."
-)
+# Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
+RULES_SHA256 = "759fd6cac39a3a5ac0ea8569c1ce77f17246062ee187606146f9aafaeccc21e8"
 # Requirements of spec section 17.3: each one must sit in the block that reaches the right agents
 # and say what the spec asks, so a rule gutted under its marker fails as well.
 MIGRATION_REQUIREMENTS = {
@@ -133,13 +130,12 @@ def test_rules_start_with_the_marker_line():
     assert rules_text().splitlines()[0] == "PE-RULES v1"
 
 
-def test_rules_preamble_is_the_marker_the_title_and_one_sentence():
-    head = rules_text().split("\n## ", 1)[0]
-    assert [line for line in head.splitlines() if line.strip()] == [
-        "PE-RULES v1",
-        "# pragmatic-engineering: working rules",
-        RULES_PREAMBLE,
-    ]
+def test_rules_text_is_the_reviewed_one():
+    # Hashed after read_text, so a CRLF checkout does not change the digest.
+    digest = hashlib.sha256(rules_text().encode("utf-8")).hexdigest()
+    assert digest == RULES_SHA256, (
+        "rules.md changed: review the change, then update RULES_SHA256 in the same commit (now %s)" % digest
+    )
 
 
 def test_rules_have_the_common_core_and_two_blocks():
