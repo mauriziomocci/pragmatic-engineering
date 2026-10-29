@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Re-create, inside the office hours, the commits made outside them and never pushed.
 
-Usage: python3 recreate_night_commits.py <base>, run in the repository to fix. ``<base>`` is the last commit already
-pushed, or the branch point when the branch was never pushed.
+Usage: python3 recreate_night_commits.py <base>, run from any directory of the repository to fix. ``<base>`` is the
+last commit already pushed, or the branch point when the branch was never pushed.
 
 The script refuses to start, and changes nothing, in this order: no office hours set (``pe.officeHours``); a base
 that is not a commit, or nothing above it; uncommitted changes in tracked files; an untracked file, ignored or not, on a
@@ -15,6 +15,7 @@ the first that fails. A failure prints the way back and never runs it.
 Every day uses the hours of ``pe.officeHours``, weekends and ``pe.holidays`` included, so a commit re-created on a
 weekend morning carries a date inside the weekday hours, which the date check accepts.
 """
+import os
 import re
 import subprocess
 import sys
@@ -209,6 +210,7 @@ def verify(recreation: Recreation) -> None:
 
 def recreate(base: str, now: datetime) -> str:
     """Run every step in order and return the backup tag; the first failure raises ``Refusal``."""
+    os.chdir(git("rev-parse", "--show-toplevel").strip())  # git lists paths under the current folder only
     window = office_window()
     shas = commits_to_re_create(base)
     require_clean_tree()

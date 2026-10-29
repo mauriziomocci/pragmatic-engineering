@@ -185,6 +185,38 @@ def test_it_refuses_a_file_a_night_commit_adds_and_a_later_one_untracks(tmp_path
     assert not (repo / ".git" / "rebase-merge").exists()
 
 
+def add_then_untrack_below_a_folder(tmp_path: Path) -> Tuple[Path, str]:
+    """The case above, plus a folder ``sub`` that exists in the range: the script is then run from inside it."""
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"config.local": "committed by mistake\n", "sub/inner.txt": "inner\n"}, "add both")
+    untrack_and_ignore(repo)
+    return repo, base
+
+
+def test_it_refuses_from_a_subdirectory_too_when_an_untracked_file_is_elsewhere(tmp_path):
+    """``git ls-files --others`` lists only what is under the current folder, in paths relative to it."""
+    repo, base = add_then_untrack_below_a_folder(tmp_path)
+    before = head(repo)
+    proc = run_script(SCRIPT, [base], repo / "sub")
+    assert proc.returncode == 1 and "untracked file" in proc.stderr, proc.stdout + proc.stderr
+    assert head(repo) == before and tags(repo) == ""
+    assert (repo / "config.local").read_text(encoding="utf-8") == "committed by mistake\n"
+
+
+def test_a_run_from_a_subdirectory_on_a_clean_range_passes(tmp_path):
+    repo, base = add_then_untrack_below_a_folder(tmp_path)
+    (repo / "config.local").unlink()
+    proc = run_script(SCRIPT, [base], repo / "sub")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert tags(repo).startswith("night-backup-")
+
+
+def test_a_directory_outside_any_repository_ends_in_a_refusal(tmp_path):
+    proc = run_script(SCRIPT, ["HEAD"], tmp_path)
+    assert proc.returncode == 1 and "Traceback" not in proc.stderr, proc.stdout + proc.stderr
+    assert "git" in proc.stderr
+
+
 def test_a_file_the_range_deletes_and_that_is_gone_from_disk_does_not_stop_it(tmp_path):
     repo, base = stop_tracking_and_ignore(tmp_path)
     (repo / "config.local").unlink()
