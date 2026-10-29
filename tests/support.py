@@ -87,6 +87,8 @@ SPECKIT_COMMANDS: FrozenSet[str] = frozenset((
     "speckit-specify", "speckit-clarify", "speckit-plan", "speckit-tasks", "speckit-implement",
     "speckit-analyze", "speckit-checklist", "speckit-constitution",
 ))
+# Tools a skill names that are installed apart from this plugin and from superpowers.
+EXTERNAL_NAMES: FrozenSet[str] = frozenset(("mcp-code-review",))
 FUTURE_COMPONENTS: Tuple[str, ...] = (
     "team-lead", "memory-hygiene", "pe-guard", "review-start", "review-show",
     "mr-opened", "PE-REVIEW", "PE-REVIEW-RESULT",
@@ -135,8 +137,29 @@ def _distance(a: str, b: str) -> int:
     return previous[-1]
 
 
-def unknown_references(text: str) -> List[str]:
-    """Problems with the skills, agents and commands that ``text`` cites; empty when all is well."""
+def _backticked_problems(text: str, strict: bool) -> List[str]:
+    """Problems with the backticked names of ``text``; see ``unknown_references`` for ``strict``."""
+    problems: List[str] = []
+    local = set(A1_SKILLS) | set(AGENTS)
+    for token in _BACKTICKED.findall(text):
+        if token in SUPERPOWERS_SKILLS:
+            problems.append("`%s` must be written superpowers:%s" % (token, token))
+        elif _SKILL_LIKE.fullmatch(token) and token not in (local | SPECKIT_COMMANDS):
+            near = sorted(k for k in local | SUPERPOWERS_SKILLS if _distance(token, k) <= 2)
+            if near:
+                problems.append("`%s` looks like a misspelt %s" % (token, near[0]))
+            elif strict and token not in EXTERNAL_NAMES:
+                problems.append("`%s` is not a skill, agent or spec-kit command of this plugin" % token)
+    return problems
+
+
+def unknown_references(text: str, strict: bool = False) -> List[str]:
+    """Problems with the skills, agents and commands that ``text`` cites; empty when all is well.
+
+    Not strict, a backticked hyphenated word is flagged only when it is within edit distance 2
+    of a real name. Strict flags every one that is not a component: for a skill, which cites
+    its siblings by bare name, so any other hyphenated backticked word is a broken reference.
+    """
     problems: List[str] = []
     local = set(A1_SKILLS) | set(AGENTS)
     for namespace, name in _NAMESPACED.findall(text):
@@ -146,15 +169,7 @@ def unknown_references(text: str) -> List[str]:
     for name in _SPECKIT.findall(text):
         if name not in SPECKIT_COMMANDS:
             problems.append("%s is not a spec-kit %s command" % (name, SPECKIT_TESTED_VERSION))
-    for token in _BACKTICKED.findall(text):
-        if token in SUPERPOWERS_SKILLS:
-            problems.append("`%s` must be written superpowers:%s" % (token, token))
-            continue
-        if not _SKILL_LIKE.fullmatch(token) or token in local or token in SPECKIT_COMMANDS:
-            continue
-        near = sorted(k for k in local | SUPERPOWERS_SKILLS if _distance(token, k) <= 2)
-        if near:
-            problems.append("`%s` looks like a misspelt %s" % (token, near[0]))
+    problems.extend(_backticked_problems(text, strict))
     for name in FUTURE_COMPONENTS:
         if re.search(r"(?<![\w-])%s(?![\w-])" % re.escape(name), text):
             problems.append("%s does not exist in this version" % name)

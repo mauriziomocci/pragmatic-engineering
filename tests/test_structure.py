@@ -246,6 +246,25 @@ def test_reference_checker_catches_what_it_must():
     assert unknown_references("use `superpowers:writing-plans`, `blunt-review` and `pre-push`") == []
 
 
+def test_strict_reference_checker_rejects_a_skill_like_name_that_is_no_component():
+    text = "use `blunt-reviewing`, `review-skill`, `code-review`, `blunt-review`, `speckit-plan` and `pre-push`"
+    assert unknown_references(text, strict=True) == [
+        "`%s` is not a skill, agent or spec-kit command of this plugin" % name
+        for name in ("blunt-reviewing", "review-skill", "code-review", "pre-push")
+    ]
+    assert unknown_references(text) == []
+
+
+def test_strict_reference_checker_lets_a_skill_name_an_external_server():
+    assert unknown_references("the `mcp-code-review` server", strict=True) == []
+
+
+def test_strict_reference_checker_keeps_the_misspelling_message():
+    assert unknown_references("use `blunt-reviews`", strict=True) == [
+        "`blunt-reviews` looks like a misspelt blunt-review"
+    ]
+
+
 def test_reference_checker_flags_a_bare_superpowers_name():
     assert unknown_references("use `brainstorming`") == [
         "`brainstorming` must be written superpowers:brainstorming"

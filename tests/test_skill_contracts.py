@@ -239,7 +239,9 @@ def test_claude_md_only_as_a_configuration_layer(name):
 
 @pytest.mark.parametrize("name", sorted(CONTRACTS))
 def test_cited_skills_exist(name):
-    assert unknown_references(skill_text(name)) == []
+    # Strict: a skill cites its siblings by bare name, so a backticked name that is no component
+    # (a typo too far from any real name for the distance check) is a broken reference.
+    assert unknown_references(skill_text(name), strict=True) == []
 
 
 @pytest.mark.parametrize("name", sorted(CONTRACTS))
