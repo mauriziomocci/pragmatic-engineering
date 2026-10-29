@@ -766,10 +766,11 @@ def test_readmes_list_disable_model_invocation_as_a_fourth_mechanism():
 
 def test_readmes_define_a_blocking_test_finding_as_blunt_review_does():
     english = "a missing or tautological test on a behaviour that changed"
-    italian = "una prova mancante o tautologica su un comportamento cambiato"
+    italian = "un test mancante o tautologico su un comportamento cambiato"
     assert english in skill_text("blunt-review")
     for text, phrase in zip(pages("explain-review"), (english, italian)):
         assert phrase in text
+    assert "una prova mancante" not in "".join(pages())  # "prova" means evidence; a test is a "test" (class S2)
 
 
 def test_tutorial_quotes_the_notice_the_hook_prints():
@@ -837,20 +838,37 @@ def test_readmes_split_the_lenses_into_four_subsections_in_the_same_order():
         ids = list(marked_blocks(text))
         start = ids.index("explain-lenses") + 1
         assert ids[start:start + len(LENS_PARTS)] == list(LENS_PARTS), path.name
-        assert [name for name in LENS_PARTS if not marked_blocks(text)[name].strip().startswith("#### ")] == []
+        assert [name for name in LENS_PARTS if not marked_blocks(text)[name].strip().startswith("#### ")] == [], path.name
+
+
+SCORING_RULES = (  # the steps of the score in quality-scoring, in the order the skill applies them
+    "apply, in this order",
+    "each S1 takes 4 points away and caps the lens at 4",
+    "each S2 takes 1.5 points away and caps the lens at 7",
+    "each S3 takes 0.5 points away",
+    "the floor is 1, and the result is rounded down to the half point",
+    "So 8 means no S1, no S2 and at most four S3.",
+)
+
+
+def rules_out_of_order(skill: str) -> List[str]:
+    """The steps of ``SCORING_RULES`` missing from ``skill``, or all of them when they are there but out of order."""
+    missing = [rule for rule in SCORING_RULES if rule not in skill]
+    places = [skill.find(rule) for rule in SCORING_RULES]
+    return missing or ([] if places == sorted(places) else list(SCORING_RULES))
 
 
 def test_readmes_give_the_score_formula_that_quality_scoring_defines():
-    """The pinned sentences of the READMEs state these figures, so a change of the skill turns this red."""
+    """The pinned sentences of the READMEs state these figures and their order, so a change of the skill turns this red."""
+    assert rules_out_of_order(skill_text("quality-scoring")) == []
+
+
+def test_the_score_formula_check_sees_a_step_removed_or_moved():
+    """The example of the READMEs holds only if the cap of the S2 comes before the S3 is taken off."""
     skill = skill_text("quality-scoring")
-    for rule in (
-        "each S1 takes 4 points away and caps the lens at 4",
-        "each S2 takes 1.5 points away and caps the lens at 7",
-        "each S3 takes 0.5 points away",
-        "the floor is 1, and the result is rounded down to the half point",
-        "So 8 means no S1, no S2 and at most four S3.",
-    ):
-        assert rule in skill, rule
+    s2, s3 = SCORING_RULES[2], SCORING_RULES[3]
+    assert rules_out_of_order(skill.replace(s2, "")) == [s2]
+    assert rules_out_of_order(skill.replace(s2, "@").replace(s3, s2).replace("@", s3)) == list(SCORING_RULES)
 
 
 def test_readmes_date_the_lenses_and_call_them_rules():
@@ -872,6 +890,73 @@ def test_readmes_follow_the_lenses_with_the_life_cycle_in_three_modes():
         table = [line for line in block.splitlines() if line.startswith("|")]
         assert len(table) == 2 + 4, path.name  # header, separator and one row each for gate 2, away, push and stop
         assert {line.count("|") for line in table} == {5}, path.name  # a label column and the three modes
+
+
+def normal_mode_steps(block: str):
+    """The nine numbered steps of normal mode, by number: each from its number up to the next step or heading."""
+    steps = re.finditer(r"^(\d)\. \*\*.*?(?=^\d\. \*\*|^#### |\Z)", block, re.MULTILINE | re.DOTALL)
+    return {int(step.group(1)): step.group(0) for step in steps}
+
+
+def test_readmes_put_the_round_of_the_ux_and_review_lenses_in_phase_2_as_development_workflow_does():
+    assert "one round of the UX lens and the review lens first" in skill_text("development-workflow")
+    for text, phrase in zip(pages("lifecycle"), ("the UX lens proposes where the button goes",
+                                                 "la lente UX propone dove va il pulsante")):
+        steps = normal_mode_steps(text)
+        assert sorted(steps) == list(range(1, 10))
+        assert phrase in steps[3] and phrase not in steps[2]
+
+
+def test_readmes_say_the_page_is_for_one_person_and_where_a_team_stands():
+    said = (
+        "This page is written for one person who installs the plugin on their own machine. The plugin keeps its "
+        "state there, in its data folder, in your git configuration and in the `.pe/` folders that git ignores, so "
+        "by itself it shares nothing between the people of a team; the skills do not say yet who gives the written "
+        "approval of a gate when a team works together.",
+        "Questa pagina è scritta per una persona che installa il plugin sulla propria macchina. Il plugin tiene lì "
+        "il suo stato, nella propria cartella dei dati, nella tua configurazione di git e nelle cartelle `.pe/` che "
+        "git ignora, quindi da solo non condivide nulla fra le persone di un team; le skill non dicono ancora chi "
+        "dia l'approvazione scritta di un cancello quando lavora un team.",
+    )
+    for text, sentence in zip(pages(), said):
+        assert sentence in text.split("<!-- section:")[0]
+
+
+TOC_ENTRY = re.compile(r"^( *)- \[[^\]]+\]\(#([^)]+)\)$", re.MULTILINE)
+HEADING = re.compile(r"^(#{2,4}) (.+)$")
+
+
+def github_anchor(heading: str) -> str:
+    """The anchor GitHub gives a heading: lower case, punctuation dropped, each space turned into a hyphen."""
+    return re.sub(r"[^\w -]", "", heading.lower()).replace(" ", "-")
+
+
+def headings_by_anchor(text: str):
+    """Anchor to (level, id of the section it sits in) for every heading below the title, code fences skipped."""
+    found, section, fenced = {}, "", False
+    for line in text.splitlines():
+        fenced ^= line.lstrip().startswith("```")
+        marker, heading = SECTION_ID.match(line), (None if fenced else HEADING.match(line))
+        section = marker.group(1) if marker else section
+        if heading:
+            anchor = github_anchor(heading.group(2))
+            assert anchor not in found, "two headings give the same anchor: " + anchor
+            found[anchor] = (len(heading.group(1)), section)
+    return found
+
+
+def test_readmes_open_with_a_table_of_contents_that_lists_the_same_headings():
+    """Each page lists every heading down to the third level, and the two lists point at the same places."""
+    tables = []
+    for path, text in zip((README, README_IT), pages()):
+        headings = headings_by_anchor(text)
+        entries = [(len(indent), anchor) for indent, anchor in TOC_ENTRY.findall(text.split("<!-- section:")[0])]
+        assert entries, path.name
+        assert [anchor for _, anchor in entries if anchor not in headings] == [], path.name
+        listed = {anchor for _, anchor in entries}
+        assert [anchor for anchor, (level, _) in headings.items() if level <= 3 and anchor not in listed] == []
+        tables.append([(indent,) + headings[anchor] for indent, anchor in entries])
+    assert tables[0] == tables[1]
 
 
 RECREATION_STEPS = (  # the four checks of recreate_night_commits.py in its order, as each README words them
@@ -971,9 +1056,23 @@ GUIDED_SENTENCES = {
          "L'etichetta `PE:lanes` sta in `rules.md` e in nient'altro che una sessione carichi, non nella riga di rete "
          "di sicurezza e non in una skill, quindi una risposta giusta mostra che l'import ha raggiunto la sessione."),
         ('ending with "is it clear?" in your language;', "chiudendo con «is it clear?» nella tua lingua;"),
+        ("it writes a short frame of the work, which is the PM lens at work: a pre-mortem of three lines, the why, "
+         "the reuse statement and the smallest version;",
+         "scrive un breve inquadramento del lavoro, cioè la lente PM al lavoro: un pre-mortem di tre righe, il "
+         "perché, la dichiarazione di riuso e la versione più piccola;"),
+        ("`THE THING:`, where `FINDINGS:` counts the findings by lens and by class, for example `code S1=0 S2=0 "
+         "S3=1`.",
+         "`THE THING:`, dove `FINDINGS:` conta i rilievi per lente e per classe, per esempio `code S1=0 S2=0 "
+         "S3=1`."),
         ('(you can also say it in your own language)', "(anche in italiano)"),
     ),
     "install": (
+        ("Requirements: Claude Code, `python3` 3.9 or later on your path (the hook is a Python script), and git (the "
+         "reviewer reads git ranges). The reviewer and the UX lens run on Opus and the user lens on Sonnet, so the "
+         "account you use must be able to run both.",
+         "Requisiti: Claude Code, `python3` 3.9 o successivo nel percorso di ricerca (l'hook è uno script Python) e "
+         "git (il revisore legge intervalli git). Il revisore e la lente UX girano su Opus e la lente utente su "
+         "Sonnet, quindi l'account che usi deve poter usare entrambi i modelli."),
         ("The time in the file name keeps a second copy from overwriting the first, and the second command, run "
          "after the edit, prints the two lines you added, each marked with `>`.",
          "L'ora nel nome del file impedisce a una seconda copia di sovrascrivere la prima, e il secondo comando, "
@@ -1017,8 +1116,67 @@ GUIDED_SENTENCES = {
          "plugin» qui sopra dice come toglierle."),
     ),
     "explain-office-hours": (
-        ("re-created inside the weekday hours of the window, weekends included",
-         "si ricreano dentro le ore feriali della finestra, fine settimana compresi"),
+        ("are re-created inside its weekday hours, even when the re-creation happens on a weekend morning, with "
+         "their real dates, never with faked ones",
+         "si ricreano dentro le sue ore feriali, anche quando la ricreazione avviene di sabato o di domenica "
+         "mattina, con le loro date vere, mai falsate"),
+    ),
+    "explain-gates": (
+        ("The final gate has one exception, `autonomous-execution`, which only you can start, by naming it:",
+         "Il cancello finale ha un'eccezione, `autonomous-execution`, che puoi avviare solo tu, nominandola:"),
+        ("Its closure has no step that scores the lenses, and the description of its merge request holds the "
+         "reviewer's lines and no scores; the skills do not say yet whether a lens under 8 makes the run NOT "
+         "MERGEABLE.",
+         "La sua chiusura non ha un passo che dia i voti alle lenti, e la descrizione della sua merge request "
+         "contiene le righe del revisore e nessun voto; le skill non dicono ancora se una lente sotto 8 renda "
+         "l'esecuzione NOT MERGEABLE."),
+    ),
+    "explain-lenses": (
+        ("The first three, the PM, UX and review lenses, frame, propose and attack. The fourth, the user lens, only "
+         "tries the work as a person would.",
+         "Le prime tre, le lenti PM, UX e di revisione, inquadrano, propongono e attaccano. La quarta, la lente "
+         "utente, si limita a provare il lavoro come lo proverebbe una persona."),
+    ),
+    "lenses-roles": (
+        ("(the skills do not say where that file lives, what it holds or what happens when the project has none)",
+         "(le skill non dicono dove stia quel file, che cosa contenga né che cosa succeda quando il progetto non ne "
+         "ha uno)"),
+        ('until the project has a script that makes them, its findings carry the label "from templates, not seen on '
+         'screen".',
+         "finché il progetto non ha uno script che li produca, i suoi rilievi portano l'etichetta «from templates, "
+         "not seen on screen»."),
+    ),
+    "lenses-together": (
+        ("No lens agrees by default: each re-checks the other's claims against the screenshots, the measurements and "
+         "the code before accepting them,",
+         "Nessuna lente è d'accordo per principio: ciascuna ricontrolla le affermazioni dell'altra su screenshot, "
+         "misure e codice prima di accettarle,"),
+        ("A disagreement that survives the round before the spec goes to you, or to the PM lens under an autonomy "
+         "that opens `spec`, and to the project's designer where there is one, with both positions written down; it "
+         "survives when both lenses can claim the point, for example a control that the UX lens wants on the page "
+         "and that the review lens shows would run a query growing with the data. One that comes up later, inside "
+         "an approved spec, goes to the PM lens whenever you are away, with no autonomy needed, as the next "
+         "paragraph says.",
+         "Un disaccordo che resiste al giro prima della spec va a te, o alla lente PM sotto un'autonomia che apre "
+         "`spec`, e al designer del progetto dove c'è, con le due posizioni scritte; resiste quando entrambe le "
+         "lenti possono rivendicare il punto, per esempio un controllo che la lente UX vuole nella pagina e che, "
+         "secondo la lente di revisione, eseguirebbe una query che cresce con i dati. Uno che nasce dopo, dentro una "
+         "spec approvata, va alla lente PM ogni volta che non ci sei, senza bisogno di un'autonomia, come dice il "
+         "paragrafo seguente."),
+    ),
+    "explain-working-rules": (
+        ("A delivered API contract, one that is merged, running in an environment or documented to the developers of "
+         "a client, never changes shape:",
+         "Un contratto API consegnato, cioè già unito, in esecuzione in un ambiente o documentato agli sviluppatori "
+         "di un client, non cambia mai forma:"),
+    ),
+    "explain-communication": (
+        ("Your own ideas are proposals to validate, not instructions to record: the model tests each against "
+         "feasibility, cost, sequence and risk and says first where it does not convince, then records it with "
+         "those caveats.",
+         "Le tue idee sono proposte da validare, non istruzioni da registrare: il modello mette alla prova ciascuna "
+         "su fattibilità, costo, sequenza e rischio e dice per prima cosa dove non lo convince, poi la registra con "
+         "quelle riserve."),
     ),
     "office-hours": (
         ("Set them once, from a terminal or by asking the model in a session (it shows you each command and runs it "
@@ -1066,34 +1224,103 @@ GUIDED_SENTENCES = {
          "dopo)"),
     ),
     "explanation": (
-        ("Ten of the parts below each end with a line that says what guarantees the part; the life cycle in three "
-         "modes is the one part without it, because it only follows the others.",
-         "Dieci delle parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte; il "
-         "ciclo di vita in tre modalità è l'unica parte che non ce l'ha, perché non fa che seguire le altre."),
+        ("Ten of the parts below each end with a line that says what guarantees the part; two have none: the life "
+         "cycle in three modes, because it only follows the others, and the note on languages and frameworks, "
+         "which only says where good practices come from.",
+         "Dieci delle parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte; due non "
+         "ce l'hanno: il ciclo di vita in tre modalità, perché non fa che seguire le altre, e la nota sui linguaggi "
+         "e sui framework, che dice solo da dove vengono le buone pratiche."),
     ),
     "lifecycle": (
         ("Normal mode is the name for work without an autonomy: you supervise it, and you approve the spec at "
          "gate 2 and the final validation at gate 6.",
          "La modalità normale è il nome del lavoro senza un'autonomia: lo segui tu, e approvi tu la spec al "
          "cancello 2 e la validazione finale al cancello 6."),
+        ("Each light gate is a quick coherence check, and after the last one the whole list is read once more with "
+         "fresh eyes before any code (`development-workflow`).",
+         "Ogni cancello leggero è un rapido controllo di coerenza, e dopo l'ultimo si rilegge l'intero elenco una "
+         "volta ancora a mente fresca prima di qualunque codice (`development-workflow`)."),
+        ("Each lens the job touches gets a score from `quality-scoring`: here the new code (`code`), the old report "
+         "code it touches (`legacy`), the route of the export with its permission check (`api`) and the three "
+         "interface lenses (`clarity`, `aspect`, `accessibility`), measured on the real page in both themes.",
+         "Ogni lente che il lavoro tocca riceve un voto da `quality-scoring`: qui il codice nuovo (`code`), il "
+         "vecchio codice del rapporto che tocca (`legacy`), la rotta dell'esportazione con il suo controllo dei "
+         "permessi (`api`) e le tre lenti dell'interfaccia (`clarity`, `aspect`, `accessibility`), misurate sulla "
+         "pagina vera in entrambi i temi."),
+        ('You open it in chat, for this piece of work and with a hard stop: "go on without me until 18:00, but '
+         'leave the data model to me."',
+         "La apri in chat, per questo lavoro e con un orario di fine: «vai avanti senza di me fino alle 18:00, ma "
+         "il modello dei dati lo decido io.»"),
+        ("That opens the approval of the spec (`spec`) and design outside your office hours (`design`, which does "
+         "nothing inside them), and your words keep the data model (`schema`) out.",
+         "Questo apre l'approvazione della spec (`spec`) e la progettazione fuori dal tuo orario d'ufficio "
+         "(`design`, che dentro l'orario non fa nulla), e le tue parole lasciano fuori il modello dei dati "
+         "(`schema`)."),
+        ("The steps are those of normal mode, and what changes is who decides; where the autonomy opens `spec`, a "
+         "review cycle on the spec also comes before gate 2.",
+         "I passi sono quelli della modalità normale, e cambia chi decide; dove l'autonomia apre `spec`, prima del "
+         "cancello 2 viene anche un ciclo di revisione sulla spec."),
+        ("The plugin defines no opening for publishing, so nothing is pushed without your go unless your own rules "
+         "define one.",
+         "Il plugin non definisce nessuna apertura per la pubblicazione, quindi senza il tuo via non si spinge "
+         "nulla, salvo che le tue regole ne definiscano una."),
         ("An autonomy does not open gate 6: the work comes to it ready and waits for you there.",
          "Un'autonomia non apre il cancello 6: il lavoro ci arriva pronto e lì aspetta te."),
+        ("With the spec approved and the tasks written, the model follows them to the letter, one task at a time and "
+         "test first.",
+         "Con la spec approvata e i compiti scritti, il modello li segue alla lettera, un compito alla volta e con "
+         "il test prima."),
+        ("| Only with your go, and nothing to a remote that is not personal outside your office hours; a merge is "
+         "always yours | Nothing without your go; the plugin opens no push, only an opening your own rules define "
+         "does | Nothing to a remote that is not personal: local commits only, re-created in the morning; to a "
+         "personal remote, only with your go |",
+         "| Solo con il tuo via, e niente verso un remoto che non sia personale fuori dal tuo orario d'ufficio; un "
+         "merge è sempre tuo | Niente senza il tuo via; il plugin non apre nessun push, lo apre solo un'apertura che "
+         "le tue regole definiscono | Niente verso un remoto che non sia personale: solo commit locali, ricreati al "
+         "mattino; verso un remoto personale, solo con il tuo via |"),
+        ("| Approved before the night starts; as by day only if the autonomy opens `design` |",
+         "| Approvata prima che la notte cominci; come di giorno solo se l'autonomia apre `design` |"),
+        ("| At the hard stop you gave, or at gate 6 |", "| All'orario di fine che hai dato, oppure al cancello 6 |"),
     ),
     "lenses-score": (
+        ("Eight things can get a score (`quality-scoring` calls each of them a lens too, besides the four role "
+         "lenses), each with a short id:",
+         "Otto cose possono ricevere un voto (anche `quality-scoring` chiama lente ciascuna di esse, oltre alle "
+         "quattro lenti di ruolo), ciascuna con una sigla breve:"),
+        ("Before reviewing, whoever scores writes this perimeter:",
+         "Prima di rivedere, chi assegna i voti scrive questo perimetro:"),
+        ("S2, serious, means that it holds today and breaks with normal use or with growth: for example a missing or "
+         "tautological test (a test that cannot fail) on a behaviour that changed, or a document contradicted by "
+         "the code, such as an instruction that no longer works, which `quality-scoring` classes S2 and not S1.",
+         "S2, seria, significa che oggi regge e si rompe con l'uso normale o con la crescita: per esempio un test "
+         "mancante o tautologico (un test che non può fallire) su un comportamento cambiato, o un documento "
+         "contraddetto dal codice, come un'istruzione che non funziona più, che `quality-scoring` classifica S2 e "
+         "non S1."),
         ("Each lens starts from 10: each S1 takes away 4 points and caps the lens at 4, each S2 takes away 1.5 "
          "points and caps it at 7, each S3 takes away 0.5 points, the lowest score is 1 and the result is rounded "
          "down to the half point, so 8 means no S1, no S2 and at most four S3.",
          "Ogni lente parte da 10: ogni S1 toglie 4 punti e limita la lente a 4, ogni S2 toglie 1,5 punti e la "
          "limita a 7, ogni S3 toglie 0,5 punti, il voto minimo è 1 e il risultato si arrotonda per difetto al "
          "mezzo punto, quindi 8 significa nessun S1, nessun S2 e al più quattro S3."),
-        ("For example, a lens with one S2 and one S3 scores 6.5, because the steps apply in this order: the S2 "
-         "takes 10 down to 8.5, its cap brings that to 7, and then the S3 takes 0.5 away. One serious finding takes "
-         "a lens below 8 by itself.",
-         "Per esempio, una lente con un S2 e un S3 prende 6,5, perché i passi si applicano in quest'ordine: l'S2 "
-         "porta 10 a 8,5, il suo limite lo riporta a 7, e poi l'S3 toglie 0,5. Un solo rilievo serio porta da solo "
-         "una lente sotto 8."),
+        ("The steps apply in the order written, S1 first, then S2, then S3, whatever the order of the report. For "
+         "example, a lens with one S2 and one S3 scores 6.5, because the S2 takes 10 down to 8.5, its cap brings "
+         "that to 7, and then the S3 takes 0.5 away; with the S3 first the same two findings would give 7, which is "
+         "why the order is fixed. `quality-scoring` does not say yet what the cap does with two findings of the "
+         "same class (two S2 give 7 if the cap comes after both and 5.5 if it comes after each), so the example "
+         "above keeps one of each. One serious finding takes a lens below 8 by itself.",
+         "I passi si applicano nell'ordine scritto, prima gli S1, poi gli S2, poi gli S3, qualunque sia l'ordine "
+         "del rapporto. Per esempio, una lente con un S2 e un S3 prende 6,5, perché l'S2 porta 10 a 8,5, il suo "
+         "limite lo riporta a 7, e poi l'S3 toglie 0,5; con l'S3 per primo gli stessi due rilievi darebbero 7, ed è "
+         "per questo che l'ordine è fisso. `quality-scoring` non dice ancora che cosa faccia il limite con due "
+         "rilievi della stessa classe (due S2 danno 7 se il limite viene dopo entrambi e 5,5 se viene dopo "
+         "ciascuno), quindi l'esempio qui sopra ne usa uno per classe. Un solo rilievo serio porta da solo una "
+         "lente sotto 8."),
     ),
     "lenses-gate": (
+        ("`quality-scoring` does not say yet whether a finding that a later round saw fixed still counts in the "
+         "score, nor which round's `FINDINGS:` line the gate reads.",
+         "`quality-scoring` non dice ancora se un rilievo che un giro successivo ha visto corretto conti ancora nel "
+         "voto, né quale riga `FINDINGS:` di quale giro legga il cancello."),
         ("Choosing the deferral is the go to ship the work with a deferred defect, and that go stays with you: "
          "during an autonomy the PM lens may only park an open blocking finding or propose a deferral to you.",
          "Scegliere il rinvio è il via a consegnare il lavoro con un difetto rinviato, e quel via resta a te: "
@@ -1116,6 +1343,10 @@ GUIDED_SENTENCES = {
          "da esso e mai pubblicati, e lascia nel repository un tag `night-backup-<YYYYMMDD-HHMMSS>`."),
         ("runs each `git config` command only after your yes, the autonomy profile included.",
          "esegue ogni comando `git config` solo dopo il tuo sì, profilo di autonomia compreso."),
+        ("To run it by hand: `python3 <the folder of safe-operations>/recreate_night_commits.py <base>`, from any "
+         "directory of the repository.",
+         "Per eseguirlo a mano: `python3 <la cartella di safe-operations>/recreate_night_commits.py <base>`, da una "
+         "cartella qualsiasi del repository."),
     ),
 }
 
