@@ -266,3 +266,31 @@ def test_hooks_json_runs_the_session_start_script_with_a_short_timeout():
         "timeout": 10,
     }
     assert (REPO_ROOT / "hooks" / "session_start.py").is_file()
+
+
+MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
+MARKETPLACE = REPO_ROOT / ".claude-plugin" / "marketplace.json"
+
+
+def test_plugin_manifest():
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    assert set(manifest) == {
+        "name", "version", "description", "author", "repository", "license", "keywords", "dependencies",
+    }
+    assert manifest["name"] == "pragmatic-engineering"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", manifest["version"])
+    assert manifest["license"] == "MIT"
+    assert manifest["author"]["name"]
+    assert manifest["repository"] == "https://github.com/mauriziomocci/pragmatic-engineering"
+    assert manifest["dependencies"] == ["superpowers@claude-plugins-official"]
+    assert len(manifest["description"]) <= 200
+
+
+def test_marketplace_lists_the_plugin_at_the_root_and_allows_its_dependencies():
+    market = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    assert market["name"] == "pragmatic-engineering"
+    assert market["owner"]["name"]
+    assert market["plugins"] == [{"name": manifest["name"], "source": "."}]
+    needed = {dep.split("@", 1)[1] for dep in manifest["dependencies"] if "@" in dep}
+    assert needed <= set(market["allowCrossMarketplaceDependenciesOn"])
