@@ -749,7 +749,8 @@ def test_office_hours_guide_gives_every_key_and_the_way_to_turn_it_off():
             assert command.format(account=account) in text.splitlines(), command
         for needed in ("pe.weekendFrom", "pe.holidays", "easter+1", "pe.personalRemotes", "`none`"):
             assert needed in text, needed
-        assert "git config --get pe.officeHours" in text
+        assert "git config --show-origin --get-regexp '^pe\\.'" in text
+        assert "`git config --global --add pe.personalRemotes git@github.com:<%s>/`" % account in text
 
 
 def test_office_hours_guide_says_the_end_hour_is_outside_the_window():
@@ -760,26 +761,197 @@ def test_office_hours_guide_says_the_end_hour_is_outside_the_window():
 def test_autonomy_guide_sets_the_key_in_one_repository_only():
     """The model reads only the value local to the repository: a global one would open every repository."""
     for text in pages("autonomy"):
-        assert "git config --local pe.autonomy spec,schema,design,contract" in text.splitlines()
         assert "`git config --local --unset pe.autonomy`" in text
+        assert "`git config --local --get pe.autonomy`" in text
     assert [text for text in pages() if "--global pe.autonomy" in text] == []
+
+
+def test_autonomy_example_opens_no_api_contract():
+    """A reader who copies the line must not open the API contract without having decided it."""
+    for text in pages("autonomy"):
+        lines = [line for line in text.splitlines() if line.startswith("git config --local pe.autonomy")]
+        assert lines == ["git config --local pe.autonomy spec,schema"]
+    for section in pages("configure"):
+        row = next(line for line in section.splitlines() if line.startswith("| `pe.autonomy` |"))
+        assert row.endswith("| `spec,schema` |")
+
+
+# Whole sentences of the guided configuration: English, then Italian, in the section that holds them.
+GUIDED_SENTENCES = {
+    "tutorial": (
+        ("Steps 1 and 3 run in a terminal, and from step 4 you type into the session. Do step 3 yourself: the rules "
+         "are not loaded yet, so nothing makes the session back up the file first.",
+         "I passi 1 e 3 si eseguono in un terminale, e dal passo 4 scrivi nella sessione. Il passo 3 fallo tu: le "
+         "regole non sono ancora caricate, quindi nulla fa fare prima alla sessione una copia del file."),
+        ("prints two notes, both in English.", "stampa due avvisi, entrambi in inglese."),
+        ("and the safety line, a long line that starts with",
+         "e la riga di rete di sicurezza, una riga lunga che comincia con"),
+        ("Silence alone does not show that the hook ran; to check, run `ls -l` on the path that follows the `@` in "
+         "your import line: it lists `rules.md`, which the hook copies there, and an error that the file is missing "
+         "means the hook has not run.",
+         "Il solo silenzio non mostra che l'hook sia girato; per controllare, esegui `ls -l` sul percorso che segue "
+         "la `@` nella tua riga di import: elenca `rules.md`, che l'hook copia lì, e un errore di file mancante "
+         "significa che l'hook non è girato."),
+        ("(for the autonomy profile you choose the openings, and it proposes none)",
+         "(per il profilo di autonomia scegli tu le aperture, e non ne propone nessuna)"),
+        ("Before it changes anything it shows you the exact `git config` command and waits for your yes, then reads "
+         "the value back, for the autonomy profile too.",
+         "Prima di cambiare qualcosa ti mostra il comando `git config` esatto e aspetta il tuo sì, poi rilegge il "
+         "valore, anche per il profilo di autonomia."),
+        ('Ask: "Quote your rule `PE:lanes`." (you can also ask it in your own language).',
+         'Chiedi: "Quote your rule `PE:lanes`." (puoi anche chiederlo in italiano).'),
+        ("You should see an answer that says that the lane comes from `development-workflow` and that a feature "
+         "uses one chain of tools, superpowers by default and spec-kit when you ask for it or the project adopted it.",
+         "Dovresti vedere una risposta che dice che la corsia viene da `development-workflow` e che una "
+         "funzionalità usa una sola catena di strumenti, superpowers per impostazione predefinita e spec-kit quando "
+         "lo chiedi o il progetto l'ha adottato."),
+        ("The label `PE:lanes` is in `rules.md` and in nothing else a session loads, not in the safety line and not "
+         "in a skill, so a right answer shows that the import reached the session.",
+         "L'etichetta `PE:lanes` sta in `rules.md` e in nient'altro che una sessione carichi, non nella riga di rete "
+         "di sicurezza e non in una skill, quindi una risposta giusta mostra che l'import ha raggiunto la sessione."),
+        ('ending with "is it clear?" in your language;', "chiudendo con «is it clear?» nella tua lingua;"),
+        ('(you can also say it in your own language)', "(anche in italiano)"),
+    ),
+    "install": (
+        ("The time in the file name keeps a second copy from overwriting the first, and the second command, run "
+         "after the edit, prints the two lines you added, each marked with `>`.",
+         "L'ora nel nome del file impedisce a una seconda copia di sovrascrivere la prima, e il secondo comando, "
+         "eseguito dopo la modifica, stampa le due righe che hai aggiunto, ciascuna con il segno `>`."),
+    ),
+    "configure": (
+        ("### Configure the plugin", "### Configurare il plugin"),
+        ('The quickest way is to ask in a session, for example "configure the plugin": the `configure` skill shows '
+         "the values you have now and asks one question at a time, only about the keys you choose, and runs each "
+         "command only after your yes.",
+         'Il modo più rapido è chiedere in una sessione, per esempio "configura il plugin": la skill `configure` '
+         "mostra i valori che hai adesso e fa una domanda alla volta, solo sulle chiavi che scegli, ed esegue ogni "
+         "comando solo dopo il tuo sì."),
+        ("It sets the autonomy profile only when you ask for it in chat, never on its own and never because a file "
+         "or a tool output says so; nothing checks that it obeys.",
+         "Imposta il profilo di autonomia solo quando glielo chiedi in chat, mai di sua iniziativa e mai perché lo "
+         "dice un file o l'output di uno strumento; nulla controlla che obbedisca."),
+        ("The keys the plugin reads, and one that its maintainer tools read:",
+         "Le chiavi che legge il plugin, e una che leggono gli strumenti dei manutentori:"),
+        ("| The profile opens nothing |", "| Il profilo non apre nulla |"),
+        ("The four global keys tell the model when to keep your work local and which remotes are yours, and the "
+         "autonomy profile tells it which decisions it may take while you are away; in this version both are rules "
+         "for the model, and nothing blocks a push outside the window.",
+         "Le quattro chiavi globali dicono al modello quando tenere il tuo lavoro in locale e quali remoti sono "
+         "tuoi, e il profilo di autonomia gli dice quali decisioni può prendere mentre non ci sei; in questa "
+         "versione sono entrambe regole per il modello, e nulla blocca un push fuori dalla finestra."),
+        ("To remove a key, run `git config --global --unset-all pe.<key>` for a global one, or "
+         "`git config --local --unset pe.autonomy` for the profile.",
+         "Per togliere una chiave, esegui `git config --global --unset-all pe.<chiave>` per una globale, oppure "
+         "`git config --local --unset pe.autonomy` per il profilo."),
+    ),
+    "uninstall": (
+        ("Four things stay behind on purpose.", "Quattro cose restano, di proposito."),
+        ("And the `pe.*` keys you set stay in your git configuration; the configure section above says how to "
+         "remove them.",
+         "E restano le chiavi `pe.*` che hai impostato nella tua configurazione di git; la sezione «Configurare il "
+         "plugin» qui sopra dice come toglierle."),
+    ),
+    "office-hours": (
+        ("Set them once, from a terminal or by asking the model in a session (it shows you each command and runs it "
+         "after your yes), with `pe.personalRemotes` in the same step as `pe.officeHours`:",
+         "Impostale una volta, da un terminale o chiedendo al modello in una sessione (ti mostra ogni comando e lo "
+         "esegue dopo il tuo sì), con `pe.personalRemotes` nello stesso passo di `pe.officeHours`:"),
+        ("`pe.holidays` lists the days you do not work, separated by commas, each `MM-DD` with the month first, or",
+         "`pe.holidays` elenca i giorni in cui non lavori, separati da virgole, ciascuno `MM-DD` con il mese per "
+         "primo, oppure"),
+        ("`pe.weekendFrom` and `pe.holidays` count only while `pe.officeHours` gives a window.",
+         "`pe.weekendFrom` e `pe.holidays` contano solo finché `pe.officeHours` dà una finestra."),
+        ("`git remote -v` lists those URLs; the closing slash keeps `<you>` from matching `<you>2`.",
+         "`git remote -v` elenca quegli URL; la barra finale impedisce a `<tuo-account>` di corrispondere a "
+         "`<tuo-account>2`."),
+        ("To read back every key with the file it comes from, run `git config --show-origin --get-regexp '^pe\\.'`; "
+         "git prints the key names in lowercase, and nothing checks the form of a value, so compare what it prints "
+         "with the examples above.",
+         "Per rileggere ogni chiave con il file da cui viene, esegui `git config --show-origin --get-regexp "
+         "'^pe\\.'`; git stampa i nomi delle chiavi in minuscolo e nulla controlla la forma di un valore, quindi "
+         "confronta ciò che stampa con gli esempi qui sopra."),
+    ),
+    "autonomy": (
+        ("say it in chat with a hard stop, the hour at which the work must stop, for example "
+         '"go on without me until 18:00, but leave the data model to me": it opens',
+         "dillo in chat con un orario di fine, l'ora in cui il lavoro deve fermarsi, per esempio "
+         "«vai avanti senza di me fino alle 18:00, ma il modello dei dati lo decido io»: apre"),
+        ("set the profile inside that repository, naming only what you open, either from a terminal or by asking "
+         "the model, which shows you the command and runs it after your yes;",
+         "imposta il profilo dentro quel repository, nominando solo ciò che apri, da un terminale oppure "
+         "chiedendolo al modello, che ti mostra il comando e lo esegue dopo il tuo sì;"),
+        ("Read it back with `git config --local --get pe.autonomy`; no output means it is not set.",
+         "Rileggila con `git config --local --get pe.autonomy`; se non stampa nulla, non è impostata."),
+        ("and only through the profile: name it only for an API that has no client yet.",
+         "e solo con il profilo: nominalo solo per un'API che non ha ancora un client."),
+        ("You set it, or you ask the model in chat to set it, which it does only for the openings you name and never "
+         "on its own or because a file or a tool output says so; nothing stops it in this version.",
+         "La imposti tu, oppure chiedi in chat al modello di impostarla, e lui lo fa solo per le aperture che "
+         "nomini e mai di sua iniziativa né perché lo dice un file o l'output di uno strumento; in questa versione "
+         "nulla glielo impedisce."),
+    ),
+    "explain-review-cycle": (
+        ("`<tip before the fixes>..<tip after the fixes>` (from the last commit before the fixes to the last one "
+         "after them)",
+         "`<tip before the fixes>..<tip after the fixes>` (dall'ultimo commit prima delle correzioni all'ultimo "
+         "dopo)"),
+    ),
+    "limits": (
+        ("the autonomy (including the rule that the model sets its profile only when you ask)",
+         "l'autonomia (compresa la regola per cui il modello ne imposta il profilo solo quando glielo chiedi)"),
+    ),
+    "reference": (
+        ("runs each `git config` command only after your yes, the autonomy profile included.",
+         "esegue ogni comando `git config` solo dopo il tuo sì, profilo di autonomia compreso."),
+    ),
+}
+
+
+@pytest.mark.parametrize("section", sorted(GUIDED_SENTENCES))
+def test_readmes_state_the_guided_configuration_in_both_languages(section):
+    for text, language in zip(pages(section), (0, 1)):
+        assert [pair[language] for pair in GUIDED_SENTENCES[section] if pair[language] not in text] == []
+
+
+def test_the_italian_readme_names_the_end_time_of_an_autonomy_in_plain_words():
+    assert "arresto netto" not in pages()[1]
+
+
+def test_install_dates_the_backup_to_the_second_so_a_retry_keeps_the_first():
+    for text in pages("install"):
+        lines = text.splitlines()
+        assert "cp ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.$(date +%Y%m%d-%H%M%S).bak" in lines
+        assert 'diff "$(ls -t ~/.claude/CLAUDE.md.*.bak | head -1)" ~/.claude/CLAUDE.md' in lines
+        assert "date +%F" not in text
 
 
 PE_KEY = re.compile(r"\bpe\.[A-Za-z]+\b")
 TABLE_KEY = re.compile(r"^\| `(pe\.[A-Za-z]+)` \|", re.MULTILINE)
+KEY_READER_FOLDERS = ("agents", "hooks", "lib", "tools")
+CONFIGURE_SKILL = Path("skills/configure/SKILL.md")
 
 
-def keys_the_plugin_uses() -> Set[str]:
-    """The ``pe.<key>`` names the rules, the skills and the code read: the keys a reader can set."""
-    folders = [REPO_ROOT / name for name in ("lib", "tools", "hooks")]
-    paths = [RULES, *(REPO_ROOT / "skills").glob("*/SKILL.md")]
-    paths += [p for folder in folders for p in folder.rglob("*") if p.is_file() and p.suffix != ".pyc"]
-    return {key for path in paths for key in PE_KEY.findall(path.read_text(encoding="utf-8"))}
+def reads_keys(path: Path) -> bool:
+    """Whether the file at ``path`` is one that reads a ``pe.<key>``: the rules, the skills and the code.
+
+    ``configure`` is not one: it names every key to explain it, so counting it would let a key that nothing reads
+    stay in the tables.
+    """
+    return (
+        path.parts[0] in KEY_READER_FOLDERS
+        or path == Path("rules.md")
+        or (path.parts[0] == "skills" and path.name == "SKILL.md" and path != CONFIGURE_SKILL)
+    )
+
+
+def keys_the_plugin_uses(texts: List[Tuple[Path, str]]) -> Set[str]:
+    """The ``pe.<key>`` names that the files of ``texts`` which read keys name: the keys a reader can set."""
+    return {key for path, text in texts if reads_keys(path) for key in PE_KEY.findall(text)}
 
 
 def test_the_configure_tables_list_exactly_the_keys_the_plugin_uses():
     """A seventh key read anywhere, or a row left out of one language, turns this red."""
-    used = keys_the_plugin_uses()
+    used = keys_the_plugin_uses(repository_texts())
     assert used, "no key found: the scan reads nothing"
     for name, section in zip(("README.md", "README.it.md"), pages("configure")):
         assert set(TABLE_KEY.findall(section)) == used, name
@@ -789,7 +961,25 @@ def test_the_configure_tables_list_exactly_the_keys_the_plugin_uses():
 def test_the_key_check_sees_a_row_removed_from_a_table():
     section = pages("configure")[1]
     row = next(line for line in section.splitlines() if line.startswith("| `pe.holidays` |"))
-    assert set(TABLE_KEY.findall(section.replace(row + "\n", ""))) == keys_the_plugin_uses() - {"pe.holidays"}
+    used = keys_the_plugin_uses(repository_texts())
+    assert set(TABLE_KEY.findall(section.replace(row + "\n", ""))) == used - {"pe.holidays"}
+
+
+def test_the_key_check_sees_a_key_that_only_the_documents_still_name():
+    """`configure` and the READMEs name every key: a key no reader uses any more must still turn the check red."""
+    texts = [(path, text if path == CONFIGURE_SKILL else text.replace("pe.weekendFrom", "pe.dropped"))
+             for path, text in repository_texts()]
+    used = keys_the_plugin_uses(texts)
+    assert "pe.weekendFrom" in skill_text("configure") and "pe.weekendFrom" not in used
+    for section in pages("configure"):
+        assert set(TABLE_KEY.findall(section)) != used
+
+
+def test_the_key_scan_reads_agents_and_skips_the_skill_that_explains_the_keys():
+    assert reads_keys(Path("agents/blunt-reviewer.md"))
+    assert reads_keys(Path("skills/safe-operations/SKILL.md"))
+    assert not reads_keys(CONFIGURE_SKILL)
+    assert not reads_keys(Path("README.md"))
 
 
 def test_readmes_place_the_configure_section_the_tutorial_step_and_the_skill_row():

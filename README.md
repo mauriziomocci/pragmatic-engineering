@@ -9,7 +9,7 @@ This page follows the four kinds of documentation of Diataxis (<https://diataxis
 <!-- section: tutorial -->
 ## Tutorial: a first guided session
 
-You need Claude Code and a git project to work in. Each step says what you should see; if you see something else, stop there and read the install guide below.
+You need Claude Code and a git project to work in. Each step says what you should see; if you see something else, stop there and read the install guide below. Steps 1 and 3 run in a terminal, and from step 4 you type into the session. Do step 3 yourself: the rules are not loaded yet, so nothing makes the session back up the file first.
 
 1. Install the plugin as the install guide says. First check that `claude plugin marketplace list` shows `claude-plugins-official`, and add it as the guide says if it is missing; then run the two commands:
 
@@ -20,17 +20,17 @@ You need Claude Code and a git project to work in. Each step says what you shoul
 
    You should see both commands finish without an error. If the plugin stays disabled and the message says that a dependency is not installed, the install guide explains why and what to do.
 
-2. Start Claude Code in your project. At the top of the session the `SessionStart` hook prints two notes. The first reads "pragmatic-engineering: the rules file was updated; the updated rules apply from the next session."; it appears because the hook has just copied the rules file to the plugin's data folder. The second says that `~/.claude/CLAUDE.md` does not carry two lines yet and prints them: an import line that starts with `@`, and a long line that starts with "If the pragmatic-engineering rules".
+2. Start Claude Code in your project. At the top of the session the `SessionStart` hook prints two notes, both in English. The first reads "pragmatic-engineering: the rules file was updated; the updated rules apply from the next session."; it appears because the hook has just copied the rules file to the plugin's data folder. The second says that `~/.claude/CLAUDE.md` does not carry two lines yet and prints them: an import line that starts with `@`, and the safety line, a long line that starts with "If the pragmatic-engineering rules".
 
-3. Add the two lines to `~/.claude/CLAUDE.md`, after a dated copy of the file, as the install guide shows, then quit and start Claude Code again. You should see no notice this time. If the notice comes back, the lines are not written as printed: the hook looks for the import path and for the whole safety line.
+3. Add the two lines to `~/.claude/CLAUDE.md`, after a dated copy of the file, as the install guide shows, then quit and start Claude Code again. You should see no notice this time. If the notice comes back, the lines are not written as printed: the hook looks for the import path and for the whole safety line. Silence alone does not show that the hook ran; to check, run `ls -l` on the path that follows the `@` in your import line: it lists `rules.md`, which the hook copies there, and an error that the file is missing means the hook has not run.
 
-4. Ask: "Configure the plugin." You should see the model show, in a few lines, the values the keys have now, an unset one said to be unset, and ask which keys you want to set; then one question at a time about those keys, each saying what the key does, what happens while it is unset and a value it proposes. Before it changes anything it shows you the exact `git config` command and waits for your yes, then reads the value back; for the autonomy profile it only shows the command, because you set that one from your own terminal. You can answer that you want none: nothing changes until you say yes to a command.
+4. Ask: "Configure the plugin." You should see the model show, in a few lines, the values the keys have now, an unset one said to be unset, and ask which keys you want to set; then one question at a time about those keys, each saying what the key does, what happens while it is unset and a value it proposes (for the autonomy profile you choose the openings, and it proposes none). Before it changes anything it shows you the exact `git config` command and waits for your yes, then reads the value back, for the autonomy profile too. You can answer that you want none: nothing changes until you say yes to a command.
 
-5. Ask: "Quote your rule `PE:backup-diff-go`." You should see an answer that says that instruction, settings and memory files change only after a dated backup, a diff and your go. That rule lives in `rules.md` and in nothing else a session loads, not in the safety line and not in a skill, so a right answer shows that the import reached the session. If the model says it has no such rule, the import did not arrive: check the two lines of step 3 and ask again in a new session.
+5. Ask: "Quote your rule `PE:lanes`." (you can also ask it in your own language). You should see an answer that says that the lane comes from `development-workflow` and that a feature uses one chain of tools, superpowers by default and spec-kit when you ask for it or the project adopted it. The label `PE:lanes` is in `rules.md` and in nothing else a session loads, not in the safety line and not in a skill, so a right answer shows that the import reached the session. If the model says it has no such rule, the import did not arrive: check the two lines of step 3 and ask again in a new session.
 
-6. Ask for a small change with a test, for example a function with one behaviour. You should see, in this order: the model names the lane (a feature) and says in a few sentences what it is about to do, ending with "is it clear?"; it stops for your written approval of a short spec before the code, because the two heavy gates stay even for small work; it writes the failing test first and runs it; it writes the code; it reviews its own diff following `blunt-review` and closes with a statement that the tests pass or a list of what does not; it stops again for your approval of the result; it never pushes without your go.
+6. Ask for a small change with a test, for example a function with one behaviour. You should see, in this order: the model names the lane (a feature) and says in a few sentences what it is about to do, ending with "is it clear?" in your language; it stops for your written approval of a short spec before the code, because the two heavy gates stay even for small work; it writes the failing test first and runs it; it writes the code; it reviews its own diff following `blunt-review` and closes with a statement that the tests pass or a list of what does not; it stops again for your approval of the result; it never pushes without your go.
 
-7. Commit the work on a branch and say: "Review this branch before I open the merge request." You should see the model launch `blunt-reviewer` with one line, `<merge-base>..HEAD`, where `<merge-base>` is the commit `git merge-base` prints. The reviewer writes its report in `.pe/reviews/`, in a file named `<base7>..<tip7>-round1.md` whose first line is a status line, and its final message ends with five lines: `VERDICT:`, `FINDINGS:`, `COVERAGE:`, `REPORT:` and `THE THING:`. With `VERDICT: changes`, the blocking findings are fixed, committed, and a second review runs on the fixes; the explanation of the review cycle below says how it goes.
+7. Commit the work on a branch and say: "Review this branch before I open the merge request." (you can also say it in your own language). You should see the model launch `blunt-reviewer` with one line, `<merge-base>..HEAD`, where `<merge-base>` is the commit `git merge-base` prints. The reviewer writes its report in `.pe/reviews/`, in a file named `<base7>..<tip7>-round1.md` whose first line is a status line, and its final message ends with five lines: `VERDICT:`, `FINDINGS:`, `COVERAGE:`, `REPORT:` and `THE THING:`. With `VERDICT: changes`, the blocking findings are fixed, committed, and a second review runs on the fixes; the explanation of the review cycle below says how it goes.
 
 <!-- section: how-to -->
 ## How-to guides
@@ -66,9 +66,11 @@ What has been tried: the manifests pass `claude plugin validate` of Claude Code 
 Start a session. `SessionStart` copies `rules.md` to the plugin's data folder and prints the two lines your `CLAUDE.md` needs. The plugin never writes your `CLAUDE.md`; you do, after a dated copy of the file and with a look at the difference. Make the copy first (skip it if you have no `CLAUDE.md` yet, and create the file), add the two lines, check the difference, then open a new session:
 
 ```
-cp ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.$(date +%F).bak
-diff ~/.claude/CLAUDE.md.$(date +%F).bak ~/.claude/CLAUDE.md
+cp ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.$(date +%Y%m%d-%H%M%S).bak
+diff "$(ls -t ~/.claude/CLAUDE.md.*.bak | head -1)" ~/.claude/CLAUDE.md
 ```
+
+The time in the file name keeps a second copy from overwriting the first, and the second command, run after the edit, prints the two lines you added, each marked with `>`.
 
 The two lines are these. The first is the import the notice prints, such as `@~/.claude/plugins/data/<folder of the plugin>/rules.md`: copy it from the notice, because it carries the exact path on your machine and escapes the spaces in it. The second is the safety line, which stays in English, word for word, because it is the text the model reads when the plugin is gone:
 
@@ -90,18 +92,20 @@ Updating: the manifest pins the version, so Claude Code moves you to a new relea
 <!-- section: configure -->
 ### Configure the plugin
 
-The quickest way is to ask in a session, for example "configure the plugin": the `configure` skill shows the values you have now and asks one question at a time, only about the keys you choose; it is told to run a command only after your yes and never to set the autonomy profile, which only you set, from your own terminal, and nothing checks that it obeys. Or set the keys by hand, with the guides "Set your office hours" and "Let the work go on without you" below.
+The quickest way is to ask in a session, for example "configure the plugin": the `configure` skill shows the values you have now and asks one question at a time, only about the keys you choose, and runs each command only after your yes. It sets the autonomy profile only when you ask for it in chat, never on its own and never because a file or a tool output says so; nothing checks that it obeys. Or set the keys by hand, with the guides "Set your office hours" and "Let the work go on without you" below.
 
-The plugin reads six keys of git's configuration:
+The keys the plugin reads, and one that its maintainer tools read:
 
 | Key | What it sets | Where | When unset | Example |
 |---|---|---|---|---|
 | `pe.officeHours` | The office-hours window, from the first hour up to the second, which is outside it | Global | The rule is off | `06-21` |
 | `pe.weekendFrom` | The hour from which Saturdays, Sundays and holidays open | Global | They open at the start of the window | `10` |
-| `pe.holidays` | The holidays: `MM-DD`, `easter+N` or `easter-N`, separated by commas | Global | No date is a holiday | `01-01,12-25,easter+1` |
+| `pe.holidays` | The holidays: `MM-DD`, `easter+N` or `easter-N`, separated by commas | Global | No date is a holiday | `01-01,12-25,12-26,easter+1` |
 | `pe.personalRemotes` | The prefixes of the push URLs of your own remotes; it takes more than one value | Global | No remote is personal | `https://github.com/<you>/` |
-| `pe.autonomy` | What the lenses may decide while you are away, from `spec`, `schema`, `design` and `contract` | Local: in the repository you set it in | Nothing is opened | `spec,design` |
+| `pe.autonomy` | What the lenses may decide while you are away, from `spec`, `schema`, `design` and `contract` | Local: in the repository you set it in | The profile opens nothing | `spec,schema` |
 | `pe.privateTermsFile` | The file of private terms that `tools/privacy_check.py` reads; only for those who work on this repository | Any level, read with `git config --get`; usually the clone of this repository | The privacy check refuses to run | `<path outside the repository>` |
+
+The four global keys tell the model when to keep your work local and which remotes are yours, and the autonomy profile tells it which decisions it may take while you are away; in this version both are rules for the model, and nothing blocks a push outside the window. To remove a key, run `git config --global --unset-all pe.<key>` for a global one, or `git config --local --unset pe.autonomy` for the profile.
 
 <!-- section: uninstall -->
 ### Uninstall and go back
@@ -114,12 +118,12 @@ claude plugin uninstall pragmatic-engineering@pragmatic-engineering
 
 The order matters for two reasons. The safety line without the plugin makes the model warn you at every session start. And the uninstall deletes the plugin's data folder, which holds the copy of `rules.md` that your import points to and `calibration.md`, the calibration log of `quality-scoring`, unless you pass `--keep-data`; what Claude Code does with an import that points to a missing file has not been tried here.
 
-Three things stay behind on purpose. Superpowers stays installed; `--prune` on the uninstall command also removes dependencies that were installed automatically and are no longer needed. The marketplace stays registered until `claude plugin marketplace remove pragmatic-engineering`. And the `.pe/` folders that the reviewer and the progress note created in your projects stay: they hold review reports and notes, never enter git because each carries a `.gitignore` with `*`, and you delete them by hand if you want them gone.
+Four things stay behind on purpose. Superpowers stays installed; `--prune` on the uninstall command also removes dependencies that were installed automatically and are no longer needed. The marketplace stays registered until `claude plugin marketplace remove pragmatic-engineering`. The `.pe/` folders that the reviewer and the progress note created in your projects stay: they hold review reports and notes, never enter git because each carries a `.gitignore` with `*`, and you delete them by hand if you want them gone. And the `pe.*` keys you set stay in your git configuration; the configure section above says how to remove them.
 
 <!-- section: office-hours -->
 ### Set your office hours
 
-The plugin reads a few keys of your global git configuration. Set them once, from your own terminal, with `pe.personalRemotes` in the same step as `pe.officeHours`:
+The plugin reads a few keys of your global git configuration. Set them once, from a terminal or by asking the model in a session (it shows you each command and runs it after your yes), with `pe.personalRemotes` in the same step as `pe.officeHours`:
 
 ```
 git config --global pe.officeHours 06-21
@@ -128,18 +132,20 @@ git config --global pe.holidays 01-01,12-25,12-26,easter+1
 git config --global pe.personalRemotes https://github.com/<you>/
 ```
 
-`pe.officeHours` is the window, from the first hour up to the second, which is outside it: `06-21` runs from 06:00 up to 20:59, in local time; `none`, or no value, turns the rule off. `pe.weekendFrom` is the hour from which Saturdays, Sundays and the dates of `pe.holidays` open; without it they open at the start of the window. `pe.holidays` lists dates separated by commas, each `MM-DD`, or `easter+N` and `easter-N` with N days from Gregorian Easter: `easter+1` is Easter Monday. `pe.personalRemotes` says which remotes are yours: a remote is personal only if every push URL it has starts with one of its values, and you add another with `git config --global --add pe.personalRemotes <prefix>`; without it no remote is personal, so outside the window not even your own repositories receive a push. To see what the model will read, run `git config --get pe.officeHours`.
+`pe.officeHours` is the window, from the first hour up to the second, which is outside it: `06-21` runs from 06:00 up to 20:59, in local time; `none`, or no value, turns the rule off. `pe.weekendFrom` is the hour from which Saturdays, Sundays and the dates of `pe.holidays` open; without it they open at the start of the window. `pe.holidays` lists the days you do not work, separated by commas, each `MM-DD` with the month first, or `easter+N` and `easter-N` with N days from Gregorian Easter: `easter+1` is Easter Monday. `pe.weekendFrom` and `pe.holidays` count only while `pe.officeHours` gives a window. `pe.personalRemotes` says which remotes are yours: a remote is personal only if every push URL it has starts with one of its values, and `git remote -v` lists those URLs; the closing slash keeps `<you>` from matching `<you>2`. For an SSH remote add a second value, `git config --global --add pe.personalRemotes git@github.com:<you>/`, and any other remote works the same way with its own prefix; without any value no remote is personal, so outside the window not even your own repositories receive a push. To read back every key with the file it comes from, run `git config --show-origin --get-regexp '^pe\.'`; git prints the key names in lowercase, and nothing checks the form of a value, so compare what it prints with the examples above.
 
 <!-- section: autonomy -->
 ### Let the work go on without you
 
-An autonomy lets the lenses take, while you are not there, the decisions it opens; each one is provisional, logged and reported to you first. For one piece of work or one day, say it in chat with a hard stop: it opens `spec`, `schema` and `design`, explained below, unless your words narrow it. For one repository, set the profile from your own terminal, inside that repository, naming only what you open; the profile is the git key `pe.autonomy`:
+An autonomy lets the lenses take, while you are not there, the decisions it opens; each one is provisional, logged and reported to you first. For one piece of work or one day, say it in chat with a hard stop, the hour at which the work must stop, for example "go on without me until 18:00, but leave the data model to me": it opens `spec`, `schema` and `design`, explained below, unless your words narrow it. For one repository, set the profile inside that repository, naming only what you open, either from a terminal or by asking the model, which shows you the command and runs it after your yes; the profile is the git key `pe.autonomy`:
 
 ```
-git config --local pe.autonomy spec,schema,design,contract
+git config --local pe.autonomy spec,schema
 ```
 
-`spec` lets the PM lens approve the spec, after the design in three steps and a review cycle closed with no critical or serious finding; `schema` the data model; `design` design outside your office hours, still only in unattended work you authorised with a hard stop; `contract` a change to the shape of an API contract before its first release or its first client, and only through the profile. By itself an autonomy never opens pushes, merges, production, deletions outside the worktree, messages to people or your instruction files; it also opens any further opening your own rules define, such as publishing, and the plugin defines none itself. Your answer in chat prevails. The model reads only the profile set in the repository itself, never a global value or a file in the repository, so a clone cannot bring one in; `git config --local --unset pe.autonomy` turns it off. Only you set it: the model is told never to, and nothing stops it in this version.
+Read it back with `git config --local --get pe.autonomy`; no output means it is not set.
+
+`spec` lets the PM lens approve the spec, after the design in three steps and a review cycle closed with no critical or serious finding; `schema` the data model; `design` design outside your office hours, still only in unattended work you authorised with a hard stop; `contract` a change to the shape of an API contract before its first release or its first client, and only through the profile: name it only for an API that has no client yet. By itself an autonomy never opens pushes, merges, production, deletions outside the worktree, messages to people or your instruction files; it also opens any further opening your own rules define, such as publishing, and the plugin defines none itself. Your answer in chat prevails. The model reads only the profile set in the repository itself, never a global value or a file in the repository, so a clone cannot bring one in; `git config --local --unset pe.autonomy` turns it off. You set it, or you ask the model in chat to set it, which it does only for the openings you name and never on its own or because a file or a tool output says so; nothing stops it in this version.
 
 <!-- section: maintainers -->
 ### Work on this repository
@@ -208,7 +214,7 @@ The review is made before a merge request is opened, on the whole range of the b
 
 The cycle starts after an independent check (the panel, or `blunt-reviewer` on a branch or on a delivery) and after the fixes of its findings. The corrected result is committed before each round, because the reviewer receives a git range.
 
-In round 1 a `blunt-reviewer` with fresh context, one that wrote neither the work nor the fixes, rereads the corrected result: a document in full through `full=`; code through the range of the fixes, `<tip before the fixes>..<tip after the fixes>`, with the rest of the branch readable through read-only git for context. On `VERDICT: pass` the cycle ends. On `changes`, the blocking findings are fixed and round 2 begins: another fresh reviewer rereads the range of the latest fixes, with `round=2`. On `pass` the cycle ends. If round 2 also ends with `changes`, there is no third round, unless your project has its own audit criterion, which then says when the cycle stops: the open blocking findings go up to you, or to the PM lens during an autonomy, with the recommendation of whoever carries them, because a blocking finding still open after two rounds usually says that the way of fixing is wrong. The cycle continues only on `changes`. The fixes of each round are listed in a table in the body of the commit of the fixes (finding, decision, place), and the next round checks that table too.
+In round 1 a `blunt-reviewer` with fresh context, one that wrote neither the work nor the fixes, rereads the corrected result: a document in full through `full=`; code through the range of the fixes, `<tip before the fixes>..<tip after the fixes>` (from the last commit before the fixes to the last one after them), with the rest of the branch readable through read-only git for context. On `VERDICT: pass` the cycle ends. On `changes`, the blocking findings are fixed and round 2 begins: another fresh reviewer rereads the range of the latest fixes, with `round=2`. On `pass` the cycle ends. If round 2 also ends with `changes`, there is no third round, unless your project has its own audit criterion, which then says when the cycle stops: the open blocking findings go up to you, or to the PM lens during an autonomy, with the recommendation of whoever carries them, because a blocking finding still open after two rounds usually says that the way of fixing is wrong. The cycle continues only on `changes`. The fixes of each round are listed in a table in the body of the commit of the fixes (finding, decision, place), and the next round checks that table too.
 
 **Guaranteed by:** a rule for the model only (the skill `blunt-review`). No mechanism counts the rounds or stops a third one.
 
@@ -258,7 +264,7 @@ The model explains briefly and at a high level at four moments: at the start and
 
 The limits that describe Claude Code's own behaviour (which agents load `CLAUDE.md`, Cowork, compaction) come from its documentation as read while the plugin was designed. The plugin's tests do not exercise them, apart from the import itself.
 
-- The role lenses, the autonomy, the 8/10 gate, the budget, the rule on delivered API contracts, the taste thresholds and the office hours are rules for the model in this version, not mechanisms; the CI enforces the complexity thresholds on this repository only.
+- The role lenses, the autonomy (including the rule that the model sets its profile only when you ask), the 8/10 gate, the budget, the rule on delivered API contracts, the taste thresholds and the office hours are rules for the model in this version, not mechanisms; the CI enforces the complexity thresholds on this repository only.
 - The 8/10 gate is still calibrating, and the lenses are provisional until they are re-evaluated.
 - The daily budget applies only where the host shows the model the account's usage; elsewhere the rule does not apply.
 - There is no mechanical check on merge requests: the review before one is a rule for the model, and the verdict of `blunt-reviewer` is a message to read, not a gate.
@@ -300,7 +306,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 | `safe-operations` | Verify the target, dry run, say the blast radius and the way back, a separate go for production, never poll, verify at every level. | Before a command or tool that changes an external system, and, with office hours set, before a push, a merge request, a pipeline, a tracker edit or a message. |
 | `interface-quality` | The ten principles of a simple interface, the measures before a change (every state, both themes, 375, 768 and 1280 px, WCAG AA measured), the UX study before code, the UX lens and the user lens. | Every change to a user interface, and to the responses, messages and documentation of an API. |
 | `documentation-quality` | The four kinds of documentation and the two questions that tell them apart, the entry page, documents that describe only what exists and say their limits, the manual of an administration interface. | Writing, splitting, reorganising or reviewing documentation; not for docstrings, comments or messages to people. |
-| `configure` | Shows the current values of the `pe.*` keys, asks one question at a time about the ones you choose, checks the format of each answer and runs the `git config` command of a global key only after your yes; the autonomy profile it leaves to you. | When you ask how to configure or set up the plugin, its office hours, weekends, holidays, personal remotes or autonomy; not for the settings of another tool. |
+| `configure` | Shows the current values of the `pe.*` keys, asks one question at a time about the ones you choose, checks the format of each answer and runs each `git config` command only after your yes, the autonomy profile included. | When you ask how to configure or set up the plugin, its office hours, weekends, holidays, personal remotes or autonomy; not for the settings of another tool. |
 
 ### Agent
 
