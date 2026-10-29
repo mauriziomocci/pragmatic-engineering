@@ -292,7 +292,7 @@ I limiti che descrivono il comportamento di Claude Code (quali agenti caricano `
 <!-- section: reference -->
 ## Riferimento
 
-In questa versione non ci sono comandi, solo uno script, `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al modello di eseguire.
+In questa versione non ci sono comandi e, oltre all'hook `SessionStart` descritto sotto, c'è un solo script, `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al modello di eseguire.
 
 ### Skill
 

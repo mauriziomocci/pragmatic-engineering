@@ -142,7 +142,7 @@ CONTRACTS: Dict[str, Contract] = {
             "inferred from any other document.",
             "The open blocking findings go up one level with the recommendation of whoever carries them, and the "
             "coordinator takes them to the user or, during an autonomy, to the PM lens, which may only defer or park "
-            "them, because no gate closes while one is open.",
+            "them, because a gate closes on an open blocking finding only by the user's tracked deferral.",
         ),
         absent=(
             "Delivering work", "Pythonic",
@@ -355,13 +355,14 @@ CONTRACTS: Dict[str, Contract] = {
             "one applies.",
             "Otherwise run `python3 recreate_night_commits.py <base>` from this skill's folder, with `<base>` the last "
             "commit already pushed, or the branch point of a branch never pushed.",
-            "It refuses to start outside the window, with uncommitted changes or on a commit already on a remote "
-            "branch; it tags the tip `night-backup-<YYYYMMDD-HHMMSS>`, runs "
+            "It refuses to start outside the window, with uncommitted changes in tracked files, on a commit already "
+            "on a remote branch or when a file the range deletes is still on disk; it tags the tip `night-backup-<YYYYMMDD-HHMMSS>`, runs "
             "`git rebase --force-rebase --ignore-date --rebase-merges <base>` and checks in order that the tree is the "
             "tag's, that the commits and their messages are unchanged, and that both dates of every commit fall "
             "inside the window.",
-            "The script uses the hours of `pe.officeHours` on every day, weekends and holidays included, because the "
-            "later opening of `pe.weekendFrom` delays only pushes and traces in shared systems.",
+            "The script and its date check use the hours of `pe.officeHours` on every day, weekends and holidays "
+            "included, so a commit re-created on a weekend morning carries a date inside the weekday hours and is "
+            "accepted.",
             "At the first failed check it exits non-zero and prints the way back without running it.",
             "The dates of author and committer are checked again on the integrated branch before its push; once it is "
             "pushed, delete the tag with `git tag -d`.",

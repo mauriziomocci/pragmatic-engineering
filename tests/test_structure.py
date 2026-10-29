@@ -106,7 +106,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "54104bcf057b35a2124858549dc77a221268b8bbad6d3b8c65babd0d29862937"
+RULES_SHA256 = "b5234bc97d0fe51a893ac962872663e8f43ac438df26c3f46dfbe08defc080d4"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -149,6 +149,7 @@ MIGRATION_REQUIREMENTS = {
     "isolated-sessions": ("Every agent", "stops only what it started"),
     "office-hours": (
         "Every agent", "git config --get pe.officeHours", "explicit authorisation in chat", "and never pushed",
+        "re-created inside its weekday hours with their real dates",
     ),
     "lenses": (
         "Main session", "never traded", "known defects", "as a proposal to the user",
@@ -989,10 +990,11 @@ GUIDED_SENTENCES = {
          "l'autonomia (compresa la regola per cui il modello ne imposta il profilo solo quando glielo chiedi)"),
     ),
     "reference": (
-        ("There are no commands in this version, only one script, `skills/safe-operations/recreate_night_commits.py`, "
-         "which `safe-operations` tells the model to run.",
-         "In questa versione non ci sono comandi, solo uno script, `skills/safe-operations/recreate_night_commits.py`, "
-         "che `safe-operations` dice al modello di eseguire."),
+        ("There are no commands in this version and, besides the `SessionStart` hook described below, only one script, "
+         "`skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells the model to run.",
+         "In questa versione non ci sono comandi e, oltre all'hook `SessionStart` descritto sotto, c'è un solo "
+         "script, `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al modello di "
+         "eseguire."),
         ("`skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made "
          "outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository.",
          "`skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori "

@@ -149,6 +149,32 @@ def test_it_refuses_uncommitted_changes_in_a_tracked_file(tmp_path):
     assert "uncommitted changes in tracked files" in proc.stderr
 
 
+def stop_tracking_and_ignore(tmp_path: Path) -> Tuple[Path, str]:
+    """A night commit that untracks ``config.local`` and ignores it: the file stays on disk, ignored."""
+    repo, _ = night_repo(tmp_path)
+    base = commit(repo, {"config.local": "secret\n"}, "track the local configuration")
+    git(repo, "rm", "-q", "--cached", "config.local")
+    (repo / ".gitignore").write_text("config.local\n", encoding="utf-8")
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "-q", "-m", "stop tracking the local configuration")
+    return repo, base
+
+
+def test_it_refuses_while_a_file_the_range_deletes_is_still_on_disk(tmp_path):
+    """The rebase checks out the base, which overwrites an ignored file, and the replay then deletes it."""
+    repo, base = stop_tracking_and_ignore(tmp_path)
+    proc = refuse(repo, base, "deleted file")
+    assert "config.local" in proc.stderr
+    assert (repo / "config.local").read_text(encoding="utf-8") == "secret\n"
+
+
+def test_a_file_the_range_deletes_and_that_is_gone_from_disk_does_not_stop_it(tmp_path):
+    repo, base = stop_tracking_and_ignore(tmp_path)
+    (repo / "config.local").unlink()
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
 def test_it_refuses_when_the_current_hour_is_outside_the_window(tmp_path):
     repo, base = night_repo(tmp_path, window=window_without_now())
     commit(repo, {"a.txt": "night\n"}, "night")
@@ -234,7 +260,7 @@ def test_an_untracked_file_does_not_stop_the_re_creation(tmp_path):
 
 
 def test_weekend_and_holiday_keys_do_not_move_the_window_of_the_script(tmp_path):
-    """The skill says so: the later weekend opening only delays pushes, so the script uses the weekday hours."""
+    """The skill says so: the script and its date check use the weekday hours on every day."""
     repo, base = night_repo(tmp_path)
     hour = datetime.now().hour
     git(repo, "config", "pe.weekendFrom", "%02d" % ((hour + 3) % 24))
