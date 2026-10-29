@@ -233,12 +233,18 @@ CONTRACTS: Dict[str, Contract] = {
             "re-checks the other's S1 and S2", "CALIBRATING (k/5)", "STABLE", "five consecutive applications",
             "on at least two projects", "two points or more", "the rubric never changes without the user",
             "C901, PLR0912, PLR0915 and PLR1702", "blunt-reviewer", "blunt-review", "development-workflow",
-            "engineering-principles",
+            "engineering-principles", "interface-quality",
+            # the formula of the gate, step by step: a changed penalty or cap moves every score
+            "each S1 takes 4 points away and caps the lens at 4",
+            "each S2 takes 1.5 points away and caps the lens at 7",
+            "each S3 takes 0.5 points away", "rounded down to the half point",
             # the one scale that blunt-review's blocking findings use
             "a scenario that fails", "an invariant contradicted by the code", "a security or privacy problem",
             "an operation with no way back", "a missing or tautological test on a behaviour that changed",
             "a document contradicted by the code",
-            "interface-quality",
+            # an accepted change must outlive a plugin update, and the log must show it
+            "with its date and the reason", "never in the files of the plugin",
+            "from the last place it is installed",
         ),
     ),
     "interface-quality": Contract(
@@ -253,6 +259,12 @@ CONTRACTS: Dict[str, Contract] = {
             "one round", "an agreement without an independent check is a finding", "never Haiku",
             "at most three personas", "four questions", "from templates, not seen on screen",
             "blunt-review", "quality-scoring", "engineering-principles",
+            "the AAA criterion 2.5.5",  # 44 px is a default here, not a level of WCAG AA
+            "otherwise the user approves it",  # a project with no designer still has an approver
+            # the round of the master: the answer step, the third attack axis and the exemption
+            "answers or changes the proposal", "impact on code and architecture", "except a trivial text fix",
+            "recognition over recall", "never their components inside the project's template",
+            "choices among existing values", "assume the persona does not understand", "is a tracked task",
         ),
     ),
 }

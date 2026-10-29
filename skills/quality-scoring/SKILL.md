@@ -87,7 +87,7 @@ Not verified: <what could not be observed>
 
 ## Calibration
 
-The rubric is calibrated at every use, without being asked. The log is `${CLAUDE_PLUGIN_DATA}/calibration.md`, in the plugin's data folder, which survives updates of the plugin and is deleted when the plugin is uninstalled, unless `--keep-data` is passed to the uninstall. Its first line holds the state, `CALIBRATING (k/5)` or `STABLE`, where `k` counts the consecutive applications without a signal. When the file does not exist, create it with the line `CALIBRATING (0/5)`.
+The rubric is calibrated at every use, without being asked. The log is `${CLAUDE_PLUGIN_DATA}/calibration.md`, in the plugin's data folder, which survives updates of the plugin and is deleted when the plugin is uninstalled from the last place it is installed, unless `--keep-data` is passed to the uninstall. Its first line holds the state, `CALIBRATING (k/5)` or `STABLE`, where `k` counts the consecutive applications without a signal. When the file does not exist, create it with the line `CALIBRATING (0/5)`.
 
 While the state is calibrating, the scorer appends one entry at the end of every scoring (project, date, perimeter, scores and signals) and acts on its signals:
 
@@ -95,6 +95,6 @@ While the state is calibrating, the scorer appends one entry at the end of every
 - **Missed defect:** a defect that people found later inside a perimeter that scored 8 or more. Write which class or threshold should have caught it.
 - **Noise:** a finding that counted and that nobody would fix, or a threshold breached by code that everyone agrees is fine. Write the threshold.
 
-A signal sets `k` back to 0. A signal that recurs, two entries that point at the same definition, becomes a proposal to the user with the exact change to this rubric and the entries as its evidence; the rubric never changes without the user.
+A signal sets `k` back to 0. A signal that recurs, two entries that point at the same definition, becomes a proposal to the user with the exact change to this rubric and the entries as its evidence; the rubric never changes without the user. An accepted change is written in the log with its date and the reason, and it lives in the user's own instructions, which prevail over this skill, never in the files of the plugin, which an update replaces.
 
 The state becomes `STABLE` after five consecutive applications without a signal and without a change to the rubric, on at least two projects, and the user is told in one line. While it is stable, a scoring adds one line only (project, date, scores), so that a later anomaly has its history. Calibration starts again only on an evident anomaly: a defect of class S1 or S2 found by people inside a perimeter that scored 8 or more, two reviewers two points or more apart on the same lens and the same evidence, or the user saying that a score is wrong. The state then goes back to `CALIBRATING (0/5)`, with the anomaly as its first entry.

@@ -106,9 +106,10 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "65d38f3cfc536c171142ecdd3cff2302a6e2a8210be35525b26e3eefb49a5323"
+RULES_SHA256 = "05e0405b178bb2b44dca599c067e02d00c06c73dbd34fc56ffe118daecef41dc"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
+# A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
 MIGRATION_REQUIREMENTS = {
     "self-review": ("Every agent", "following `blunt-review`"),
     "burden-of-proof": ("Every agent", "burden of proving"),
@@ -117,15 +118,22 @@ MIGRATION_REQUIREMENTS = {
     "docs-same-commit": ("Every agent", "same commit"),
     "heavy-gates": ("Main session", "explicit written approval"),
     "suite-before-commit": ("Every agent", "zero failures"),
-    "production-go": ("Every agent", "its own explicit go"),
+    "evidence": ("Every agent", "never taken as evidence"),
+    "reuse": ("Every agent", "the reuse statement"),
+    "production-go": ("Every agent", "its own explicit go", "the blast radius and the way back"),
     "candour": ("Every agent", "proposals to validate"),
-    "scope": ("Every agent", "no emoji anywhere"),
+    "scope": ("Every agent", "no emoji anywhere", "no documentation file unless asked"),
     "taste-gates": ("Every agent", "about 40 lines"),
     "api-contract": ("Every agent", "never changes shape"),
     "isolated-sessions": ("Every agent", "stops only what it started"),
-    "office-hours": ("Every agent", "git config --get pe.officeHours"),
-    "lenses": ("Main session", "never traded"),
-    "quality-gate": ("Main session", "at least 8/10"),
+    "office-hours": (
+        "Every agent", "git config --get pe.officeHours", "explicit authorisation in chat", "and never pushed",
+    ),
+    "lenses": (
+        "Main session", "never traded", "known defects", "other than a trivial text fix",
+        "as a proposal to the user",
+    ),
+    "quality-gate": ("Main session", "at least 8/10", "integration or release", "each with its cost"),
     "user-away": ("Main session", "wait for the user"),
     "budget": ("Main session", "15% of the weekly limit"),
 }
@@ -181,13 +189,16 @@ def test_each_rule_marker_is_in_its_block_once():
 
 
 @pytest.mark.parametrize(
-    "marker,block,phrase",
-    [(marker, block, phrase) for marker, (block, phrase) in sorted(MIGRATION_REQUIREMENTS.items())],
+    "marker,block,phrases",
+    [
+        pytest.param(marker, block, phrases, id=marker)
+        for marker, (block, *phrases) in sorted(MIGRATION_REQUIREMENTS.items())
+    ],
 )
-def test_migration_requirements_sit_in_the_right_block_and_say_it(marker, block, phrase):
+def test_migration_requirements_sit_in_the_right_block_and_say_it(marker, block, phrases):
     line = rule_line(sections(rules_text())[block], marker)
     assert line, "%s is not a rule of %s" % (marker, block)
-    assert phrase in line
+    assert [phrase for phrase in phrases if phrase not in line] == []
 
 
 def test_rules_cite_only_existing_skills():
@@ -228,7 +239,7 @@ def test_rules_point_to_a_home_that_holds_them(marker, skill, home):
 
 
 def test_rules_stay_short():
-    # Every session and every subagent reads the whole file: 9,044 characters since the method rules came in.
+    # Every session and every subagent reads the whole file: each added word is paid for in all of them.
     assert len(rules_text()) <= 9500
 
 
