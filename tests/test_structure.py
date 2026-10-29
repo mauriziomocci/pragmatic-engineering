@@ -678,13 +678,26 @@ def test_readmes_date_the_lenses_and_call_them_rules():
         assert words in limits
 
 
+OFFICE_HOURS_COMMANDS = (  # the lines of the guide that a reader copies; the placeholder follows the language
+    "git config --global pe.officeHours 06-21",
+    "git config --global pe.weekendFrom 10",
+    "git config --global pe.holidays 01-01,12-25,12-26,easter+1",
+    "git config --global pe.personalRemotes https://github.com/<{account}>/",
+)
+
+
 def test_office_hours_guide_gives_every_key_and_the_way_to_turn_it_off():
-    for text in pages("office-hours"):
-        for needed in (
-            "git config --global pe.officeHours 06-21", "pe.weekendFrom", "pe.holidays", "easter+1",
-            "pe.personalRemotes", "`none`", "git config --get pe.officeHours",
-        ):
+    for text, account in zip(pages("office-hours"), ("you", "tuo-account")):
+        for command in OFFICE_HOURS_COMMANDS:
+            assert command.format(account=account) in text.splitlines(), command
+        for needed in ("pe.weekendFrom", "pe.holidays", "easter+1", "pe.personalRemotes", "`none`"):
             assert needed in text, needed
+        assert "git config --get pe.officeHours" in text
+
+
+def test_office_hours_guide_says_the_end_hour_is_outside_the_window():
+    stated = ("`06-21` runs from 06:00 up to 20:59", "`06-21` va dalle 06:00 alle 20:59")
+    assert [text for text, words in zip(pages("office-hours"), stated) if words not in text] == []
 
 
 def test_uninstall_says_the_calibration_log_goes_with_the_data_folder():
@@ -699,9 +712,14 @@ COMPLEXITY_CHECK = (
 )
 
 
+# A failure turned into a success: the forms that keep a red command from failing its job.
+SWALLOWED_FAILURE = re.compile(r"\|\|\s*(?:true|exit 0|:)(?![\w-])|;\s*true(?![\w-])|set \+e")
+
+
 def test_ci_runs_the_suite_on_the_oldest_and_the_latest_python():
     text = CI_WORKFLOW.read_text(encoding="utf-8")
     assert 'python: ["3.9", "3.x"]' in text and "python -m pytest -q" in text
+    assert 'python -m pip install "pytest>=7"' in text  # no cap: pip already picks the pytest that 3.9 supports
     assert "e2e" in text and "superpowers" in text  # the comment that says what does not run there
 
 
@@ -711,6 +729,27 @@ def test_ci_checks_the_complexity_of_the_changed_python_files():
     assert "fetch-depth: 0" in text and "shell: bash" in text  # the base needs the history, the pipe needs pipefail
     assert "--diff-filter=d" in text and "-- '*.py'" in text
     assert "git hash-object -t tree /dev/null" in text  # a root commit has no parent to compare with
+
+
+def test_ci_pins_one_runner_image_and_the_node24_actions_without_a_stored_token():
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert re.findall(r"runs-on: (\S+)", text) == ["ubuntu-24.04", "ubuntu-24.04"]  # CPython 3.9 has no 26.04 build
+    assert re.findall(r"uses: (\S+)", text) == [
+        "actions/checkout@v7", "actions/setup-python@v7", "actions/checkout@v7", "actions/setup-python@v7",
+    ]
+    assert text.count("persist-credentials: false") == 2  # one per checkout; no step pushes
+
+
+def test_ci_lets_a_red_command_fail_its_job_with_the_rights_it_has_today():
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert SWALLOWED_FAILURE.search(text) is None and "continue-on-error" not in text
+    assert text.count("permissions:") == 1 and "\npermissions:\n  contents: read\n\n" in text
+
+
+def test_swallowed_failure_catches_the_forms_it_must():
+    for swallowed in ("pytest -q || true", "ruff check . || :", "ruff check .; true", "set +e", "run || exit 0"):
+        assert SWALLOWED_FAILURE.search(swallowed), swallowed
+    assert SWALLOWED_FAILURE.search("git rev-parse -q --verify HEAD~1 || git hash-object -t tree /dev/null") is None
 
 
 def test_readmes_name_the_ci_workflow():

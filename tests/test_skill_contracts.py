@@ -223,6 +223,9 @@ CONTRACTS: Dict[str, Contract] = {
             "git config --get pe.officeHours", "pe.weekendFrom", "pe.holidays", "easter+N", "pe.personalRemotes",
             "read with `date`, never estimated", "only as local commits", "hard stop", "real dates, never faked ones",
             "keep the machine awake", "Deletions outside the work's own folder",
+            "`06-21` runs from 06:00 up to 20:59",  # the end hour is outside the window
+            # one command re-creates every commit with both dates of the moment; a cherry-pick of the range keeps one
+            '`git rebase --exec "git commit --amend --no-edit --reset-author" <base>`',
         ),
     ),
     "quality-scoring": Contract(
@@ -377,13 +380,28 @@ ONE_SCALE = {
 }
 
 
+CLASS_OF_A_CLAUSE = re.compile(r"\b(?:is|are) (S[123])\b")
+
+
+def classes_blunt_review_gives(blocking: str) -> Dict[str, str]:
+    """The clauses of the scale sentence of blunt-review, each with the class its 'are S1' or 'is S3' states."""
+    scale = blocking.split("there is one scale:", 1)[1].split(". ", 1)[0]
+    return {clause: found.group(1) for clause in scale.split(";") if (found := CLASS_OF_A_CLAUSE.search(clause))}
+
+
 def test_blocking_findings_use_the_one_scale_of_quality_scoring():
+    """A phrase has the same class in both skills, and a class given to it as 'not blocking' is no scale at all."""
     blocking = sections(parse_frontmatter(skill_text("blunt-review"))[1])["Blocking findings"]
     classes = sections(parse_frontmatter(skill_text("quality-scoring"))[1])["Classes"]
     rows = {row.split("|")[1].strip()[:2]: row for row in classes.splitlines() if row.startswith("| S")}
+    given = classes_blunt_review_gives(blocking)
     for grade, phrases in ONE_SCALE.items():
         for phrase in phrases:
-            assert phrase in blocking and phrase in rows[grade], (grade, phrase)
+            assert [g for g, row in rows.items() if phrase in row] == [grade], ("quality-scoring", grade, phrase)
+            in_review = [(clause, g) for clause, g in given.items() if phrase in clause]
+            assert len(in_review) == 1, ("blunt-review", phrase)
+            clause, review_grade = in_review[0]
+            assert review_grade == grade and "not blocking" not in clause, ("blunt-review", grade, phrase)
 
 
 def test_status_line_has_one_spelling():

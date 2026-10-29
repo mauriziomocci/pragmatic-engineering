@@ -258,7 +258,7 @@ def _after_client_options(words: List[str], client: int) -> int:
 
 
 class _ApiArguments(NamedTuple):
-    """The arguments of one gh/glab api call, read as gh's flag parser reads them."""
+    """The arguments of one gh/glab api call."""
 
     endpoint: Optional[str]
     method: Optional[str]
@@ -269,7 +269,8 @@ class _ApiArguments(NamedTuple):
 
 def _parse_api_arguments(arguments: List[str]) -> _ApiArguments:
     """Read the arguments as gh's flag parser does: ``-X PUT``, ``-XPUT``, ``-X=PUT`` with one ``=`` stripped,
-    ``--method=PUT``, and so for every option that takes a value.
+    ``--method=PUT``, and so for every option that takes a value; ``-X GET`` inside a field value is therefore a
+    value, not the method.
 
     ``judged`` is False when the call has an option gh api does not have or a second positional argument, or uses
     PowerShell's arrays or splatting, because then which argument is what stays open.
@@ -302,12 +303,9 @@ def _parse_api_arguments(arguments: List[str]) -> _ApiArguments:
 def _read_api_call(arguments: List[str]) -> Tuple[bool, bool]:
     """Whether the parser can judge one gh/glab api call, and whether the call writes to pull or merge requests, or may.
 
-    The arguments are read as gh's flag parser reads them (``-X PUT``, ``-XPUT``, ``-X=PUT`` with one ``=`` stripped,
-    ``--method=PUT``, and so for every option that takes a value), so ``-X GET`` inside a field value is a value, not
-    the method. The call can be judged when it has one endpoint and only options gh api has: an option it does not
-    have (a glab-only flag, bundled short options like ``-iX``) or a second positional argument leaves open which
-    argument is what, and so do PowerShell's arrays and splatting, which turn ``a,-X`` and ``@a`` into several
-    arguments.
+    The call can be judged when it has one endpoint and only options gh api has: an option it does not have (a
+    glab-only flag, bundled short options like ``-iX``) or a second positional argument leaves open which argument is
+    what, and so do PowerShell's arrays and splatting, which turn ``a,-X`` and ``@a`` into several arguments.
 
     The call writes when it sends a method other than GET, or fields without an explicit GET, and its text names pulls
     or merge requests, percent-encoding decoded as the server decodes it; or when its endpoint is GraphQL (``graphql``,
