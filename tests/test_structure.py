@@ -106,7 +106,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "ede52c9c41540e92a68ecb6aaef5998d20b6c7c6970631c19908396b0d874b84"
+RULES_SHA256 = "54104bcf057b35a2124858549dc77a221268b8bbad6d3b8c65babd0d29862937"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -123,6 +123,16 @@ MIGRATION_REQUIREMENTS = {
     "english-identifiers": ("Every agent", "in English"),
     "docs-same-commit": ("Every agent", "same commit"),
     "heavy-gates": ("Main session", "explicit written approval", "an autonomy opening spec approval"),
+    "no-quiz": (
+        "Main session",
+        'The answer to "is it clear?" is awaited only at the two heavy gates and architecture choices, never while '
+        "the user is away or during an autonomy",
+    ),
+    "lanes": (
+        "Main session",
+        "a feature uses one chain only, superpowers by default and spec-kit when the user asks or the project "
+        "adopted it",
+    ),
     "suite-before-commit": ("Every agent", "zero failures"),
     "evidence": ("Every agent", "never taken as evidence"),
     "reuse": ("Every agent", "the reuse statement"),
@@ -155,6 +165,11 @@ MIGRATION_REQUIREMENTS = {
         "Main session", "wait for the user", "git config --local --get pe.autonomy",
         "unless the user's words or the profile narrow them", "deletions outside the worktree",
         "in chat with a hard stop", "by profile only, an unreleased contract no client uses",
+        # the openings the user's own rules define count too
+        "an autonomy the user opens in chat with a hard stop, or the profile `git config --local --get pe.autonomy` "
+        "gives, opens spec approval, data model, design outside the window and any opening the user's own rules "
+        "define, unless the user's words or the profile narrow them, and, by profile only, an unreleased contract no "
+        "client uses",
     ),
     "budget": ("Main session", "15% of the weekly limit"),
 }
@@ -667,6 +682,22 @@ def test_install_checks_the_official_marketplace_before_it_installs():
         positions = [text.find(step) for step in steps]
         assert -1 not in positions and positions == sorted(positions)
         assert text.index("/reload-plugins") > positions[-1]
+
+
+REVIEWER_PERMISSIONS = tuple(
+    "Bash(git %s --no-color --no-ext-diff --no-textconv --no-relative --ignore-submodules=none:*)" % verb
+    for verb in ("show", "diff")
+)
+
+
+def test_install_gives_the_reviewers_permission_rules_and_the_limits_point_to_them():
+    """Without them a run without a person reads nothing, so they are a step of the install, not a footnote."""
+    pointers = (
+        "the two permission rules of the install guide", "le due regole di permesso della guida all'installazione",
+    )
+    for install, limits, words in zip(pages("install"), pages("limits"), pointers):
+        assert [rule for rule in REVIEWER_PERMISSIONS if rule not in install.splitlines()] == []
+        assert [rule for rule in REVIEWER_PERMISSIONS if rule in limits] == [] and words in limits
 
 
 def test_limits_do_not_claim_how_a_compacted_subagent_treats_the_import():

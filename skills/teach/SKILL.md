@@ -26,7 +26,7 @@ Explain at four moments:
 
 A work block is a feature, a decision or a delivery. It is never an atomic task and never a single tool call, so a plan that runs without pauses stays compatible with these explanations: they sit at its edges, not between its steps.
 
-How to explain: brief and at a high level, in the language the user writes in, without chapters or headings. Then ask "is it clear?", also in the user's language. The answer is awaited only at the two heavy gates and at architecture choices. Everywhere else the question stays open and the work goes on; the user answers when they want to. Whatever the user says is unclear is explained again, with different words and with an example, not with the same sentence said louder.
+How to explain: brief and at a high level, in the language the user writes in, without chapters or headings. Then ask "is it clear?", also in the user's language. The answer is awaited only at the two heavy gates and at architecture choices, never while the user is away or during an autonomy. Everywhere else the question stays open and the work goes on; the user answers when they want to. Whatever the user says is unclear is explained again, with different words and with an example, not with the same sentence said louder.
 
 ## Teaching code in six layers
 

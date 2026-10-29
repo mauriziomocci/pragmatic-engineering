@@ -153,9 +153,9 @@ The cycle starts after an independent check (the panel, `blunt-reviewer` on a br
 
 **Round 2.** On `changes`, the blocking findings are fixed and another fresh reviewer rereads the range of the latest fixes, with `round=2`. On `pass` the cycle ends.
 
-**Stop.** If round 2 also ends with `changes`, there is no third round. The open blocking findings go up one level with the recommendation of whoever carries them, and the coordinator takes them to the user. The cycle continues only on `changes`.
+**Stop.** If round 2 also ends with `changes`, there is no third round, unless the project has its own audit criterion, which then says when the cycle stops. The open blocking findings go up one level with the recommendation of whoever carries them, and the coordinator takes them to the user or, during an autonomy, to the PM lens, which decides on them. The cycle continues only on `changes`.
 
-The fixes of a round are listed in a table, finding then decision then place, in the body of the commit of the fixes, and the next round checks that table too. Two rounds are a proposal to tune with use: the first sees whether the fixes broke something else, the second whether the last fixes hold. A blocking finding still open after the second round usually says that the way of fixing is wrong, and the decision belongs to the user.
+The fixes of a round are listed in a table, finding then decision then place, in the body of the commit of the fixes, and the next round checks that table too. Two rounds are a proposal to tune with use: the first sees whether the fixes broke something else, the second whether the last fixes hold. A blocking finding still open after the second round usually says that the way of fixing is wrong.
 
 ## Receiving findings
 

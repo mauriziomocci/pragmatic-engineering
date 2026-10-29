@@ -23,10 +23,10 @@ This skill guides the user through the plugin's own settings, six git configurat
 
 ## The flow
 
-1. Read the current values: `git config --global --get-all pe.<key>` for each global key and, inside a repository, `git config --local --get pe.autonomy`. Show the state in a few lines, and ask which keys the user wants to set unless they already said.
+1. Read the current values: `git config --show-origin --get-all pe.<key>` for each global key, which reads the merged configuration as the rules do and prints the file of each value, and, inside a repository, `git config --local --get pe.autonomy`. Show the state in a few lines, with the file each value comes from (for a key with one value, the last line is the one the rules read), and ask which keys the user wants to set unless they already said.
 2. Ask one question at a time, only about the keys the user wants, and wait for the answer before the next one. For each key say what it does and what happens while it is unset, and propose a value.
 3. Check the answer against the format of its key. On a wrong one, say why and ask again.
-4. Show the exact command. For a global key, run it only after the user's explicit yes to that command, then read the value back with the command of step 1. For `pe.autonomy`, never run it: show it for the user's own terminal, because only the user sets the profile. For `pe.privateTermsFile`, point to the README section for maintainers and stop.
+4. Show the exact command, with `--global` for a global key even when step 1 found its value in another file. For a global key, run it only after the user's explicit yes to that command, then read the value back with the command of step 1. For `pe.autonomy`, never run it: show it for the user's own terminal, because only the user sets the profile. For `pe.privateTermsFile`, point to the README section for maintainers and stop.
 5. At the end, list the configured values in a few lines and ask "is it clear?", as `teach` says.
 
 ## What configure never does

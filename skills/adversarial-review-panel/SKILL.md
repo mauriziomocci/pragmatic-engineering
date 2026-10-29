@@ -5,6 +5,8 @@ description: Use for decisions where being wrong is expensive - architecture, sp
 
 # adversarial-review-panel
 
+When the user's own configuration has a skill with this name, that one applies.
+
 ## What this is for
 
 A single reviewer has a single bias. On a decision that is expensive to undo — a
@@ -188,8 +190,7 @@ Rules that keep it honest:
 The panel decides; it does not check its own fixes. Once the decision is
 consolidated and the corrections that follow from it are made, follow the review
 cycle of `blunt-review`: a fresh reviewer rereads the corrected document in
-full, for at most two rounds, and the blocking findings still open after the
-second round go to the user.
+full. The cycle stops as `blunt-review` says.
 
 ## Common failure modes
 

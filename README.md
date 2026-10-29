@@ -78,6 +78,13 @@ If the pragmatic-engineering rules (marker PE-RULES v1) or its skills are missin
 
 The import is what brings the rules to the session. The safety line is what warns you when they stop arriving, since `SessionStart` cannot run once the plugin is uninstalled or disabled.
 
+Then allow the reviewer's git reads. Claude Code (checked with 2.1.303) asks approval for every `git show` and `git diff` with the options the reviewer must use: in a session with you it asks at each read, and in a run without a person (`claude -p`) the reviewer reads nothing. Add these two rules to the `allow` list under `permissions` in `~/.claude/settings.json`, after a dated copy of the file as for `CLAUDE.md`:
+
+```
+Bash(git show --no-color --no-ext-diff --no-textconv --no-relative --ignore-submodules=none:*)
+Bash(git diff --no-color --no-ext-diff --no-textconv --no-relative --ignore-submodules=none:*)
+```
+
 Updating: the manifest pins the version, so Claude Code moves you to a new release only when its version string changes, and auto-update is off by default for marketplaces other than Anthropic's. To update by hand, refresh the marketplace with `claude plugin marketplace update pragmatic-engineering`, run `claude plugin update pragmatic-engineering@pragmatic-engineering` and restart. The next `SessionStart` copies the new `rules.md`, and the new rules apply from the session after that.
 
 <!-- section: configure -->
@@ -94,7 +101,7 @@ The plugin reads six keys of git's configuration:
 | `pe.holidays` | The holidays: `MM-DD`, `easter+N` or `easter-N`, separated by commas | Global | No date is a holiday | `01-01,12-25,easter+1` |
 | `pe.personalRemotes` | The prefixes of the push URLs of your own remotes; it takes more than one value | Global | No remote is personal | `https://github.com/<you>/` |
 | `pe.autonomy` | What the lenses may decide while you are away, from `spec`, `schema`, `design` and `contract` | Local: in the repository you set it in | Nothing is opened | `spec,design` |
-| `pe.privateTermsFile` | The file of private terms that `tools/privacy_check.py` reads; only for those who work on this repository | Local: in the clone of this repository | The privacy check refuses to run | `<path outside the repository>` |
+| `pe.privateTermsFile` | The file of private terms that `tools/privacy_check.py` reads; only for those who work on this repository | Any level, read with `git config --get`; usually the clone of this repository | The privacy check refuses to run | `<path outside the repository>` |
 
 <!-- section: uninstall -->
 ### Uninstall and go back
@@ -112,7 +119,7 @@ Three things stay behind on purpose. Superpowers stays installed; `--prune` on t
 <!-- section: office-hours -->
 ### Set your office hours
 
-The plugin reads a few keys of your global git configuration. Set them once, from your own terminal:
+The plugin reads a few keys of your global git configuration. Set them once, from your own terminal, with `pe.personalRemotes` in the same step as `pe.officeHours`:
 
 ```
 git config --global pe.officeHours 06-21
@@ -121,7 +128,7 @@ git config --global pe.holidays 01-01,12-25,12-26,easter+1
 git config --global pe.personalRemotes https://github.com/<you>/
 ```
 
-`pe.officeHours` is the window, from the first hour up to the second, which is outside it: `06-21` runs from 06:00 up to 20:59, in local time; `none`, or no value, turns the rule off. `pe.weekendFrom` is the hour from which Saturdays, Sundays and the dates of `pe.holidays` open; without it they open at the start of the window. `pe.holidays` lists dates separated by commas, each `MM-DD`, or `easter+N` and `easter-N` with N days from Gregorian Easter: `easter+1` is Easter Monday. `pe.personalRemotes` says which remotes are yours: a remote is personal only if every push URL it has starts with one of its values, and you add another with `git config --global --add pe.personalRemotes <prefix>`; without it, no remote is personal. To see what the model will read, run `git config --get pe.officeHours`.
+`pe.officeHours` is the window, from the first hour up to the second, which is outside it: `06-21` runs from 06:00 up to 20:59, in local time; `none`, or no value, turns the rule off. `pe.weekendFrom` is the hour from which Saturdays, Sundays and the dates of `pe.holidays` open; without it they open at the start of the window. `pe.holidays` lists dates separated by commas, each `MM-DD`, or `easter+N` and `easter-N` with N days from Gregorian Easter: `easter+1` is Easter Monday. `pe.personalRemotes` says which remotes are yours: a remote is personal only if every push URL it has starts with one of its values, and you add another with `git config --global --add pe.personalRemotes <prefix>`; without it no remote is personal, so outside the window not even your own repositories receive a push. To see what the model will read, run `git config --get pe.officeHours`.
 
 <!-- section: autonomy -->
 ### Let the work go on without you
@@ -132,7 +139,7 @@ An autonomy lets the lenses take, while you are not there, the decisions it open
 git config --local pe.autonomy spec,schema,design,contract
 ```
 
-`spec` lets the PM lens approve the spec, after the design in three steps and a review cycle closed with no critical or serious finding; `schema` the data model; `design` design outside your office hours, still only in unattended work you authorised with a hard stop; `contract` a change to the shape of an API contract before its first release or its first client, and only through the profile. An autonomy never opens pushes, merges, production, deletions outside the worktree, messages to people or your instruction files, and your answer in chat prevails. The model reads only the profile set in the repository itself, never a global value or a file in the repository, so a clone cannot bring one in; `git config --local --unset pe.autonomy` turns it off. Only you set it: the model is told never to, and nothing stops it in this version.
+`spec` lets the PM lens approve the spec, after the design in three steps and a review cycle closed with no critical or serious finding; `schema` the data model; `design` design outside your office hours, still only in unattended work you authorised with a hard stop; `contract` a change to the shape of an API contract before its first release or its first client, and only through the profile. By itself an autonomy never opens pushes, merges, production, deletions outside the worktree, messages to people or your instruction files; it also opens any further opening your own rules define, such as publishing, and the plugin defines none itself. Your answer in chat prevails. The model reads only the profile set in the repository itself, never a global value or a file in the repository, so a clone cannot bring one in; `git config --local --unset pe.autonomy` turns it off. Only you set it: the model is told never to, and nothing stops it in this version.
 
 <!-- section: maintainers -->
 ### Work on this repository
@@ -183,7 +190,7 @@ A feature goes through seven phases: idea and requirements, spec, plan, tasks, i
 
 Small work (fewer than three files, an obvious fix, a configuration value) condenses the first four phases into a brief analysis, and keeps both heavy gates. The one exception is `autonomous-execution`, which only you can start, by naming it: its internal validation (the full suite and the review by `blunt-reviewer`) replaces the final gate, and your invocation is the go to push the work's branch and open its merge request, never to merge. The gate of the spec has one too: an autonomy you open that covers it, as the section on role lenses below says.
 
-A feature uses one chain of tools, never two. By default it is superpowers (`superpowers:brainstorming`, `superpowers:writing-plans`, `superpowers:subagent-driven-development`, with `superpowers:test-driven-development` for every task); spec-kit only when you ask for it, and then `spec-driven-layout` says where its files live. The failing test comes first in both chains.
+A feature uses one chain of tools, never two. By default it is superpowers (`superpowers:brainstorming`, `superpowers:writing-plans`, `superpowers:subagent-driven-development`, with `superpowers:test-driven-development` for every task); spec-kit when you ask for it or the project adopted it (a `.specify/` folder or its configuration), and then `spec-driven-layout` says where its files live. The failing test comes first in both chains.
 
 **Guaranteed by:** a mechanism for one thing: `disable-model-invocation` keeps the model from starting `autonomous-execution`. A rule for the rest (the rules `heavy-gates` and `test-first` in `rules.md`, and the skill `development-workflow`). Nothing records an approval or stops the model from writing code before one.
 
@@ -201,7 +208,7 @@ The review is made before a merge request is opened, on the whole range of the b
 
 The cycle starts after an independent check (the panel, or `blunt-reviewer` on a branch or on a delivery) and after the fixes of its findings. The corrected result is committed before each round, because the reviewer receives a git range.
 
-In round 1 a `blunt-reviewer` with fresh context, one that wrote neither the work nor the fixes, rereads the corrected result: a document in full through `full=`; code through the range of the fixes, `<tip before the fixes>..<tip after the fixes>`, with the rest of the branch readable through read-only git for context. On `VERDICT: pass` the cycle ends. On `changes`, the blocking findings are fixed and round 2 begins: another fresh reviewer rereads the range of the latest fixes, with `round=2`. On `pass` the cycle ends. If round 2 also ends with `changes`, there is no third round: the open blocking findings go up to you with the recommendation of whoever carries them, because a blocking finding still open after two rounds usually says that the way of fixing is wrong. The cycle continues only on `changes`. The fixes of each round are listed in a table in the body of the commit of the fixes (finding, decision, place), and the next round checks that table too.
+In round 1 a `blunt-reviewer` with fresh context, one that wrote neither the work nor the fixes, rereads the corrected result: a document in full through `full=`; code through the range of the fixes, `<tip before the fixes>..<tip after the fixes>`, with the rest of the branch readable through read-only git for context. On `VERDICT: pass` the cycle ends. On `changes`, the blocking findings are fixed and round 2 begins: another fresh reviewer rereads the range of the latest fixes, with `round=2`. On `pass` the cycle ends. If round 2 also ends with `changes`, there is no third round, unless your project has its own audit criterion, which then says when the cycle stops: the open blocking findings go up to you, or to the PM lens during an autonomy, with the recommendation of whoever carries them, because a blocking finding still open after two rounds usually says that the way of fixing is wrong. The cycle continues only on `changes`. The fixes of each round are listed in a table in the body of the commit of the fixes (finding, decision, place), and the next round checks that table too.
 
 **Guaranteed by:** a rule for the model only (the skill `blunt-review`). No mechanism counts the rounds or stops a third one.
 
@@ -228,7 +235,7 @@ In your `CLAUDE.md` exactly two lines change, and you add them yourself: the hoo
 <!-- section: explain-continuity -->
 ### Continuity
 
-Work is saved ahead, in three forms, all described by `continuity-note`. The progress note is the state on a few lines (done, in progress, next, open decisions), updated at every milestone and read again after a compaction; it lives in `.pe/progress.md` at the root of the repository, with a `.pe/.gitignore` that contains `*`, unless the project declares its own. The deliverable file of a task given to a subagent is written in blocks and carries a status line on top, `STATUS: IN PROGRESS - done: ...; next: ...`, which the last block replaces with `STATUS: COMPLETE`. The full continuity note is written when a session ends with work in progress or when work passes to another agent, so that a fresh context resumes without replaying the conversation.
+Work is saved ahead, in three forms, all described by `continuity-note`. The progress note is the state on a few lines (done, in progress, next, open decisions), updated at every milestone and read again after a compaction; it lives where your own configuration keeps the state of the work (a resume card, a diary), or in the project's own note when the project declares one, and only otherwise in `.pe/progress.md` at the root of the repository, with a `.pe/.gitignore` that contains `*`. The deliverable file of a task given to a subagent is written in blocks and carries a status line on top, `STATUS: IN PROGRESS - done: ...; next: ...`, which the last block replaces with `STATUS: COMPLETE`. The full continuity note is written when a session ends with work in progress or when work passes to another agent, so that a fresh context resumes without replaying the conversation.
 
 **Guaranteed by:** a rule for the model only (the rules `save-ahead` and `status-line` in `rules.md`). Nothing counts the saves, so a compaction loses at most the work done since the last save, and how small that is depends on the model's discipline.
 
@@ -242,7 +249,7 @@ If you set office hours, outside them the model keeps your work local: it commit
 <!-- section: explain-communication -->
 ### How the plugin talks to you
 
-The model explains briefly and at a high level at four moments: at the start and at the end of a work block, at every architecture choice (the choice, the main alternative discarded and why) and before a heavy gate. Each explanation ends with "is it clear?" in your language, and what you say is unclear is explained again with different words and an example. The answer is awaited only at the two heavy gates and at architecture choices; there is no quiz and no verification question, ever. The tone is frank: no agreeing to please, no flattery, weak reasoning challenged with evidence, risks and opportunity costs named, and a guess about your intent labelled as a guess. The skill `teach` carries the explanations and the method for teaching code; the rules file carries the tone.
+The model explains briefly and at a high level at four moments: at the start and at the end of a work block, at every architecture choice (the choice, the main alternative discarded and why) and before a heavy gate. Each explanation ends with "is it clear?" in your language, and what you say is unclear is explained again with different words and an example. The answer is awaited only at the two heavy gates and at architecture choices, and never while you are away or during an autonomy; there is no quiz and no verification question, ever. The tone is frank: no agreeing to please, no flattery, weak reasoning challenged with evidence, risks and opportunity costs named, and a guess about your intent labelled as a guess. The skill `teach` carries the explanations and the method for teaching code; the rules file carries the tone.
 
 **Guaranteed by:** a rule for the model only (the rules `explain`, `no-quiz` and `candour` in `rules.md`, and the skill `teach`). "Is it clear?" does not prove that you understood, and the tone rules reduce the model's tendency to agree, they do not remove it.
 
@@ -263,7 +270,7 @@ The limits that describe Claude Code's own behaviour (which agents load `CLAUDE.
 - "Is it clear?" does not prove understanding, and the tone rules reduce the model's tendency to agree without removing it.
 - Continuity loses at most the work done after the last save, and depends on the model's discipline because nothing counts the saves.
 - The grammar of the `blunt-reviewer` prompt and the fact that it writes no file outside `.pe/` are declared in the agent, not enforced.
-- Claude Code (checked with 2.1.303) asks approval for `git show` and `git diff` with the options the reviewer must use (`--no-ext-diff --no-textconv --no-relative --ignore-submodules=none`). Interactively it asks for each read; in a run without a person (`claude -p`) the reviewer reads nothing, unless these two permission rules are allowed: `Bash(git show --no-color --no-ext-diff --no-textconv --no-relative --ignore-submodules=none:*)` and `Bash(git diff --no-color --no-ext-diff --no-textconv --no-relative --ignore-submodules=none:*)`. In such a run the reviewer may also be refused writes under `.pe/`, and then it puts its whole report in its last message, with `REPORT: inline`.
+- Claude Code (checked with 2.1.303) asks approval for `git show` and `git diff` with the options the reviewer must use, unless the two permission rules of the install guide are allowed: without them it asks at each read, and in a run without a person (`claude -p`) the reviewer reads nothing. In such a run the reviewer may also be refused writes under `.pe/`, and then it puts its whole report in its last message, with `REPORT: inline`.
 - Superpowers installs by itself only when the official marketplace is already registered in your Claude Code; otherwise this plugin stays disabled until you add it (see the install guide).
 - The version is pinned in the manifest, so an update reaches you only when the version string changes and you ask for it, unless you turn auto-update on.
 - If you already have a plugin named superpowers from another marketplace, Claude Code's documentation says that both appear as enabled and that the hooks of one of them are left out; this has not been tried here.
@@ -286,7 +293,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 | `quality-scoring` | A score from 1 to 10 for each lens the work touches, computed from findings classed S1, S2 or S3; who scores which lens; the score sheet; the calibration log in the plugin's data folder. | Every review that feeds the 8/10 gate of phase 6, before work is integrated or released. Preloaded in `blunt-reviewer`. |
 | `adversarial-review-panel` | Four lenses that argue against each other, a cross-examination, and one decision. | Decisions where being wrong is expensive: architecture, specs, risky refactors, security, technology choices, data models; not for ordinary reviews. |
 | `development-workflow` | The three lanes, seven phases and four gates, one chain per feature, the design in three steps, models by role, the role lenses and decisions while you are away, the daily budget, instruction layers, closure. | Any work on code, a release, a merge or a closure. |
-| `spec-driven-layout` | Where spec-kit keeps its files and how much to write for the weight of the work. | Only when you ask for spec-kit. |
+| `spec-driven-layout` | Where spec-kit keeps its files and how much to write for the weight of the work. | When you ask for spec-kit or the project adopted it. |
 | `autonomous-execution` | Runs an approved spec unattended up to the opening of its merge request, recording the decisions it takes alone. | Only when you invoke it by name; the model never loads it on its own. |
 | `teach` | Brief explanations followed by "is it clear?", the six-layer method for teaching code, the state on one screen on resume. | When you ask how code works or to be taught, when a session resumes, before a heavy gate. |
 | `continuity-note` | The continuity note, the progress note and the status line of deliverable files. | When work passes to another agent or session, and at every milestone in its short form. |

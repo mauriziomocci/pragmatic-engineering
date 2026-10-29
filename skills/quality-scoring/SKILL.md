@@ -5,6 +5,8 @@ description: Use at every review that feeds the 8/10 gate of phase 6, before wor
 
 # quality-scoring
 
+When the user's own configuration has a skill with this name, that one applies.
+
 The gate of phase 6 asks every lens the work touches to score at least 8 out of 10. A gate like that means something only if the score does not depend on who gives it, so here the score is computed from classified findings, never chosen. The same perimeter, the same evidence and the same rubric give the same score within half a point.
 
 ## When to use

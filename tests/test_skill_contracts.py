@@ -22,6 +22,8 @@ FORBIDDEN = ("Jira", "HackSoftware", "Two Scoops", "PostgreSQL", "Django", "sele
 # The three files that tell a sub-agent how to open its deliverable file; rules.md is pinned by digest.
 STATUS_LINE_FILES = ("rules.md", "agents/blunt-reviewer.md", "skills/continuity-note/SKILL.md")
 STATUS_LINE = re.compile(r"`(STATUS: IN PROGRESS - done:[^`]*)`")
+# The six skills whose names a user's own skills may carry: the user's copy applies, in the same words everywhere.
+SAME_NAME = "When the user's own configuration has a skill with this name, that one applies."
 
 
 @dataclass(frozen=True)
@@ -54,10 +56,14 @@ CONTRACTS: Dict[str, Contract] = {
             "an autonomy profile that opens `contract`",
             "until the API's first release or first client, the lenses may change its shape, with its documentation and "
             "the test's delivered schema updated in the same commit, and the spec quotes the decision log entry",
-            # independent work that needs its own context: one phrase, so the order is pinned too,
-            # and no claim that every host has the tools
-            "in this order: a new session through the desktop app's `start_session` tool, when the session has it; "
-            "otherwise a `spawn_task` chip the user opens with one click; otherwise a subagent in its own git worktree",
+            # independent work that needs its own context: one sentence, so the order is pinned too, the worktree
+            # comes first while nobody can click a card, and no claim that every host has the tools
+            "Independent work that runs in parallel and needs its own context, other than a lens or a review, "
+            "which stays the subagent its skill names, starts as a subagent in its own git worktree while the user "
+            "is away or an autonomy is open, because a new session or a chip waits for a click nobody gives; "
+            "otherwise it starts in this order: a new session through the desktop app's `start_session` tool, when "
+            "the session has it; otherwise a `spawn_task` chip the user opens with one click; otherwise a subagent "
+            "in its own git worktree.",
             "not of the plugin, which cannot add them",
             "other than a lens or a review, which stays the subagent its skill names",
         ),
@@ -85,7 +91,7 @@ CONTRACTS: Dict[str, Contract] = {
             "**Verified**:", "**Inferred**:", "**Assumed**:", "**Unverifiable**:",  # the four bullets of Pass 5
             "apply all four techniques",
             "the name of the report that would give the exact one",
-            "never evidence itself",
+            "never evidence itself", SAME_NAME,
         ),
         absent=(
             "iterative-requirements-analysis", "financial-reconciliation", "smonta", "combacia", "Origine",
@@ -117,12 +123,18 @@ CONTRACTS: Dict[str, Contract] = {
             'The default answer to "should we add this?" is no, whether the thing is a function, a layer, a '
             "parameter, a dependency, a tool, an option, an abstraction, a rule or a part of a spec.",
             "Whoever adds it proves the need: over-engineering is the defect.",
+            # the stop of the cycle defers to the project's own criterion, and nobody waits for an absent user
+            "If round 2 also ends with `changes`, there is no third round, unless the project has its own audit "
+            "criterion, which then says when the cycle stops.",
+            "The open blocking findings go up one level with the recommendation of whoever carries them, and the "
+            "coordinator takes them to the user or, during an autonomy, to the PM lens, which decides on them.",
         ),
         absent=(
             "Delivering work", "Pythonic",
             "whole range",  # round 1 is the range of the fixes, not of the work
             "a dependency that duplicates",  # not in the rule it summarises
             "in doubt it is blocking",  # one scale: the classes of quality-scoring decide
+            "and the decision belongs to the user",  # the stop above names who decides
         ),
     ),
     "adversarial-review-panel": Contract(
@@ -134,7 +146,9 @@ CONTRACTS: Dict[str, Contract] = {
         phrases=(
             "THE DECISION:", "Missed by all:", "no objection", "blunt-review",
             "delete > do nothing > extend what exists > write new", "what breaks if we delete this?",
+            SAME_NAME, "The cycle stops as `blunt-review` says.",
         ),
+        absent=("for at most two rounds",),  # the cap lives in blunt-review, with its exceptions
     ),
     "development-workflow": Contract(
         sections=(
@@ -171,13 +185,29 @@ CONTRACTS: Dict[str, Contract] = {
             "hands the lenses `spec` (gate 2, after the three-step design and a review cycle closed on `pass`), "
             "`schema` (data model) and `design` (outside the window) unless the user's words or the profile narrow them, "
             "and, by profile only, `contract`",
-            "deletions outside the worktree, merges into protected branches", "nothing else moves", "the user's answer in chat prevails",
+            "deletions outside the worktree, merges into protected branches", "the user's answer in chat prevails",
+            # where the user's own rules or configuration say more, the plugin defers
+            "It also opens any further opening the user's own rules define, such as publishing, though the plugin "
+            "itself defines none, and the user's answer in chat prevails.",
+            "When the project has its own audit criterion, that criterion closes the review cycle of `spec` instead "
+            "of `pass`, and at the cap of rounds the PM lens decides on what is still open, as `blunt-review` says.",
+            "When the user's configuration names its own agents for these lenses, those agents run them.",
+            "One entry per decision, in the log the user's or the project's configuration names, otherwise in the "
+            "progress note: who decided, the positions, the costs and the state (confirmed, overturned, pending).",
+            "When the user asks for spec-kit, or the project adopted it, its whole chain is used instead: "
+            "`speckit-specify`, `speckit-clarify`, `speckit-plan`, `speckit-tasks` and `speckit-implement`, with the "
+            "spec in `specs/NNN-slug/` as `spec-driven-layout` says.",
+            "Launch `blunt-reviewer` with the prompt `<merge-base>..HEAD` and nothing else, as its closed grammar "
+            "requires; the range alone still carries the thresholds, which travel in the reviewer's preloaded skill.",
+            # the gate 6 exception names no reviewer, because the user's copy of that skill may use another one
+            "Gate 6 has one exception: `autonomous-execution`, invoked by the user by name.",
         ),
         claude_md_sections=("Feature lane: phases and gates", "Instruction layers", "Rule cycle", "Shared files"),
         absent=(
             "phase-model-skill-mapping", "--no-ff", "Jira", "The project's suite before every commit",
             "Gate 2 has none",  # an autonomy that opens spec is its one exception
             "`publish`",  # publishing is not an opening of the plugin, a declared difference from the master
+            "nothing else moves", "spec-kit on request",  # the user's own openings and adoption of spec-kit count
         ),
     ),
     "spec-driven-layout": Contract(
@@ -191,11 +221,15 @@ CONTRACTS: Dict[str, Contract] = {
             "development-workflow",
             "YYYYMMDD-HHMMSS",  # the numbering of a project created with --timestamp
             ".specify/templates/overrides/",  # first in spec-kit's template lookup order
+            SAME_NAME,
+            "Load it when the user asks for spec-kit or the project adopted it, with a `.specify/` folder or in its "
+            "configuration.",
         ),
         absent=(
             ".specify/specs", "global CLAUDE.md", "memory backup",
             "runs without any spec-kit convention",  # a leftover of spec-kit as opt-in
             "Otherwise the artifacts follow",  # specify init always fills .specify/templates/
+            "only when the user asks",  # a project that adopted spec-kit uses it too, description included
         ),
     ),
     "autonomous-execution": Contract(
@@ -217,11 +251,14 @@ CONTRACTS: Dict[str, Contract] = {
             "the decision log entry of an autonomy that opens `spec`", "the gate of phase 2 has no other exception",
             # the one rewrite safe-operations asks for, so that the two skills can both be followed
             "published history is never rewritten",
+            SAME_NAME,
+            "GitHub: `command gh pr create`, because a shell alias may shadow `gh`, then the API.",
         ),
         user_only=True,
         absent=(
             "git-commit-assistant", "/opt/homebrew", "Autorizzazione", "carve-out", "such as 2.32",
             "the gate of phase 2 has no exception",
+            "`gh pr create`",  # a bare name can run an alias
         ),
     ),
     "teach": Contract(
@@ -233,6 +270,8 @@ CONTRACTS: Dict[str, Contract] = {
             "is it clear?", "The problem", "The path through the code", "Choices and discarded alternatives",
             "A concrete case", "Limits", "How to check it yourself", "continuity-note", "file::function",
             "no quiz",
+            "The answer is awaited only at the two heavy gates and at architecture choices, never while the user is "
+            "away or during an autonomy.",
             "accepted that cost",  # the weak check is a trade-off the user chose, declared, not a gap
             "git -C <folder>",
         ),
@@ -246,7 +285,12 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         phrases=(
             "Redact secrets", "reference, don't duplicate", ".pe/progress.md", "STATUS: IN PROGRESS",
-            "STATUS: COMPLETE", "## Next steps",
+            "STATUS: COMPLETE", "## Next steps", SAME_NAME,
+            # the state lives where the user already keeps it; the plugin's own folder comes last
+            "**Where it lives:** in the place the user's own configuration names for the state of the work (a resume "
+            "card, a diary), or in the project's continuity note when the project's configuration declares one; only "
+            "otherwise in `.pe/progress.md` at the root of the repository, with a `.pe/.gitignore` that contains `*`, "
+            "so the folder never enters git.",
         ),
         extra_files=("LICENSE",),
     ),
@@ -263,12 +307,28 @@ CONTRACTS: Dict[str, Contract] = {
             "read with `date`, never estimated", "only as local commits", "hard stop", "real dates, never faked ones",
             "keep the machine awake", "Deletions outside the work's own folder",
             "`06-21` runs from 06:00 up to 20:59",  # the end hour is outside the window
-            # one command re-creates every commit with both dates of the moment; a cherry-pick of the range keeps one
-            '`git rebase --exec "git commit --amend --no-edit --reset-author" <base>`',
+            # the re-creation: the user's own procedure first; otherwise a backup tag, one rebase that gives both dates
+            # of every commit, merges included, the time of the moment, and four checks before any push
+            "Commits made outside the window and never pushed are re-created inside it with their real dates, never "
+            "faked ones, before the branch is integrated; when the user's own rules name a re-creation procedure, that "
+            "one applies.",
+            "Otherwise, with `<base>` the last commit already pushed, or the branch point when the branch was never "
+            "pushed, tag the tip with `git tag night-backup-<YYYYMMDD>` and run "
+            "`git rebase --force-rebase --ignore-date --rebase-merges <base>`, which gives both dates of every commit, "
+            "merges included, the time of the moment.",
+            "Before any push four checks pass: the tree is the one of the tag "
+            "(`git diff --quiet night-backup-<YYYYMMDD> HEAD`); `git rev-list --count` and `git log --format=%B` print "
+            "the same on `<base>..night-backup-<YYYYMMDD>` as on `<base>..HEAD`, so no commit and no message is lost; "
+            "and `git log --format='%ad %cd' --date=format-local:%H <base>..HEAD` prints only hours inside the "
+            "window, for both dates.",
+            "When the user says in chat that they are working outside the window, interactive work goes on, and the "
+            "traces in company systems still wait for the window, unless the user's own rules give an exception on "
+            "request.",
             "An autonomy that opens `design` lifts the letter and the parking, the lenses deciding as "
             "`development-workflow` says, and the authorisation with its hard stop is still needed: a chat autonomy "
             "that covers the night is one, a profile never is.",
         ),
+        absent=("--reset-author",),  # it replays a branch with merges as a straight line
     ),
     "quality-scoring": Contract(
         sections=(
@@ -294,6 +354,7 @@ CONTRACTS: Dict[str, Contract] = {
             "with its date and the reason", "never in the files of the plugin",
             "from the last place it is installed",
             "nor the autonomy exception",  # a contract changed under the profile is no S1
+            SAME_NAME,
         ),
     ),
     "interface-quality": Contract(
@@ -315,6 +376,9 @@ CONTRACTS: Dict[str, Contract] = {
             "recognition over recall", "never their components inside the project's template",
             "choices among existing values", "assume the persona does not understand", "is a tracked task",
             "or to the PM lens under an autonomy that opens `spec`",
+            "When the user's configuration names its own agent for this lens, that agent runs it.",
+            "When the user's configuration names its own agent for this lens or its own file of personas, those are "
+            "used instead.",
         ),
     ),
     "documentation-quality": Contract(
@@ -363,6 +427,14 @@ CONTRACTS: Dict[str, Contract] = {
             "and never runs a command the user has not seen.",
             "What each opening of `pe.autonomy` means lives in `development-workflow`; "
             "the office-hours rule lives in `safe-operations`.",
+            # the state shown is the one the rules read: merged, with the file of each value; the write stays global
+            "Read the current values: `git config --show-origin --get-all pe.<key>` for each global key, which reads "
+            "the merged configuration as the rules do and prints the file of each value, and, inside a repository, "
+            "`git config --local --get pe.autonomy`.",
+            "Show the state in a few lines, with the file each value comes from (for a key with one value, the last "
+            "line is the one the rules read), and ask which keys the user wants to set unless they already said.",
+            "Show the exact command, with `--global` for a global key even when step 1 found its value in another "
+            "file.",
         ),
     ),
 }
@@ -518,6 +590,14 @@ def test_quality_scoring_names_the_calibration_log_in_the_form_claude_code_subst
     _, body = parse_frontmatter(skill_text("quality-scoring"))
     assert "`${CLAUDE_PLUGIN_DATA}/calibration.md`" in body
     assert "$CLAUDE_PLUGIN_DATA" not in body.replace("${CLAUDE_PLUGIN_DATA}", "")
+
+
+def test_spec_driven_layout_loads_for_a_project_that_adopted_spec_kit():
+    """The description decides when the skill loads, and a project with its own `.specify/` uses spec-kit."""
+    fields, _ = parse_frontmatter(skill_text("spec-driven-layout"))
+    assert fields["description"].startswith(
+        "Use when the user asks for spec-kit or the project adopted it (a .specify/ folder or its configuration)."
+    )
 
 
 def test_documentation_quality_stays_within_its_cap():

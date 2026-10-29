@@ -1,15 +1,17 @@
 ---
 name: spec-driven-layout
-description: Use only when the user asks for spec-kit. Where spec-kit keeps its files (specs/NNN-slug/ at the repository root, constitution and templates under .specify/), which command serves each phase, how much to materialise for the weight of the work, and how the constitution ranks among the instruction layers.
+description: Use when the user asks for spec-kit or the project adopted it (a .specify/ folder or its configuration). Where spec-kit keeps its files (specs/NNN-slug/ at the repository root, constitution and templates under .specify/), which command serves each phase, how much to materialise for the weight of the work, and how the constitution ranks among the instruction layers.
 ---
 
 # spec-driven-layout
+
+When the user's own configuration has a skill with this name, that one applies.
 
 `development-workflow` says when each artifact is produced. This skill says where the artifacts live on disk, and how many of them a piece of work needs.
 
 ## When to use
 
-Load it only when the user asks for spec-kit. A feature uses one chain of tools (`development-workflow`). Without the request, the superpowers chain is used and this skill stays unloaded.
+Load it when the user asks for spec-kit or the project adopted it, with a `.specify/` folder or in its configuration. A feature uses one chain of tools (`development-workflow`). Otherwise the superpowers chain is used and this skill stays unloaded.
 
 ## Where spec-kit keeps its files
 

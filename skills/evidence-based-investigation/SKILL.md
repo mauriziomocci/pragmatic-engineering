@@ -5,6 +5,8 @@ description: Use for investigations, diagnoses, verifications and technical answ
 
 # evidence-based-investigation
 
+When the user's own configuration has a skill with this name, that one applies.
+
 Most investigations reach the wrong answer not because data is missing but because the investigator confirms the first plausible explanation without testing the alternatives, states as certain what is only inferred, or stops when the numbers match. This skill prevents those three failures with multiple passes, explicit hypothesis testing and an honest separation of what is verified from what is not.
 
 The method is the point; the domain (a customer ticket, a bug, a reconciliation, a security audit) is only its surface. Use it whenever a wrong conclusion has a real cost.

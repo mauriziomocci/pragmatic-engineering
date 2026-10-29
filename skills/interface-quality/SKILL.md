@@ -54,7 +54,7 @@ On a server the API is the experience of the developer who builds the client. On
 
 On every change to an interface or to an API, except a trivial text fix, one round, before the spec:
 
-1. The UX lens proposes from the need of the person who uses the product. It runs as a subagent on Opus, briefed with this skill, the touched pages or routes and the person's task.
+1. The UX lens proposes from the need of the person who uses the product. It runs as a subagent on Opus, briefed with this skill, the touched pages or routes and the person's task. When the user's configuration names its own agent for this lens, that agent runs it.
 2. The review lens (`blunt-review`) attacks on evidence, cost, the simpler alternative and the impact on code and architecture.
 3. The UX lens answers or changes the proposal.
 4. Then the decision: on the person's need the UX lens prevails, on correctness, evidence and the quality of the code the review lens prevails. A disagreement that survives goes to the user, or to the PM lens under an autonomy that opens `spec` (`development-workflow`), and to the project's designer where there is one, with both positions.
@@ -63,7 +63,7 @@ Neither lens agrees by default. Each re-checks the other's claims on the screens
 
 ## The user lens
 
-The user lens tries the change as the person who will use it, and it never decides: it reports findings, with no vote and no score. It runs as a subagent on Sonnet, never Haiku. It takes at most three personas from the project's file of personas, chosen for the need, and one real task at a time; it works from the screenshots, never from the code, and at every step it answers four questions as the persona:
+The user lens tries the change as the person who will use it, and it never decides: it reports findings, with no vote and no score. It runs as a subagent on Sonnet, never Haiku. When the user's configuration names its own agent for this lens or its own file of personas, those are used instead. It takes at most three personas from the project's file of personas, chosen for the need, and one real task at a time; it works from the screenshots, never from the code, and at every step it answers four questions as the persona:
 
 1. Do I know what to do here to move towards my goal?
 2. Do I see the control that does it, where I would look for it?
