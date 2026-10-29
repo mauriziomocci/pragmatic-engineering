@@ -141,14 +141,6 @@ def test_it_refuses_an_empty_range(tmp_path):
     refuse(repo, "HEAD", "range")
 
 
-def test_it_refuses_uncommitted_changes_in_a_tracked_file(tmp_path):
-    repo, base = night_repo(tmp_path)
-    commit(repo, {"a.txt": "night\n"}, "night")
-    (repo / "a.txt").write_text("not committed\n", encoding="utf-8")
-    proc = refuse(repo, base, "clean tree")
-    assert "uncommitted changes in tracked files" in proc.stderr
-
-
 def untrack_and_ignore(repo: Path) -> None:
     """A commit that untracks ``config.local`` and ignores it: the file stays on disk, ignored."""
     git(repo, "rm", "-q", "--cached", "config.local")
@@ -157,71 +149,78 @@ def untrack_and_ignore(repo: Path) -> None:
     git(repo, "commit", "-q", "-m", "stop tracking the local configuration")
 
 
-def stop_tracking_and_ignore(tmp_path: Path) -> Tuple[Path, str]:
-    """The base tracks ``config.local`` and a night commit untracks it."""
-    repo, _ = night_repo(tmp_path)
-    base = commit(repo, {"config.local": "secret\n"}, "track the local configuration")
-    untrack_and_ignore(repo)
-    return repo, base
-
-
-def test_it_refuses_while_a_file_the_range_deletes_is_still_on_disk(tmp_path):
-    """The rebase checks out the base, which overwrites an ignored file, and the replay then deletes it."""
-    repo, base = stop_tracking_and_ignore(tmp_path)
-    proc = refuse(repo, base, "untracked file")
-    assert "config.local" in proc.stderr
-    assert (repo / "config.local").read_text(encoding="utf-8") == "secret\n"
-
-
-def test_it_refuses_a_file_a_night_commit_adds_and_a_later_one_untracks(tmp_path):
-    """The net change of the range is empty, yet replaying the first commit would overwrite the local file."""
-    repo, base = night_repo(tmp_path)
-    commit(repo, {"config.local": "committed by mistake\n"}, "add the local configuration")
-    untrack_and_ignore(repo)
-    (repo / "config.local").write_text("edited after\n", encoding="utf-8")
-    proc = refuse(repo, base, "untracked file")
-    assert "config.local" in proc.stderr
-    assert (repo / "config.local").read_text(encoding="utf-8") == "edited after\n"
-    assert not (repo / ".git" / "rebase-merge").exists()
-
-
-def add_then_untrack_below_a_folder(tmp_path: Path) -> Tuple[Path, str]:
-    """The case above, plus a folder ``sub`` that exists in the range: the script is then run from inside it."""
-    repo, base = night_repo(tmp_path)
-    commit(repo, {"config.local": "committed by mistake\n", "sub/inner.txt": "inner\n"}, "add both")
-    untrack_and_ignore(repo)
-    return repo, base
-
-
-def test_it_refuses_from_a_subdirectory_too_when_an_untracked_file_is_elsewhere(tmp_path):
-    """``git ls-files --others`` lists only what is under the current folder, in paths relative to it."""
-    repo, base = add_then_untrack_below_a_folder(tmp_path)
-    before = head(repo)
-    proc = run_script(SCRIPT, [base], repo / "sub")
-    assert proc.returncode == 1 and "untracked file" in proc.stderr, proc.stdout + proc.stderr
-    assert head(repo) == before and tags(repo) == ""
-    assert (repo / "config.local").read_text(encoding="utf-8") == "committed by mistake\n"
-
-
-def test_a_run_from_a_subdirectory_on_a_clean_range_passes(tmp_path):
-    repo, base = add_then_untrack_below_a_folder(tmp_path)
-    (repo / "config.local").unlink()
-    proc = run_script(SCRIPT, [base], repo / "sub")
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert tags(repo).startswith("night-backup-")
+def moved_to_recreated_commits(repo: Path, old_tip: str) -> bool:
+    """The branch left ``old_tip`` and the backup tag is where it was."""
+    return head(repo) != old_tip and git(repo, "rev-parse", tags(repo)).strip() == old_tip
 
 
 def test_a_directory_outside_any_repository_ends_in_a_refusal(tmp_path):
     proc = run_script(SCRIPT, ["HEAD"], tmp_path)
     assert proc.returncode == 1 and "Traceback" not in proc.stderr, proc.stdout + proc.stderr
-    assert "git" in proc.stderr
+    assert "git: `git rev-parse --show-toplevel` failed" in proc.stderr
 
 
-def test_a_file_the_range_deletes_and_that_is_gone_from_disk_does_not_stop_it(tmp_path):
-    repo, base = stop_tracking_and_ignore(tmp_path)
-    (repo / "config.local").unlink()
+def test_a_run_from_a_subdirectory_passes(tmp_path):
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"sub/inner.txt": "inner\n"}, "night")
+    proc = run_script(SCRIPT, [base], repo / "sub")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert tags(repo).startswith("night-backup-")
+
+
+def test_an_ignored_directory_where_the_range_turns_a_file_into_a_folder_stays_intact(tmp_path):
+    """The base tracks a file ``cache``; a night commit removes it and ignores ``cache/``; a tool wrote into it."""
+    repo, _ = night_repo(tmp_path)
+    base = commit(repo, {"cache": "a tracked file\n"}, "track cache")
+    git(repo, "rm", "-q", "cache")
+    (repo / ".gitignore").write_text("cache/\n", encoding="utf-8")
+    git(repo, "add", ".gitignore")
+    git(repo, "commit", "-q", "-m", "ignore cache", env=old_date_env())  # an old date makes the new sha differ
+    (repo / "cache").mkdir()
+    (repo / "cache" / "data.db").write_text("local data\n", encoding="utf-8")
+    old_tip = head(repo)
     proc = run_script(SCRIPT, [base], repo)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (repo / "cache" / "data.db").read_text(encoding="utf-8") == "local data\n"
+    assert moved_to_recreated_commits(repo, old_tip)
+
+
+def test_a_file_a_night_commit_adds_and_a_later_one_untracks_keeps_its_content(tmp_path):
+    """The net change of the range is empty, yet replaying the first commit would have overwritten the local file."""
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"config.local": "committed by mistake\n"}, "add the local configuration", env=old_date_env())
+    untrack_and_ignore(repo)
+    (repo / "config.local").write_text("edited after\n", encoding="utf-8")
+    old_tip = head(repo)
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (repo / "config.local").read_text(encoding="utf-8") == "edited after\n"
+    assert moved_to_recreated_commits(repo, old_tip)
+
+
+def test_uncommitted_edits_and_untracked_files_survive_and_the_index_stays_consistent(tmp_path):
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"a.txt": "night\n"}, "night", env=old_date_env())
+    (repo / "a.txt").write_text("not committed\n", encoding="utf-8")
+    (repo / "scratch.txt").write_text("never meant for git\n", encoding="utf-8")
+    old_tip = head(repo)
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (repo / "a.txt").read_text(encoding="utf-8") == "not committed\n"
+    assert (repo / "scratch.txt").read_text(encoding="utf-8") == "never meant for git\n"
+    assert git(repo, "status", "--porcelain") == " M a.txt\n?? scratch.txt\n"
+    assert moved_to_recreated_commits(repo, old_tip)
+
+
+def test_a_detached_head_moves_to_the_re_created_commits(tmp_path):
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"a.txt": "night\n"}, "night", env=old_date_env())
+    git(repo, "checkout", "-q", "--detach")
+    old_tip = head(repo)
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "HEAD"
+    assert moved_to_recreated_commits(repo, old_tip)
 
 
 def test_a_tracked_file_replaced_by_a_directory_of_the_same_name_does_not_stop_it(tmp_path):
@@ -358,6 +357,15 @@ def dates(repo: Path, rev_range: str) -> Dict[str, Tuple[int, int]]:
     return {subject: (int(at), int(ct)) for subject, at, ct in (line.split("|") for line in lines)}
 
 
+def files_on_disk(repo: Path) -> Dict[str, str]:
+    """Every file of the working tree outside ``.git`` with its content."""
+    return {
+        str(path.relative_to(repo)): path.read_text(encoding="utf-8")
+        for path in repo.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(repo).parts
+    }
+
+
 def test_old_commits_come_back_with_the_time_of_the_moment_a_merge_included(night, tmp_path):
     """The property the script exists for: commits dated in the night, a merge among them, leave inside the window."""
     repo, base = night_repo(tmp_path)
@@ -369,10 +377,12 @@ def test_old_commits_come_back_with_the_time_of_the_moment_a_merge_included(nigh
     git(repo, "merge", "-q", "--no-ff", "-m", "merge side", "side", env=old)
     commit(repo, {"a.txt": "after\n"}, "after the merge", env=old)
     before = dates(repo, base + "..HEAD")
+    files = files_on_disk(repo)
     started = int(time.time())
     assert len(before) == 4 and all(started - stamp > 3600 for pair in before.values() for stamp in pair)
     proc = run_script(SCRIPT, [base], repo)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert files_on_disk(repo) == files  # the user's working tree is never written
     window = night.parse_window(window_around_now())
     hours = git(repo, "log", "--format=%ad %cd", "--date=format-local:%H", base + "..HEAD").split()
     assert set(dates(repo, base + "..HEAD")) == set(before) and len(hours) == 8
@@ -386,9 +396,9 @@ def test_a_made_up_failure_of_a_git_command_in_the_checks_ends_in_the_way_back(n
 
     monkeypatch.setattr(night, "CHECKS", (("messages", broken),))
     with pytest.raises(night.Refusal) as refusal:
-        night.verify(night.Recreation("base", "night-backup-x", night.parse_window("00-23")))
+        night.verify(night.Recreation("base", "night-backup-x", "HEAD", night.parse_window("00-23")))
     assert refusal.value.check == "messages" and "boom" in str(refusal.value)
-    assert refusal.value.way_back == ("git reset --keep night-backup-x",)
+    assert len(refusal.value.way_back) == 1 and "git tag -d night-backup-x" in refusal.value.way_back[0]
 
 
 def test_a_merge_in_the_range_stays_a_merge(tmp_path):
@@ -404,17 +414,26 @@ def test_a_merge_in_the_range_stays_a_merge(tmp_path):
     assert git(repo, "rev-list", "--merges", "--count", base + "..HEAD") == merges == "1\n"
 
 
-def test_a_failed_rebase_prints_the_way_back_and_exits_non_zero(tmp_path):
-    """A base on a sibling line that changes the same file makes the replay conflict; the script runs no way back."""
+def worktree_entries(repo: Path) -> int:
+    return len(git(repo, "worktree", "list").splitlines())
+
+
+def test_a_failed_rebase_leaves_the_branch_and_no_temporary_worktree(tmp_path):
+    """A base on a sibling line that changes the same file makes the replay conflict inside the temporary worktree."""
     repo, _ = night_repo(tmp_path)
     git(repo, "checkout", "-q", "-b", "sibling")
     other = commit(repo, {"a.txt": "other\n"}, "sibling change")
     git(repo, "checkout", "-q", "main")
     commit(repo, {"a.txt": "night\n"}, "night")
-    proc = run_script(SCRIPT, [other], repo)
+    old_tip = head(repo)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    proc = run_script(SCRIPT, [other], repo, env={"TMPDIR": str(scratch)})
     assert proc.returncode == 1
-    assert "rebase" in proc.stderr and "git rebase --abort" in proc.stderr and tags(repo) in proc.stderr
-    assert "could not apply" in proc.stderr  # the cause git printed, not only that the rebase failed
+    assert "rebase" in proc.stderr and "could not apply" in proc.stderr  # the cause git printed
+    assert "the branch is unchanged" in proc.stderr and "git tag -d %s" % tags(repo) in proc.stderr
+    assert head(repo) == old_tip and worktree_entries(repo) == 1 and list(scratch.iterdir()) == []
+    assert (repo / "a.txt").read_text(encoding="utf-8") == "night\n"
 
 
 # --- the four checks, one by one ---------------------------------------------------------------------------------
@@ -433,8 +452,8 @@ def test_the_tree_check_fails_when_the_tag_has_another_tree(night, tmp_path, mon
     base, tip = two_lines(repo)
     monkeypatch.chdir(repo)
     window = night.parse_window("00-23")
-    assert night.tree_is_the_tags(night.Recreation(base, tip, window)) is True
-    assert night.tree_is_the_tags(night.Recreation(base, base, window)) is False
+    assert night.tree_is_the_tags(night.Recreation(base, tip, "HEAD", window)) is True
+    assert night.tree_is_the_tags(night.Recreation(base, base, "HEAD", window)) is False
 
 
 def test_the_count_check_fails_when_the_tag_has_another_number_of_commits(night, tmp_path, monkeypatch):
@@ -442,8 +461,8 @@ def test_the_count_check_fails_when_the_tag_has_another_number_of_commits(night,
     base, tip = two_lines(repo)
     monkeypatch.chdir(repo)
     window = night.parse_window("00-23")
-    assert night.commit_count_is_the_tags(night.Recreation(base, tip, window)) is True
-    assert night.commit_count_is_the_tags(night.Recreation(base, "HEAD~1", window)) is False
+    assert night.commit_count_is_the_tags(night.Recreation(base, tip, "HEAD", window)) is True
+    assert night.commit_count_is_the_tags(night.Recreation(base, "HEAD~1", "HEAD", window)) is False
 
 
 def alternative_line(repo: Path, base: str, messages: Tuple[str, str]) -> None:
@@ -460,8 +479,8 @@ def test_the_messages_check_ignores_the_order_of_the_commits(night, tmp_path, mo
     alternative_line(repo, base, ("two", "one"))
     monkeypatch.chdir(repo)
     window = night.parse_window("00-23")
-    assert night.messages_are_the_tags(night.Recreation(base, tip, window)) is True
-    assert night.messages_are_the_tags(night.Recreation(base, "alt", window)) is True
+    assert night.messages_are_the_tags(night.Recreation(base, tip, "HEAD", window)) is True
+    assert night.messages_are_the_tags(night.Recreation(base, "alt", "HEAD", window)) is True
 
 
 def test_the_messages_check_fails_when_one_message_differs(night, tmp_path, monkeypatch):
@@ -469,7 +488,8 @@ def test_the_messages_check_fails_when_one_message_differs(night, tmp_path, monk
     base, tip = two_lines(repo)
     alternative_line(repo, base, ("one", "other words"))
     monkeypatch.chdir(repo)
-    assert night.messages_are_the_tags(night.Recreation(base, "alt", night.parse_window("00-23"))) is False
+    recreation = night.Recreation(base, "alt", "HEAD", night.parse_window("00-23"))
+    assert night.messages_are_the_tags(recreation) is False
 
 
 def test_the_dates_check_passes_when_both_dates_are_inside_and_fails_when_the_window_is_elsewhere(
@@ -480,8 +500,8 @@ def test_the_dates_check_passes_when_both_dates_are_inside_and_fails_when_the_wi
     monkeypatch.chdir(repo)
     inside = night.parse_window(window_around_now())
     outside = night.parse_window(window_without_now())
-    assert night.dates_are_in_the_window(night.Recreation(base, tip, inside)) is True
-    assert night.dates_are_in_the_window(night.Recreation(base, tip, outside)) is False
+    assert night.dates_are_in_the_window(night.Recreation(base, tip, "HEAD", inside)) is True
+    assert night.dates_are_in_the_window(night.Recreation(base, tip, "HEAD", outside)) is False
 
 
 @pytest.mark.parametrize("which", [("AUTHOR",), ("COMMITTER",)], ids=["author-only", "committer-only"])
@@ -490,7 +510,7 @@ def test_the_dates_check_fails_when_only_one_of_the_two_dates_is_old(night, tmp_
     base = head(repo)
     commit(repo, {"a.txt": "one\n"}, "one", env=old_date_env(which))
     monkeypatch.chdir(repo)
-    recreation = night.Recreation(base, "HEAD", night.parse_window(window_around_now()))
+    recreation = night.Recreation(base, "HEAD", "HEAD", night.parse_window(window_around_now()))
     assert night.dates_are_in_the_window(recreation) is False
 
 
@@ -499,6 +519,26 @@ def test_a_failed_check_names_itself_and_prints_the_way_back_without_running_it(
     commit(repo, {"a.txt": "night\n"}, "night")
     monkeypatch.chdir(repo)
     monkeypatch.setattr(night, "CHECKS", (("a check that fails", lambda recreation: False),))
+    old_tip = head(repo)
     assert night.main([base]) == 1
     error = capsys.readouterr().err
-    assert "a check that fails" in error and "git reset --keep %s" % tags(repo) in error
+    assert "a check that fails" in error and "the branch is unchanged" in error
+    assert "git tag -d %s" % tags(repo) in error
+    assert head(repo) == old_tip and worktree_entries(repo) == 1
+
+
+def test_a_branch_that_moved_while_the_script_ran_is_not_overwritten(night, tmp_path, monkeypatch):
+    """``update-ref`` gets the tip read before the run, so a commit made meanwhile survives."""
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"a.txt": "night\n"}, "night", env=old_date_env())
+    monkeypatch.chdir(repo)
+
+    def commit_meanwhile(recreation):
+        commit(repo, {"b.txt": "made while the script ran\n"}, "meanwhile")
+        return True
+
+    monkeypatch.setattr(night, "CHECKS", (("a commit made meanwhile", commit_meanwhile),))
+    with pytest.raises(night.Refusal) as refusal:
+        night.recreate(base, datetime.now())
+    assert refusal.value.check == "branch" and "moved" in str(refusal.value)
+    assert git(repo, "log", "-1", "--format=%s").strip() == "meanwhile" and worktree_entries(repo) == 1

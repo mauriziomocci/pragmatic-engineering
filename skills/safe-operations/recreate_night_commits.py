@@ -4,24 +4,28 @@
 Usage: python3 recreate_night_commits.py <base>, run from any directory of the repository to fix. ``<base>`` is the
 last commit already pushed, or the branch point when the branch was never pushed.
 
-The script refuses to start, and changes nothing, in this order: no office hours set (``pe.officeHours``); a base
-that is not a commit, or nothing above it; uncommitted changes in tracked files; an untracked file, ignored or not, on a
-path that a commit of ``<base>..HEAD`` writes or deletes, because the replay overwrites or deletes it; the current hour
-outside the window; a commit of ``<base>..HEAD`` already on a remote-tracking branch, because published history is
-never rewritten (the branches are read as they are after the last fetch); a backup tag that already exists. Then it
-tags the tip, runs ``git rebase --force-rebase --ignore-date --rebase-merges <base>`` and runs four checks, stopping at
-the first that fails. A failure prints the way back and never runs it.
+The script refuses to start, and changes nothing, in this order: not inside a repository's work tree; no office hours
+set (``pe.officeHours``); a base that is not a commit, or nothing above it; the current hour outside the window; a
+commit of ``<base>..HEAD`` already on a remote-tracking branch, because published history is never rewritten (the
+branches are read as they are after the last fetch); a backup tag that already exists. Then it tags the tip, runs
+``git rebase --force-rebase --ignore-date --rebase-merges <base>`` in a temporary worktree of its own and runs four
+checks on the result, stopping at the first that fails. Only when all four pass does the branch move to the result, with
+``git update-ref`` guarded by the tip read before the run. The user's working tree and index are never read or written:
+the new tree is the tag's, so they stay consistent, and uncommitted changes and untracked files, ignored or not, are
+safe. On any failure after the tag the branch has not moved, and the message says how to delete the tag.
 
 Every day uses the hours of ``pe.officeHours``, weekends and ``pe.holidays`` included, so a commit re-created on a
 weekend morning carries a date inside the weekday hours, which the date check accepts.
 """
-import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, List, Sequence, Tuple
+from typing import Callable, Iterator, List, Sequence, Tuple
 
 WINDOW = re.compile(r"(\d\d)-(\d\d)")
 
@@ -95,25 +99,6 @@ def commits_to_re_create(base: str) -> List[str]:
     return shas
 
 
-def require_clean_tree() -> None:
-    if git("status", "--porcelain", "--untracked-files=no").strip():
-        raise Refusal("clean tree", "there are uncommitted changes in tracked files: commit them first")
-
-
-def require_no_untracked_file_in_the_way(base: str) -> None:
-    """The rebase replays every commit of the range, and each replay may overwrite or delete an untracked file, ignored
-    or not, on the paths it writes. Tracked paths never show in ``--others``, so a rename or a file turned into a
-    folder is not refused."""
-    touched = set(git("log", "--format=", "--name-only", "-z", "--no-renames", "-m", base + "..HEAD").split("\0"))
-    untracked = git("ls-files", "-z", "--others").split("\0")
-    in_the_way = next((path for path in untracked if path and path in touched), None)
-    if in_the_way is not None:
-        raise Refusal(
-            "untracked file",
-            "%s sits on a path %s..HEAD writes or deletes: move it away first" % (in_the_way, base),
-        )
-
-
 def require_hour_in_window(window: Window, now: datetime) -> None:
     if not window.contains(now.hour):
         raise Refusal("window", "it is %02d:%02d, outside the office hours" % (now.hour, now.minute))
@@ -135,29 +120,47 @@ def backup_tag(now: datetime) -> str:
     return "night-backup-" + now.strftime("%Y%m%d-%H%M%S")
 
 
-def create_backup_tag(now: datetime) -> str:
+def create_backup_tag(now: datetime, tip: str) -> str:
     tag = backup_tag(now)
     if git_succeeds("rev-parse", "--quiet", "--verify", "refs/tags/" + tag):
         raise Refusal("backup tag", "%s already exists" % tag)
-    git("tag", tag)
+    git("tag", tag, tip)
     return tag
 
 
-def rebase(base: str, tag: str) -> None:
-    proc = _run("rebase", "--force-rebase", "--ignore-date", "--rebase-merges", base)
+def branch_is_unchanged(tag: str) -> Tuple[str]:
+    """The way back of every failure after the tag: there is nothing to undo."""
+    return ("the branch is unchanged; delete the tag with `git tag -d %s` if you do not want it" % tag,)
+
+
+@contextmanager
+def temporary_worktree(tag: str) -> Iterator[str]:
+    """A detached worktree of ``tag`` in a folder of the script's own, removed on success and on every failure."""
+    folder = tempfile.mkdtemp(prefix="recreate-night-commits-")
+    try:
+        git("worktree", "add", "--detach", folder, tag)
+        yield folder
+    finally:
+        _run("worktree", "remove", "--force", folder)
+        _run("worktree", "prune")
+        shutil.rmtree(folder, ignore_errors=True)  # what is left when `worktree add` failed before it took over
+
+
+def rebase(base: str, tag: str, folder: str) -> str:
+    """Replay the range inside ``folder`` and return the new tip."""
+    proc = _run("-C", folder, "rebase", "--force-rebase", "--ignore-date", "--rebase-merges", base)
     if proc.returncode != 0:
-        raise Refusal(
-            "rebase", "`git rebase` failed: %s" % proc.stderr.strip(),
-            ("git rebase --abort", "the tip before the rebase is the tag %s" % tag),
-        )
+        raise Refusal("rebase", "`git rebase` failed: %s" % proc.stderr.strip(), branch_is_unchanged(tag))
+    return git("-C", folder, "rev-parse", "HEAD").strip()
 
 
 @dataclass(frozen=True)
 class Recreation:
-    """What the four checks compare: the range above ``base`` on ``tag`` and on HEAD, in ``window``."""
+    """What the four checks compare: the range above ``base`` on ``tag`` and on ``new``, in ``window``."""
 
     base: str
     tag: str
+    new: str
     window: Window
 
 
@@ -172,19 +175,20 @@ def _messages(base: str, ref: str) -> List[str]:
 
 
 def tree_is_the_tags(recreation: Recreation) -> bool:
-    return git_succeeds("diff", "--quiet", recreation.tag, "HEAD")
+    return git_succeeds("diff", "--quiet", recreation.tag, recreation.new)
 
 
 def commit_count_is_the_tags(recreation: Recreation) -> bool:
-    return _count(recreation.base, recreation.tag) == _count(recreation.base, "HEAD")
+    return _count(recreation.base, recreation.tag) == _count(recreation.base, recreation.new)
 
 
 def messages_are_the_tags(recreation: Recreation) -> bool:
-    return _messages(recreation.base, recreation.tag) == _messages(recreation.base, "HEAD")
+    return _messages(recreation.base, recreation.tag) == _messages(recreation.base, recreation.new)
 
 
 def dates_are_in_the_window(recreation: Recreation) -> bool:
-    hours = git("log", "--format=%ad %cd", "--date=format-local:%H", recreation.base + "..HEAD").split()
+    rev_range = "%s..%s" % (recreation.base, recreation.new)
+    hours = git("log", "--format=%ad %cd", "--date=format-local:%H", rev_range).split()
     return all(recreation.window.contains(int(hour)) for hour in hours)
 
 
@@ -197,8 +201,8 @@ CHECKS: Tuple[Tuple[str, Callable[[Recreation], bool]], ...] = (
 
 
 def verify(recreation: Recreation) -> None:
-    """History is already rewritten here, so every failure, a git error inside a check included, ends in the way back."""
-    way_back = ("git reset --keep %s" % recreation.tag,)
+    """A git error inside a check ends in the same refusal as a failed check; the branch has not moved yet."""
+    way_back = branch_is_unchanged(recreation.tag)
     for name, passes in CHECKS:
         try:
             passed = passes(recreation)
@@ -208,18 +212,32 @@ def verify(recreation: Recreation) -> None:
             raise Refusal(name, "the check failed after the rebase", way_back)
 
 
+def move_branch(tip: str, recreation: Recreation) -> None:
+    """``tip`` is the value read before the run, so a branch that moved meanwhile is refused, never overwritten."""
+    proc = _run("update-ref", "-m", "recreate_night_commits", "HEAD", recreation.new, tip)
+    if proc.returncode != 0:
+        detail = "the branch moved while the script ran: %s" % proc.stderr.strip()
+        raise Refusal("branch", detail, branch_is_unchanged(recreation.tag))
+
+
+def require_work_tree() -> None:
+    """``--show-toplevel`` fails outside a repository and inside a bare one, where there is no branch to move."""
+    git("rev-parse", "--show-toplevel")
+
+
 def recreate(base: str, now: datetime) -> str:
     """Run every step in order and return the backup tag; the first failure raises ``Refusal``."""
-    os.chdir(git("rev-parse", "--show-toplevel").strip())  # git lists paths under the current folder only
+    require_work_tree()
     window = office_window()
     shas = commits_to_re_create(base)
-    require_clean_tree()
-    require_no_untracked_file_in_the_way(base)
     require_hour_in_window(window, now)
     require_unpublished(base, shas)
-    tag = create_backup_tag(now)
-    rebase(base, tag)
-    verify(Recreation(base, tag, window))
+    tip = git("rev-parse", "HEAD").strip()
+    tag = create_backup_tag(now, tip)
+    with temporary_worktree(tag) as folder:
+        recreation = Recreation(base, tag, rebase(base, tag, folder), window)
+        verify(recreation)
+    move_branch(tip, recreation)
     return tag
 
 

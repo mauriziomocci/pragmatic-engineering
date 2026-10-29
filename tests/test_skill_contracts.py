@@ -354,18 +354,18 @@ CONTRACTS: Dict[str, Contract] = {
             "Commits made outside the window and never pushed are re-created inside it with their real dates, never "
             "faked ones, before the branch is integrated; when the user's own rules name a re-creation procedure, that "
             "one applies.",
-            "Otherwise run `python3 recreate_night_commits.py <base>` from this skill's folder, with `<base>` the last "
-            "commit already pushed, or the branch point of a branch never pushed.",
-            "It refuses to start outside the window, with uncommitted changes in tracked files, on a commit already "
-            "on a remote branch or when an untracked file, ignored or not, sits on a path the range writes or "
-            "deletes; it tags the tip `night-backup-<YYYYMMDD-HHMMSS>`, runs "
-            "`git rebase --force-rebase --ignore-date --rebase-merges <base>` and checks in order that the tree is the "
-            "tag's, that the commits and their messages are unchanged, and that both dates of every commit fall "
-            "inside the window.",
+            "Otherwise run `python3 <this skill's folder>/recreate_night_commits.py <base>` from any directory of the "
+            "repository, with `<base>` the last commit already pushed, or the branch point of a branch never pushed.",
+            "It refuses to start outside the window or on a commit already on a remote branch; it tags the tip "
+            "`night-backup-<YYYYMMDD-HHMMSS>`, runs "
+            "`git rebase --force-rebase --ignore-date --rebase-merges <base>` in a temporary worktree and checks in "
+            "order that the tree is the tag's, that the commits and their messages are unchanged, and that both "
+            "dates of every commit fall inside the window; the branch moves to the result only after all four pass, "
+            "so no file of the user is touched.",
             "The script and its date check use the hours of `pe.officeHours` on every day, weekends and holidays "
             "included, so a commit re-created on a weekend morning carries a date inside the weekday hours and is "
             "accepted.",
-            "At the first failed check it exits non-zero and prints the way back without running it.",
+            "At the first failed check it exits non-zero and leaves the branch unchanged.",
             "The dates of author and committer are checked again on the integrated branch before its push; once it is "
             "pushed, delete the tag with `git tag -d`.",
             "When the user says in chat that they are working outside the window, interactive work goes on, and the "
@@ -377,6 +377,7 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         extra_files=("recreate_night_commits.py",),
         absent=(
+            "from this skill's folder",  # the script acts on the repository of the current directory
             "--reset-author",  # it replays a branch with merges as a straight line
             "git tag night-backup-<YYYYMMDD>",  # the tag is named to the second and made by the script
             "Before any push four checks pass",  # the script runs the checks
