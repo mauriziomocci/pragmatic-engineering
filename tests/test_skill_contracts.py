@@ -74,6 +74,7 @@ CONTRACTS: Dict[str, Contract] = {
             "**Verified**:", "**Inferred**:", "**Assumed**:", "**Unverifiable**:",  # the four bullets of Pass 5
             "apply all four techniques",
             "the name of the report that would give the exact one",
+            "never evidence itself",
         ),
         absent=(
             "iterative-requirements-analysis", "financial-reconciliation", "smonta", "combacia", "Origine",
@@ -176,6 +177,7 @@ CONTRACTS: Dict[str, Contract] = {
             "never a reason to try another route", "stops the run at once",  # a refusal is not a detour
             "auto-merge",  # scheduling a merge is merging
             "git 2.38", "git rev-parse -q --verify MERGE_HEAD",
+            "Outside the office hours of `safe-operations` the invocation does not push",
         ),
         user_only=True,
         absent=("git-commit-assistant", "/opt/homebrew", "Autorizzazione", "carve-out", "such as 2.32"),
@@ -190,6 +192,7 @@ CONTRACTS: Dict[str, Contract] = {
             "A concrete case", "Limits", "How to check it yourself", "continuity-note", "file::function",
             "no quiz",
             "accepted that cost",  # the weak check is a trade-off the user chose, declared, not a gap
+            "git -C <folder>",
         ),
         absent=("whenever it is relevant",),  # an instruction with no trigger
     ),
@@ -207,12 +210,16 @@ CONTRACTS: Dict[str, Contract] = {
     ),
     "safe-operations": Contract(
         sections=(
-            "When to use", "Before", "Production and shared systems", "Long operations", "After",
-            "Effects on third parties", "What stays with the user",
+            "When to use", "Before", "Production and shared systems", "Outside office hours", "Long operations",
+            "After", "Effects on third parties", "What stays with the user",
         ),
         phrases=(
             "active target", "dry run", "blast radius", "way back", "explicit go", "every level",
             "not a responding service", "whoever owns", "development-workflow",
+            "dedicated resource", "only when the change is additive", "as a side effect",
+            "git config --get pe.officeHours", "pe.weekendFrom", "pe.holidays", "easter+N", "pe.personalRemotes",
+            "read with `date`, never estimated", "only as local commits", "hard stop", "real dates, never faked ones",
+            "keep the machine awake", "Deletions outside the work's own folder",
         ),
     ),
     "quality-scoring": Contract(

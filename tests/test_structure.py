@@ -200,6 +200,28 @@ def test_commit_and_push_test_scopes_agree_across_files():
     assert "The tests of the touched area before every commit" in skill_text("development-workflow")
 
 
+# Where the rules that summarise a skill live: the skill each one cites, and a heading or phrase of that home.
+RULE_HOMES = {
+    "evidence": ("evidence-based-investigation", "never evidence itself"),
+    "taste-gates": ("blunt-review", "Two gates apply these thresholds"),
+    "api-contract": ("engineering-principles", "## Delivered API contracts"),
+    "isolated-sessions": ("engineering-principles", "Isolated sessions"),
+    "production-go": ("safe-operations", "dedicated resource"),
+    "office-hours": ("safe-operations", "## Outside office hours"),
+    "lenses": ("development-workflow", "## Role lenses"),
+    "quality-gate": ("quality-scoring", "## The score"),
+    "user-away": ("development-workflow", "While the user is away"),
+    "budget": ("development-workflow", "## Budget"),
+}
+
+
+@pytest.mark.parametrize("marker,skill,home", [(m, s, h) for m, (s, h) in sorted(RULE_HOMES.items())])
+def test_rules_point_to_a_home_that_holds_them(marker, skill, home):
+    (line,) = [rule_line(block, marker) for block in sections(rules_text()).values() if rule_line(block, marker)]
+    assert "`%s`" % skill in line
+    assert home in skill_text(skill)
+
+
 def test_rules_stay_short():
     # Every session and every subagent reads the whole file: 9,044 characters since the method rules came in.
     assert len(rules_text()) <= 9500

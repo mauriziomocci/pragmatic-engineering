@@ -54,7 +54,7 @@ What the code does not cover, where it breaks, and what is declared but not enfo
 
 ### How to check it yourself
 
-A command or a test the user can run to see it with their own eyes. It is never a question put to the user.
+A command or a test the user can run to see it with their own eyes. It is never a question put to the user. Every command given to the user names its folder, as in `git -C <folder> log`, because the user's terminal may stand in another folder.
 
 For questions on how a system works, the shape of the answer of a technical FAQ (the fact first, then the entities, the path, one case and the source) lives in `engineering-principles`.
 

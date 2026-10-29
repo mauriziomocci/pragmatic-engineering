@@ -29,6 +29,7 @@ The method is the point; the domain (a customer ticket, a bug, a reconciliation,
 
 - Primary evidence first, hypotheses second. Start from what can be observed directly: the log, the data, the code, the system that is running. A hypothesis formed before looking tends to be confirmed by whatever is found afterwards.
 - Your own recent changes before external causes. Look first at the last deploy, the last commit and the last configuration you touched: the most likely cause of a new failure is the most recent thing someone changed, and it is the cheapest to check. Blame a third party or the infrastructure only after your own side is cleared.
+- A claim of another agent, another lens or an earlier session is a claim to re-check against the evidence, never evidence itself: "the reviewer already checked" proves nothing until you have seen what was checked.
 - To find the cause of a bug or a red test, call `superpowers:systematic-debugging`. This skill starts where that one ends: it keeps the conclusion honest and scopes what the fix covers.
 
 ## Confidence levels
