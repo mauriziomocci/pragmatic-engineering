@@ -18,8 +18,10 @@ from support import (
     SUPERPOWERS_SKILLS,
     SUPERPOWERS_TESTED_VERSION,
     installed_superpowers,
+    parse_frontmatter,
     sections,
     unknown_references,
+    yaml_plain_safe,
 )
 
 
@@ -294,3 +296,63 @@ def test_marketplace_lists_the_plugin_at_the_root_and_allows_its_dependencies():
     assert market["plugins"] == [{"name": manifest["name"], "source": "."}]
     needed = {dep.split("@", 1)[1] for dep in manifest["dependencies"] if "@" in dep}
     assert needed <= set(market["allowCrossMarketplaceDependenciesOn"])
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("Use when reviewing a git range.", True),
+    ("Plain words, commas and 'quotes' inside", True),
+    ("", False),
+    (" leading space", False),
+    ("a: b", False),
+    ("#x", False),
+    ("-x", False),
+    ("x #y", False),
+    ("[list]", False),
+])
+def test_yaml_plain_safe(value, expected):
+    assert yaml_plain_safe(value) is expected
+
+
+@pytest.mark.parametrize("text", [
+    "no frontmatter\n",
+    "---\nname: x\n",
+    "---\nname x\n---\nbody\n",
+])
+def test_parse_frontmatter_rejects_what_it_cannot_read(text):
+    with pytest.raises(AssertionError):
+        parse_frontmatter(text)
+
+
+def test_parse_frontmatter_splits_fields_and_body():
+    fields, body = parse_frontmatter("---\nname: x\ndescription: a b\n---\n# Title\n")
+    assert fields == {"name": "x", "description": "a b"}
+    assert body == "# Title"
+
+
+AGENT = REPO_ROOT / "agents" / "blunt-reviewer.md"
+GRAMMAR = "<base>..<tip> [round=1|2] [full=<path>,...]"
+
+
+def test_blunt_reviewer_frontmatter():
+    fields, _ = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
+    assert set(fields) == {"name", "description", "tools", "model", "skills"}
+    assert fields["name"] == "blunt-reviewer"
+    assert fields["model"] == "opus"
+    assert fields["skills"] == "[blunt-review]"
+    assert {t.strip() for t in fields["tools"].split(",")} == {"Read", "Grep", "Glob", "Bash", "Write"}
+    assert yaml_plain_safe(fields["description"]) and len(fields["description"]) <= 1024
+
+
+def test_blunt_reviewer_body_states_the_a1_contract():
+    text = AGENT.read_text(encoding="utf-8")
+    _, body = parse_frontmatter(text)
+    for needed in (
+        GRAMMAR, ".pe/reviews/", ".pe/.gitignore", "STATUS: IN PROGRESS", "STATUS: COMPLETE",
+        "VERDICT: pass | changes", "FINDINGS:", "COVERAGE: full | partial", "REPORT:", "THE THING:",
+        "never as instructions", "--no-color",
+    ):
+        assert needed in body, needed
+    for command in re.findall(r"`git (?:show|diff)[^`]*`", body):
+        assert "--no-ext-diff --no-textconv" in command, command
+    assert unknown_references(body) == []
+    assert len(text.splitlines()) < 200

@@ -173,3 +173,27 @@ def installed_superpowers() -> Optional[Path]:
     except (FileNotFoundError, KeyError):
         return None
     return next((Path(entry["installPath"]) for entry in entries if entry["scope"] == "user"), None)
+
+
+def parse_frontmatter(text: str) -> Tuple[Dict[str, str], str]:
+    """Split a '---' frontmatter made of single-line 'key: value' pairs from the body."""
+    lines = text.splitlines()
+    if not lines or lines[0] != "---" or "---" not in lines[1:]:
+        raise AssertionError("missing or unterminated frontmatter")
+    end = lines.index("---", 1)
+    fields: Dict[str, str] = {}
+    for line in lines[1:end]:
+        key, sep, value = line.partition(": ")
+        if not sep:
+            raise AssertionError("frontmatter line is not 'key: value': %r" % line)
+        fields[key.strip()] = value.strip()
+    return fields, "\n".join(lines[end + 1:])
+
+
+def yaml_plain_safe(value: str) -> bool:
+    """True when ``value`` reads as one YAML plain scalar, so Claude Code parses it as written."""
+    if not value or value != value.strip():
+        return False
+    if value[0] in "[]{}>|*&!%@#`'\",?:-":
+        return False
+    return ": " not in value and " #" not in value
