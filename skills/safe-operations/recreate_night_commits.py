@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Re-create, inside the office hours, the commits made outside them and never pushed.
 
-Usage: python3 recreate_night_commits.py <base>, run from any directory of the repository to fix. ``<base>`` is the
-last commit already pushed, or the branch point when the branch was never pushed.
+Usage: python3 <this skill's folder>/recreate_night_commits.py <base>, run from any directory of the repository to
+fix. ``<base>`` is the last commit already pushed, or the branch point when the branch was never pushed.
 
 The script refuses to start, and changes nothing, in this order: not inside a repository's work tree; no office hours
 set (``pe.officeHours``); a base that is not a commit, or nothing above it; the current hour outside the window; a
 commit of ``<base>..HEAD`` already on a remote-tracking branch, because published history is never rewritten (the
 branches are read as they are after the last fetch); a backup tag that already exists. Then it tags the tip, runs
 ``git rebase --force-rebase --ignore-date --rebase-merges <base>`` in a temporary worktree of its own and runs four
-checks on the result, stopping at the first that fails. Only when all four pass does the branch move to the result, with
+checks on the result, stopping at the first that fails (``rebase.updateRefs`` is pinned off, so no other local branch
+moves). Only when all four pass does the branch move to the result, with
 ``git update-ref`` guarded by the tip read before the run. The user's working tree and index are never read or written:
 the new tree is the tag's, so they stay consistent, and uncommitted changes and untracked files, ignored or not, are
 safe. On any failure after the tag the branch has not moved, and the message says how to delete the tag.
@@ -146,11 +147,13 @@ def temporary_worktree(tag: str) -> Iterator[str]:
         shutil.rmtree(folder, ignore_errors=True)  # what is left when `worktree add` failed before it took over
 
 
-def rebase(base: str, tag: str, folder: str) -> str:
-    """Replay the range inside ``folder`` and return the new tip."""
-    proc = _run("-C", folder, "rebase", "--force-rebase", "--ignore-date", "--rebase-merges", base)
+def rebase(base: str, folder: str) -> str:
+    """Replay the range inside ``folder`` and return the new tip. ``rebase.updateRefs`` is pinned off because it would
+    move every other local branch that points into the range, before the checks."""
+    proc = _run("-c", "rebase.updateRefs=false", "-C", folder, "rebase", "--force-rebase", "--ignore-date",
+                "--rebase-merges", base)
     if proc.returncode != 0:
-        raise Refusal("rebase", "`git rebase` failed: %s" % proc.stderr.strip(), branch_is_unchanged(tag))
+        raise Refusal("rebase", "`git rebase` failed: %s" % proc.stderr.strip())
     return git("-C", folder, "rev-parse", "HEAD").strip()
 
 
@@ -202,14 +205,13 @@ CHECKS: Tuple[Tuple[str, Callable[[Recreation], bool]], ...] = (
 
 def verify(recreation: Recreation) -> None:
     """A git error inside a check ends in the same refusal as a failed check; the branch has not moved yet."""
-    way_back = branch_is_unchanged(recreation.tag)
     for name, passes in CHECKS:
         try:
             passed = passes(recreation)
         except Refusal as refusal:
-            raise Refusal(name, "the check could not run: %s" % refusal.detail, way_back) from refusal
+            raise Refusal(name, "the check could not run: %s" % refusal.detail) from refusal
         if not passed:
-            raise Refusal(name, "the check failed after the rebase", way_back)
+            raise Refusal(name, "the check failed after the rebase")
 
 
 def move_branch(tip: str, recreation: Recreation) -> None:
@@ -217,7 +219,7 @@ def move_branch(tip: str, recreation: Recreation) -> None:
     proc = _run("update-ref", "-m", "recreate_night_commits", "HEAD", recreation.new, tip)
     if proc.returncode != 0:
         detail = "the branch moved while the script ran: %s" % proc.stderr.strip()
-        raise Refusal("branch", detail, branch_is_unchanged(recreation.tag))
+        raise Refusal("branch", detail)
 
 
 def require_work_tree() -> None:
@@ -234,16 +236,19 @@ def recreate(base: str, now: datetime) -> str:
     require_unpublished(base, shas)
     tip = git("rev-parse", "HEAD").strip()
     tag = create_backup_tag(now, tip)
-    with temporary_worktree(tag) as folder:
-        recreation = Recreation(base, tag, rebase(base, tag, folder), window)
-        verify(recreation)
-    move_branch(tip, recreation)
+    try:
+        with temporary_worktree(tag) as folder:
+            recreation = Recreation(base, tag, rebase(base, folder), window)
+            verify(recreation)
+        move_branch(tip, recreation)
+    except Refusal as refusal:  # the one home of the way back: whatever fails after the tag leaves the branch alone
+        raise Refusal(refusal.check, refusal.detail, branch_is_unchanged(tag)) from refusal
     return tag
 
 
 def main(argv: Sequence[str]) -> int:
     if len(argv) != 1:
-        print("usage: python3 recreate_night_commits.py <base>", file=sys.stderr)
+        print("usage: python3 <this skill's folder>/recreate_night_commits.py <base>", file=sys.stderr)
         return 2
     try:
         tag = recreate(argv[0], datetime.now())

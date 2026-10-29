@@ -306,7 +306,8 @@ def test_it_refuses_published_history_pulled_in_by_a_local_merge(tmp_path):
 def test_it_needs_exactly_one_argument(tmp_path):
     repo, _ = night_repo(tmp_path)
     proc = run_script(SCRIPT, [], repo)
-    assert proc.returncode == 2 and "usage" in proc.stderr.lower()
+    assert proc.returncode == 2
+    assert "usage: python3 <this skill's folder>/recreate_night_commits.py <base>" in proc.stderr
 
 
 # --- the re-creation ----------------------------------------------------------------------------------------------
@@ -390,7 +391,7 @@ def test_old_commits_come_back_with_the_time_of_the_moment_a_merge_included(nigh
     assert all(window.contains(int(hour)) for hour in hours)
 
 
-def test_a_made_up_failure_of_a_git_command_in_the_checks_ends_in_the_way_back(night, monkeypatch):
+def test_a_made_up_failure_of_a_git_command_in_the_checks_is_named_by_the_check(night, monkeypatch):
     def broken(recreation):
         raise night.Refusal("git", "`git log` failed: boom")
 
@@ -398,7 +399,6 @@ def test_a_made_up_failure_of_a_git_command_in_the_checks_ends_in_the_way_back(n
     with pytest.raises(night.Refusal) as refusal:
         night.verify(night.Recreation("base", "night-backup-x", "HEAD", night.parse_window("00-23")))
     assert refusal.value.check == "messages" and "boom" in str(refusal.value)
-    assert len(refusal.value.way_back) == 1 and "git tag -d night-backup-x" in refusal.value.way_back[0]
 
 
 def test_a_merge_in_the_range_stays_a_merge(tmp_path):
@@ -542,3 +542,42 @@ def test_a_branch_that_moved_while_the_script_ran_is_not_overwritten(night, tmp_
         night.recreate(base, datetime.now())
     assert refusal.value.check == "branch" and "moved" in str(refusal.value)
     assert git(repo, "log", "-1", "--format=%s").strip() == "meanwhile" and worktree_entries(repo) == 1
+
+
+def test_a_failure_to_make_the_worktree_still_tells_how_to_delete_the_tag(night, tmp_path, monkeypatch, capsys):
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"a.txt": "night\n"}, "night")
+    monkeypatch.chdir(repo)
+
+    def broken(tag):
+        raise night.Refusal("git", "`git worktree add` failed: boom")
+
+    monkeypatch.setattr(night, "temporary_worktree", broken)
+    assert night.main([base]) == 1
+    error = capsys.readouterr().err
+    assert "boom" in error and "the branch is unchanged" in error and "git tag -d %s" % tags(repo) in error
+
+
+def other_branch_inside_the_range(tmp_path: Path) -> Tuple[Path, str, str]:
+    """A repository whose own configuration asks rebase to move branches, and a branch left inside the range."""
+    repo, base = night_repo(tmp_path)
+    git(repo, "config", "rebase.updateRefs", "true")
+    middle = commit(repo, {"a.txt": "one\n"}, "first night commit", env=old_date_env())
+    git(repo, "branch", "marker")
+    commit(repo, {"b.txt": "two\n"}, "second night commit", env=old_date_env())
+    return repo, base, middle
+
+
+def test_another_local_branch_in_the_range_does_not_move_when_a_check_fails(night, tmp_path, monkeypatch, capsys):
+    repo, base, middle = other_branch_inside_the_range(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(night, "CHECKS", (("a check that fails", lambda recreation: False),))
+    assert night.main([base]) == 1
+    assert git(repo, "rev-parse", "marker").strip() == middle
+
+
+def test_another_local_branch_in_the_range_does_not_move_when_the_checks_pass(tmp_path):
+    repo, base, middle = other_branch_inside_the_range(tmp_path)
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert git(repo, "rev-parse", "marker").strip() == middle
