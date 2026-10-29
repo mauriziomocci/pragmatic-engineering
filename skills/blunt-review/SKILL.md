@@ -117,7 +117,7 @@ The dominant failure is describing a system that no longer exists.
 - Counts and lists that drifted: "two skills" above four entries, a catalogue missing last month's addition.
 - The missing limit: a document that states only what works is marketing; say which case a control does not cover.
 - Instructions for a command that does not exist yet, or paths and flags nobody ran again.
-- Structure before prose: a page mixing tutorial, how-to, reference and explanation is itself the finding (see Diataxis).
+- Structure before prose: a page mixing tutorial, how-to, reference and explanation is itself the finding (see `documentation-quality`).
 
 ### Infrastructure
 
