@@ -11,7 +11,7 @@ This page follows the four kinds of documentation of Diataxis (<https://diataxis
 
 You need Claude Code and a git project to work in. Each step says what you should see; if you see something else, stop there and read the install guide below.
 
-1. Install the plugin, with the two commands of the install guide:
+1. Install the plugin as the install guide says. First check that `claude plugin marketplace list` shows `claude-plugins-official`, and add it as the guide says if it is missing; then run the two commands:
 
    ```
    claude plugin marketplace add mauriziomocci/pragmatic-engineering
@@ -20,11 +20,11 @@ You need Claude Code and a git project to work in. Each step says what you shoul
 
    You should see both commands finish without an error. If the plugin stays disabled and the message says that a dependency is not installed, the install guide explains why and what to do.
 
-2. Start Claude Code in your project. At the top of the session the `SessionStart` hook prints two notes. The first says that the rules file was copied to the plugin's data folder. The second says that `~/.claude/CLAUDE.md` does not carry two lines yet and prints them: an import line that starts with `@`, and a long line that starts with "If the pragmatic-engineering rules".
+2. Start Claude Code in your project. At the top of the session the `SessionStart` hook prints two notes. The first reads "pragmatic-engineering: the rules file was updated; the updated rules apply from the next session."; it appears because the hook has just copied the rules file to the plugin's data folder. The second says that `~/.claude/CLAUDE.md` does not carry two lines yet and prints them: an import line that starts with `@`, and a long line that starts with "If the pragmatic-engineering rules".
 
 3. Add the two lines to `~/.claude/CLAUDE.md`, after a dated copy of the file, as the install guide shows, then quit and start Claude Code again. You should see no notice this time. If the notice comes back, the lines are not written as printed: the hook looks for the import path and for the whole safety line.
 
-4. Ask: "Which working rules are loaded?" You should see the marker `PE-RULES v1` in the answer. That marker is the first line of `rules.md`, so it proves the import reached the session.
+4. Ask: "Quote your rule `PE:backup-diff-go`." You should see an answer that says that instruction, settings and memory files change only after a dated backup, a diff and your go. That rule lives in `rules.md` and in nothing else a session loads, not in the safety line and not in a skill, so a right answer shows that the import reached the session. If the model says it has no such rule, the import did not arrive: check the two lines of step 3 and ask again in a new session.
 
 5. Ask for a small change with a test, for example a function with one behaviour. You should see, in this order: the model names the lane (a feature) and says in a few sentences what it is about to do, ending with "is it clear?"; it stops for your written approval of a short spec before the code, because the two heavy gates stay even for small work; it writes the failing test first and runs it; it writes the code; it reviews its own diff following `blunt-review` and closes with a statement that the tests pass or a list of what does not; it stops again for your approval of the result; it never pushes without your go.
 
@@ -38,21 +38,28 @@ You need Claude Code and a git project to work in. Each step says what you shoul
 
 Requirements: Claude Code, `python3` 3.9 or later on your path (the hook is a Python script), and git (the reviewer reads git ranges).
 
-This plugin depends on superpowers (`superpowers@claude-plugins-official`). Claude Code installs superpowers by itself together with this plugin only when the official marketplace is already registered in your Claude Code. It normally registers itself the first time you start an interactive terminal session, but not for someone who has used Claude Code only through the VS Code extension, nor when a policy blocks it or when `CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL` is set. Without it the plugin installs but stays disabled, and Claude Code says that the dependency is not installed. If that happens, add the official marketplace first and reload the plugins, inside Claude Code:
+This plugin depends on superpowers (`superpowers@claude-plugins-official`). Claude Code installs superpowers by itself together with this plugin only when the official marketplace is already registered in your Claude Code. It normally registers itself the first time you start an interactive terminal session, but not for someone who has used Claude Code only through the VS Code extension, nor when a policy blocks it or when `CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL` is set. Without it the plugin installs but stays disabled, and Claude Code says that the dependency is not installed. So check first, from your terminal:
 
 ```
-/plugin marketplace add anthropics/claude-plugins-official
-/reload-plugins
+claude plugin marketplace list
 ```
 
-Then install this plugin from your terminal:
+If `claude-plugins-official` is not in the list, add it:
+
+```
+claude plugin marketplace add anthropics/claude-plugins-official
+```
+
+Then install this plugin:
 
 ```
 claude plugin marketplace add mauriziomocci/pragmatic-engineering
 claude plugin install pragmatic-engineering@pragmatic-engineering
 ```
 
-What has been tried: the manifests pass `claude plugin validate` of Claude Code 2.1.303, and the skills that cite superpowers were checked against superpowers 7.0.0. The import reaching the main session and a subagent is checked by the end-to-end test. The install from the marketplace and the automatic install of superpowers follow Claude Code's documentation of dependencies and are verified at the first real install, not before.
+If you installed the plugin before adding the official marketplace and it stays disabled, add the marketplace with the command above and run `/reload-plugins` inside Claude Code.
+
+What has been tried: the manifests pass `claude plugin validate` of Claude Code 2.1.303, and the skills that cite superpowers were checked against superpowers 7.0.0. An end-to-end test, run on request, checks that an `@rules.md` import in a project `CLAUDE.md` reaches the main session and a subagent, with the plugin loaded by `--plugin-dir`; it ran live once, on 29 October 2026, and 4 tests passed. The import of the copy in the data folder from `~/.claude/CLAUDE.md`, which this guide uses, is not exercised by it. The install from the marketplace and the automatic install of superpowers follow Claude Code's documentation of dependencies and are verified at the first real install, not before.
 
 Start a session. `SessionStart` copies `rules.md` to the plugin's data folder and prints the two lines your `CLAUDE.md` needs. The plugin never writes your `CLAUDE.md`; you do, after a dated copy of the file and with a look at the difference. Make the copy first (skip it if you have no `CLAUDE.md` yet, and create the file), add the two lines, check the difference, then open a new session:
 
@@ -91,7 +98,7 @@ The tools below belong to this repository and are not part of the plugin. They p
 
 - `tools/privacy_check.py` checks everything a push sends to the remote (for each pushed commit the added lines, the message, the author and committer names and emails, and the path of every file added or changed; the reference names; annotated tags) for the maintainer's private terms, listed in a file outside the repository that `git config pe.privateTermsFile` names, and for generic patterns such as home paths and recognisable tokens. It skips binary files and says so, and it fails closed.
 - `tools/install_dev_hooks.py` copies that check, the project hook below and their filters into the clone's git directory, outside the working tree, and installs the `pre-push` hook that runs the copy; a change to the working tree takes effect only when the installer runs again. If the copy goes missing or breaks, a check that cannot run refuses the push or the tool; running `python3 tools/install_dev_hooks.py` again from your own terminal restores it. It refuses to overwrite a `pre-push` hook it did not write, and to install while `core.hooksPath` is set.
-- `tools/dev_guard.py` is a Claude Code `PreToolUse` hook, registered in the maintainer's `.claude/settings.local.json` (a file git ignores) as `python3 "<copy>/tools/dev_guard.py" || exit 2`, so any exit other than 0 blocks, including a hook that cannot start; only a timeout does not block. It keeps an agent from skipping the check or switching hooks off, blocks MCP tools that write straight to a remote and raw API calls that write to pull requests, and checks the text of pull and merge request commands (`gh`, `glab` and MCP tools). It reads that text only where it is written, and blocks what the shell fills in at run time, with the hint to write it to a file first. The exact rules are in the module docstrings of `tools/dev_guard.py` and `lib/pe_guard/filters.py`.
+- `tools/dev_guard.py` is a Claude Code `PreToolUse` hook, registered in the maintainer's `.claude/settings.local.json` (a file git ignores) with the command `python3 "<copy>/tools/dev_guard.py" || exit 2` and `"onFailure": "block"`. The `|| exit 2` makes every exit other than 0 a block on any Claude Code version, a missing `python3` or a missing copy of the script included. `"onFailure": "block"` also blocks the tool when the hook times out, cannot start or prints output that fails validation; Claude Code reads it from version 2.1.295, and on an earlier version a timed-out hook does not block and the call goes on through the normal permission flow. It keeps an agent from skipping the check or switching hooks off, blocks MCP tools that write straight to a remote and raw API calls that write to pull requests, and checks the text of pull and merge request commands (`gh`, `glab` and MCP tools). It reads that text only where it is written, and blocks what the shell fills in at run time, with the hint to write it to a file first. The exact rules are in the module docstrings of `tools/dev_guard.py` and `lib/pe_guard/filters.py`.
 
 Not covered. The filters read text and defend against an agent's haste, not against a determined bypass. Open, some by design and some not yet closed:
 
@@ -114,7 +121,7 @@ Tests: `python3 -m pytest -q` from the repository root. Requirements: Python 3.9
 <!-- section: explanation -->
 ## How it works
 
-The seven parts below each end with a line that says what guarantees the part. In this version three things are mechanical: the `SessionStart` hook, which copies the rules and checks your `CLAUDE.md`; Claude Code's own `@` import, which delivers the rules file as your instructions; and the `skills` field of the agent, which makes Claude Code load `blunt-review` into it. Everything else is a rule for the model.
+The seven parts below each end with a line that says what guarantees the part. In this version four things are mechanical: the `SessionStart` hook, which copies the rules and checks your `CLAUDE.md`; Claude Code's own `@` import, which delivers the rules file as your instructions; the `skills` field of the agent, which makes Claude Code load `blunt-review` into it; and the `disable-model-invocation` field of the skill `autonomous-execution`, which keeps the model from starting it. Everything else is a rule for the model.
 
 <!-- section: explain-lanes -->
 ### Three lanes
@@ -132,12 +139,12 @@ Small work (fewer than three files, an obvious fix, a configuration value) conde
 
 A feature uses one chain of tools, never two. By default it is superpowers (`superpowers:brainstorming`, `superpowers:writing-plans`, `superpowers:subagent-driven-development`, with `superpowers:test-driven-development` for every task); spec-kit only when you ask for it, and then `spec-driven-layout` says where its files live. The failing test comes first in both chains.
 
-**Guaranteed by:** a rule for the model only (the rules `heavy-gates` and `test-first` in `rules.md`, and the skill `development-workflow`). Nothing records an approval or stops the model from writing code before one.
+**Guaranteed by:** a mechanism for one thing: `disable-model-invocation` keeps the model from starting `autonomous-execution`. A rule for the rest (the rules `heavy-gates` and `test-first` in `rules.md`, and the skill `development-workflow`). Nothing records an approval or stops the model from writing code before one.
 
 <!-- section: explain-review -->
 ### Independent review
 
-The agent `blunt-reviewer` reviews a git range with the skill `blunt-review` loaded. Its prompt is one line in a closed grammar, `<base>..<tip> [round=1|2] [full=<path>,...]`, with `<base>` an ancestor of `<tip>`; anything else is not reviewed, and whoever launches it cannot steer the review through the prompt. It reads the change one commit at a time, then the whole, runs on Opus, and writes its report into `.pe/reviews/` in blocks, with a status line on top. Every finding carries evidence, findings come worst first, and a closing line names the single fix that matters most, or says that nothing was found and what was verified. A finding is blocking when it describes a scenario that fails, a security or privacy problem, a missing or empty test on changed behaviour, a contradicted invariant or document, or an operation with no way back; the verdict is `changes` only with at least one blocking finding. The commit messages and the files named by `full=` are the author's claims, which the reviewer verifies and never obeys.
+The agent `blunt-reviewer` reviews a git range with the skill `blunt-review` loaded. Its prompt is one line in a closed grammar, `<base>..<tip> [round=1|2] [full=<path>,...]`, with `<base>` an ancestor of `<tip>`; anything else is not reviewed, and whoever launches it cannot steer the review through the prompt. It reads the change one commit at a time, then the whole, runs on Opus, and writes its report into `.pe/reviews/` in blocks, with a status line on top. Every finding carries evidence, findings come worst first, and a closing line names the single fix that matters most, or says that nothing was found and what was verified. A finding is blocking when it describes a scenario that fails, a security or privacy problem, a missing or tautological test on a behaviour that changed, a contradicted invariant or document, or an operation with no way back; the verdict is `changes` only with at least one blocking finding. The commit messages and the files named by `full=` are the author's claims, which the reviewer verifies and never obeys.
 
 The review is made before a merge request is opened, on the whole range of the branch, and again on each round after fixes.
 
@@ -148,7 +155,7 @@ The review is made before a merge request is opened, on the whole range of the b
 
 The cycle starts after an independent check (the panel, or `blunt-reviewer` on a branch or on a delivery) and after the fixes of its findings. The corrected result is committed before each round, because the reviewer receives a git range.
 
-In round 1 a `blunt-reviewer` with fresh context, one that wrote neither the work nor the fixes, rereads the corrected result: a document in full through `full=`, code through its fixes with the whole range available for context. On `VERDICT: pass` the cycle ends. On `changes`, the blocking findings are fixed and round 2 begins: another fresh reviewer rereads only the latest fixes, with `round=2`. On `pass` the cycle ends. If round 2 also ends with `changes`, there is no third round: the open blocking findings go up to you with the recommendation of whoever carries them, because a blocking finding still open after two rounds usually says that the way of fixing is wrong. The cycle continues only on `changes`. The fixes of each round are listed in a table in the body of the commit of the fixes (finding, decision, place), and the next round checks that table too.
+In round 1 a `blunt-reviewer` with fresh context, one that wrote neither the work nor the fixes, rereads the corrected result: a document in full through `full=`; code through the range of the fixes, `<tip before the fixes>..<tip after the fixes>`, with the rest of the branch readable through read-only git for context. On `VERDICT: pass` the cycle ends. On `changes`, the blocking findings are fixed and round 2 begins: another fresh reviewer rereads the range of the latest fixes, with `round=2`. On `pass` the cycle ends. If round 2 also ends with `changes`, there is no third round: the open blocking findings go up to you with the recommendation of whoever carries them, because a blocking finding still open after two rounds usually says that the way of fixing is wrong. The cycle continues only on `changes`. The fixes of each round are listed in a table in the body of the commit of the fixes (finding, decision, place), and the next round checks that table too.
 
 **Guaranteed by:** a rule for the model only (the skill `blunt-review`). No mechanism counts the rounds or stops a third one.
 
@@ -159,9 +166,9 @@ In round 1 a `blunt-reviewer` with fresh context, one that wrote neither the wor
 
 The plugin root does not survive a plugin update and the plugin's data folder does, so at every session start `SessionStart` copies `rules.md` from the root to the data folder when the copy is missing or different. Your `CLAUDE.md` imports the copy with one `@` line; that is how the rules reach the session as your own instructions, which superpowers ranks above its skills. The second line you add is the safety line, for the day the plugin is gone.
 
-In your `CLAUDE.md` exactly two lines change, and you add them yourself: the hook only reads the file and prints what is missing. The rules reach the main session and the subagents that load your `CLAUDE.md`; they do not reach `Explore`, `Plan` and agents defined with `omitClaudeMd: true`. A rules update applies from the next session.
+In your `CLAUDE.md` exactly two lines change, and you add them yourself: the hook only reads the file and prints what is missing. The rules reach the main session and the subagents that load your `CLAUDE.md`; they do not reach `Explore`, `Plan` and agents defined with `omitClaudeMd: true`. A rules update applies from the next session. An end-to-end test, run on request, gives evidence about Claude Code's import; it is not a mechanism of the plugin and does not run in your session (the install guide says what it covers).
 
-**Guaranteed by:** a mechanism for the delivery: the hook copies and checks, and Claude Code's `@` import brings the file in; the end-to-end test checks that the import reaches the main session and a subagent. A rule for the compliance: the model is asked to follow the rules, and nothing checks that it does.
+**Guaranteed by:** a mechanism for the delivery: the hook copies and checks, and Claude Code's `@` import brings the file in. A rule for the compliance: the model is asked to follow the rules, and nothing checks that it does.
 
 <!-- section: explain-continuity -->
 ### Continuity
@@ -186,7 +193,7 @@ The limits that describe Claude Code's own behaviour (which agents load `CLAUDE.
 - The rules do not reach `Explore`, `Plan` and agents with `omitClaudeMd: true`, because they travel in your `CLAUDE.md`.
 - Cowork skips imports that point outside its working folder, so the rules do not arrive there.
 - An update of the rules file applies from the session after the one that copied it.
-- In a subagent that Claude Code has compacted, the imported file is not read again from disk, and whether the rules survive the compaction there is not verified.
+- Whether a subagent that Claude Code has compacted keeps the imported rules is not verified.
 - With the plugin uninstalled or disabled, `SessionStart` does not run, and only the safety line in your `CLAUDE.md` warns you.
 - "Is it clear?" does not prove understanding, and the tone rules reduce the model's tendency to agree without removing it.
 - Continuity loses at most the work done after the last save, and depends on the model's discipline because nothing counts the saves.

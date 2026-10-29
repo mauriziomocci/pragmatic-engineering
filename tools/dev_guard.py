@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Project PreToolUse hook of the plugin repository (step zero).
 
-Registered in the maintainer's .claude/settings.local.json as
-``python3 "<copy>/tools/dev_guard.py" || exit 2``, outside git, and run from
-the copy that tools/install_dev_hooks.py keeps under the git directory. It
-keeps the agent from skipping or switching off the privacy pre-push (shared
-filters in lib/pe_guard/filters.py), blocks MCP tools that write to a remote
-(they bypass the pre-push), and runs the privacy check on the text of pull and
-merge requests when they are opened, edited or merged and, for gh and glab
-commands, when they are reverted, reopened, commented, reviewed or closed.
+Registered in the maintainer's .claude/settings.local.json, outside git, with
+the command ``python3 "<copy>/tools/dev_guard.py" || exit 2`` and
+``"onFailure": "block"``, and run from the copy that
+tools/install_dev_hooks.py keeps under the git directory. It keeps the agent
+from skipping or switching off the privacy pre-push (shared filters in
+lib/pe_guard/filters.py), blocks MCP tools that write to a remote (they bypass
+the pre-push), and runs the privacy check on the text of pull and merge
+requests when they are opened, edited or merged and, for gh and glab commands,
+when they are reverted, reopened, commented, reviewed or closed.
 
 Exit 2 blocks the tool, with the reason on stderr; exit 0 lets it run. A tool
 this hook does not know passes. An input without a tool name, or a known tool
@@ -16,8 +17,12 @@ without its usual fields, is checked as text. A failure while importing the
 shared checks or while checking a known tool exits 2 from inside the hook. A
 failure before the hook runs, such as no python3 (exit 127) or a syntax error
 in this file (exit 1), exits with another status, which Claude Code does not
-treat as a block; the ``|| exit 2`` of the registration turns it into one.
-A timeout does not block.
+treat as a block; the ``|| exit 2`` of the registration turns it into one on
+any Claude Code version. ``"onFailure": "block"`` makes Claude Code count every
+other failure of the hook as exit 2 too: a timeout, a hook that cannot start
+and output that fails validation block the tool. Claude Code reads the field
+from 2.1.295; on an earlier version a timed-out hook does not block and the
+call goes on through the normal permission flow.
 
 The text of a pull request is read only where it is written: in the command,
 or in a regular file named by --body-file or -F (by a relative name only when
@@ -91,7 +96,9 @@ except Exception as exc:  # fail closed: a broken shared module must block, not 
           file=sys.stderr)
     sys.exit(2)
 
-GIT_TIMEOUT = 5.0  # seconds for each git call: the hook has 15, and a hook that times out does not block
+# Seconds for each git call: the hook has 15, and a timeout blocks the tool only through "onFailure": "block"
+# (Claude Code 2.1.295 or later); before that a timed-out hook lets the tool run.
+GIT_TIMEOUT = 5.0
 BODY_HINT = (
     "write the body to a file in a separate step (with the Write tool), then pass --body-file <path> with an absolute "
     "path outside your home folder, such as /tmp/pr-body.md (a home path in the command is blocked too)"

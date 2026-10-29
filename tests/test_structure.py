@@ -434,50 +434,37 @@ def test_continuity_note_keeps_its_mit_notice_with_both_holders():
     assert notice[notice.index("Permission is hereby"):] == root[root.index("Permission is hereby"):]
 
 
-README_IT = REPO_ROOT / "README.it.md"  # README (English) is defined by the Task 5 tests
+README_IT = REPO_ROOT / "README.it.md"
 NOTICE = REPO_ROOT / "NOTICE"
-SECTION_ID = re.compile(r"^<!-- section: ([a-z0-9-]+) -->$")
+SECTION_ID = re.compile(r"^<!-- section: ([a-z0-9-]+) -->$", re.MULTILINE)
 REQUIRED_SECTIONS = ("tutorial", "how-to", "install", "uninstall", "explanation", "limits", "reference")
 EXPLAINED_POINTS = (
     "explain-lanes", "explain-gates", "explain-review", "explain-review-cycle",
     "explain-rules-import", "explain-continuity", "explain-communication",
 )
-
-
-def section_ids(text: str):
-    lines = text.splitlines()
-    ids = []
-    for index, line in enumerate(lines):
-        match = SECTION_ID.match(line)
-        if match:
-            following = next((item for item in lines[index + 1:] if item.strip()), "")
-            assert following.startswith("#"), match.group(1)
-            ids.append(match.group(1))
-    return ids
+GUARANTEE_LABELS = ("**Guaranteed by:**", "**Garantito da:**")  # README.md, README.it.md
 
 
 def marked_blocks(text: str):
-    """Text from each section marker to the next one."""
-    blocks = {}
-    current, lines = None, []
-    for line in text.splitlines():
-        match = SECTION_ID.match(line)
-        if match:
-            if current is not None:
-                blocks[current] = "\n".join(lines)
-            current, lines = match.group(1), []
-        elif current is not None:
-            lines.append(line)
-    if current is not None:
-        blocks[current] = "\n".join(lines)
-    return blocks
+    """Text from each section marker to the next one, by section id, in file order."""
+    parts = SECTION_ID.split(text)
+    ids = parts[1::2]
+    assert len(set(ids)) == len(ids), "a section id is repeated"
+    return dict(zip(ids, parts[2::2]))
+
+
+def pages(section: str = ""):
+    """The text of README.md, then of README.it.md: whole, or one marked section of each."""
+    texts = [path.read_text(encoding="utf-8") for path in (README, README_IT)]
+    return [marked_blocks(text)[section] for text in texts] if section else texts
 
 
 def test_readmes_have_the_same_sections_in_the_same_order():
-    english = section_ids(README.read_text(encoding="utf-8"))
-    italian = section_ids(README_IT.read_text(encoding="utf-8"))
-    assert english == italian
+    english, italian = (marked_blocks(text) for text in pages())
+    assert list(english) == list(italian)
     assert set(REQUIRED_SECTIONS) <= set(english)
+    for blocks in (english, italian):
+        assert [name for name, block in blocks.items() if not block.strip().startswith("#")] == []
 
 
 def test_readmes_link_each_other_at_the_top():
@@ -489,17 +476,122 @@ def test_readmes_name_every_component_and_only_existing_ones():
     names = list(A1_SKILLS) + list(AGENTS) + ["SessionStart"]
     for path in (README, README_IT):
         text = path.read_text(encoding="utf-8")
-        assert [name for name in names if name not in text] == [], path.name
+        assert [name for name in names if "`%s`" % name not in text] == [], path.name
         assert unknown_references(text) == [], path.name
         assert session_start.SAFETY_LINE in text, path.name
 
 
 def test_readmes_say_what_guarantees_each_explained_point():
-    for path, label in ((README, "**Guaranteed by:**"), (README_IT, "**Garantito da:**")):
-        blocks = marked_blocks(path.read_text(encoding="utf-8"))
+    for path, text, label in zip((README, README_IT), pages(), GUARANTEE_LABELS):
+        blocks = marked_blocks(text)
         explained = [name for name in blocks if name.startswith("explain-")]
         assert explained == list(EXPLAINED_POINTS), path.name
         assert [name for name in explained if blocks[name].count(label) != 1] == [], path.name
+
+
+def skill_text(name: str) -> str:
+    return (REPO_ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+
+
+def guarantee_line(block: str, label: str) -> str:
+    return next(line for line in block.splitlines() if label in line)
+
+
+def test_tutorial_checks_the_rules_with_a_rule_only_rules_md_carries():
+    """The marker is also in the safety line, so a session that lost the import still answers a check on it."""
+    rules = (REPO_ROOT / "rules.md").read_text(encoding="utf-8")
+    elsewhere = [
+        path for folder in ("skills", "agents", "hooks") for path in (REPO_ROOT / folder).rglob("*")
+        if path.suffix in (".md", ".py", ".json")
+    ]
+    for tutorial in pages("tutorial"):
+        assert "PE-RULES v1" not in tutorial
+        tags = set(re.findall(r"PE:[a-z-]+", tutorial))
+        assert tags, "the tutorial asks for no rule"
+        for tag in tags:
+            assert "[%s]" % tag in rules
+            assert [path.name for path in elsewhere if tag in path.read_text(encoding="utf-8")] == [], tag
+
+
+def test_readmes_do_not_list_the_end_to_end_test_as_a_guarantee():
+    """A test run on request is evidence on the maintainer's machine, not a mechanism of the reader's session."""
+    words = ("end-to-end", "da capo a fondo")
+    for text, label, word in zip(pages(), GUARANTEE_LABELS, words):
+        guarantees = [line for line in text.splitlines() if line.startswith(label)]
+        assert len(guarantees) == len(EXPLAINED_POINTS)
+        assert [line for line in guarantees if word in line] == []
+    scope = ("is not exercised by it", "non è esercitato da quella prova")
+    for text, not_covered in zip(pages("install"), scope):
+        assert "`--plugin-dir`" in text and "`@rules.md`" in text and not_covered in text
+
+
+def test_hook_registration_is_described_with_on_failure_everywhere():
+    stale = (
+        "only a timeout does not block", "solo un timeout non blocca",
+        "A timeout does not block.", "a hook that times out does not block",
+    )
+    guard = (REPO_ROOT / "tools" / "dev_guard.py").read_text(encoding="utf-8")
+    for name, text in zip(("README.md", "README.it.md", "dev_guard.py"), pages() + [guard]):
+        for needed in ('"onFailure": "block"', "|| exit 2", "2.1.295"):
+            assert needed in text, (name, needed)
+        assert [claim for claim in stale if claim in text] == [], name
+
+
+def test_readmes_list_disable_model_invocation_as_a_fourth_mechanism():
+    """Claude Code, not the model's discipline, keeps the model from starting autonomous-execution."""
+    fields, _ = parse_frontmatter(skill_text("autonomous-execution"))
+    assert fields["disable-model-invocation"] == "true"
+    field = "`disable-model-invocation`"
+    counts = ("four things are mechanical", "quattro cose sono meccaniche")
+    for intro, gates, count, label in zip(pages("explanation"), pages("explain-gates"), counts, GUARANTEE_LABELS):
+        assert count in intro and field in intro
+        assert field in guarantee_line(gates, label)
+
+
+def test_readmes_define_a_blocking_test_finding_as_blunt_review_does():
+    english = "a missing or tautological test on a behaviour that changed"
+    italian = "una prova mancante o tautologica su un comportamento cambiato"
+    assert english in skill_text("blunt-review")
+    for text, phrase in zip(pages("explain-review"), (english, italian)):
+        assert phrase in text
+
+
+def test_tutorial_quotes_the_notice_the_hook_prints():
+    notice = session_start.build_output(True, [])["systemMessage"]
+    assert [text for text in pages("tutorial") if notice not in text] == []
+
+
+def test_install_checks_the_official_marketplace_before_it_installs():
+    steps = (
+        "claude plugin marketplace list",
+        "claude plugin marketplace add anthropics/claude-plugins-official",
+        "claude plugin install pragmatic-engineering@pragmatic-engineering",
+    )
+    for text in pages("install"):
+        positions = [text.find(step) for step in steps]
+        assert -1 not in positions and positions == sorted(positions)
+        assert text.index("/reload-plugins") > positions[-1]
+
+
+def test_limits_do_not_claim_how_a_compacted_subagent_treats_the_import():
+    stale = ("is not read again from disk", "non si rilegge dal disco")
+    kept = (
+        "a subagent that Claude Code has compacted keeps the imported rules is not verified",
+        "un sotto-agente compattato da Claude Code conservi le regole importate non è verificato",
+    )
+    for text, claim, verified in zip(pages("limits"), stale, kept):
+        assert claim not in text and verified in text
+
+
+def test_readmes_give_the_review_rounds_the_ranges_of_blunt_review():
+    skill = skill_text("blunt-review")
+    rounds = {n: next(line for line in skill.splitlines() if line.startswith("**Round %s.**" % n)) for n in "12"}
+    fixes_range = re.search(r"`(<[^`]*>\.\.<[^`]*>)`", rounds["1"]).group(1)
+    assert "the range of the latest fixes" in rounds["2"]
+    latest = ("the range of the latest fixes", "l'intervallo delle ultime correzioni")
+    whole = ("whole range", "intero intervallo")
+    for text, second, stale in zip(pages("explain-review-cycle"), latest, whole):
+        assert fixes_range in text and second in text and stale not in text
 
 
 def test_notice_credits_what_this_version_reuses():
