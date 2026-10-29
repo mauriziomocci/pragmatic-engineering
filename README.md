@@ -87,9 +87,23 @@ Go in this order. First take the two lines out of `~/.claude/CLAUDE.md`, or rest
 claude plugin uninstall pragmatic-engineering@pragmatic-engineering
 ```
 
-The order matters for two reasons. The safety line without the plugin makes the model warn you at every session start. And the uninstall deletes the plugin's data folder, which holds the copy of `rules.md` that your import points to, unless you pass `--keep-data`; what Claude Code does with an import that points to a missing file has not been tried here.
+The order matters for two reasons. The safety line without the plugin makes the model warn you at every session start. And the uninstall deletes the plugin's data folder, which holds the copy of `rules.md` that your import points to, unless you pass `--keep-data`; what Claude Code does with an import that points to a missing file has not been tried here. The same folder holds `calibration.md`, the calibration log of `quality-scoring`, which goes with it unless you pass `--keep-data`.
 
 Three things stay behind on purpose. Superpowers stays installed; `--prune` on the uninstall command also removes dependencies that were installed automatically and are no longer needed. The marketplace stays registered until `claude plugin marketplace remove pragmatic-engineering`. And the `.pe/` folders that the reviewer and the progress note created in your projects stay: they hold review reports and notes, never enter git because each carries a `.gitignore` with `*`, and you delete them by hand if you want them gone.
+
+<!-- section: office-hours -->
+### Set your office hours
+
+The plugin reads a few keys of your global git configuration. Set them once, from your own terminal:
+
+```
+git config --global pe.officeHours 06-21
+git config --global pe.weekendFrom 10
+git config --global pe.holidays 01-01,12-25,12-26,easter+1
+git config --global pe.personalRemotes https://github.com/<you>/
+```
+
+`pe.officeHours` is the window, from the first hour to the second, in local time; `none`, or no value, turns the rule off. `pe.weekendFrom` is the hour from which Saturdays, Sundays and the dates of `pe.holidays` open; without it they open at the start of the window. `pe.holidays` lists dates separated by commas, each `MM-DD`, or `easter+N` and `easter-N` with N days from Gregorian Easter: `easter+1` is Easter Monday. `pe.personalRemotes` says which remotes are yours: a remote is personal only if every push URL it has starts with one of its values, and you add another with `git config --global --add pe.personalRemotes <prefix>`; without it, no remote is personal. To see what the model will read, run `git config --get pe.officeHours`.
 
 <!-- section: maintainers -->
 ### Work on this repository
@@ -123,7 +137,7 @@ The workflow `.github/workflows/ci.yml` runs the same suite on every push and pu
 <!-- section: explanation -->
 ## How it works
 
-The seven parts below each end with a line that says what guarantees the part. In this version four things are mechanical: the `SessionStart` hook, which copies the rules and checks your `CLAUDE.md`; Claude Code's own `@` import, which delivers the rules file as your instructions; the `skills` field of the agent, which makes Claude Code load `blunt-review` and `quality-scoring` into it; and the `disable-model-invocation` field of the skill `autonomous-execution`, which keeps the model from starting it. Everything else is a rule for the model.
+The nine parts below each end with a line that says what guarantees the part. In this version four things are mechanical: the `SessionStart` hook, which copies the rules and checks your `CLAUDE.md`; Claude Code's own `@` import, which delivers the rules file as your instructions; the `skills` field of the agent, which makes Claude Code load `blunt-review` and `quality-scoring` into it; and the `disable-model-invocation` field of the skill `autonomous-execution`, which keeps the model from starting it. Everything else is a rule for the model.
 
 <!-- section: explain-lanes -->
 ### Three lanes
@@ -161,6 +175,15 @@ In round 1 a `blunt-reviewer` with fresh context, one that wrote neither the wor
 
 **Guaranteed by:** a rule for the model only (the skill `blunt-review`). No mechanism counts the rounds or stops a third one.
 
+<!-- section: explain-lenses -->
+### Role lenses and the 8/10 gate
+
+Four lenses look at every piece of work, each named for a role and never for a person. The PM lens, held by the main session, frames the work at phase 1: a pre-mortem of three lines, the why, the search for what already exists, the smallest version and its measured cost; while you are away it decides scope and time inside an approved spec, never the data model or an API contract. The UX lens proposes from the need of the person who uses the product, on every change to an interface or to the responses of an API, and the review lens attacks the proposal on evidence and cost, in one round before the spec; the user lens tries the change as a persona would and reports where the persona gets stuck. The lenses re-check each other's claims, and an agreement nobody verified counts as a finding. `development-workflow` holds the lenses and the rules for decisions while you are away; `interface-quality` holds the measured bar of an interface and the UX and user lenses.
+
+At phase 6 every lens the work touches gets a score from 1 to 10, which `quality-scoring` computes from the findings of an independent review: a critical or serious finding takes the lens below 8 by itself. Below 8 the final validation stops and asks you to choose between the fix, with its cost, and a deferral you can track. The rubric is still being calibrated: its log, `calibration.md` in the plugin's data folder, says `CALIBRATING` until five applications in a row, on at least two projects, show no signal, and `STABLE` after that. The lenses and the gate were added on 29 October 2026 and are provisional until they are re-evaluated; a later version carries the changes.
+
+**Guaranteed by:** a rule for the model only (the rules `lenses`, `quality-gate` and `user-away` in `rules.md`, and the skills `development-workflow`, `interface-quality` and `quality-scoring`). Nothing computes a score or stops a merge request in this version, and the lenses are subagents that the main session is asked to start.
+
 <!-- section: explain-rules-import -->
 ### Rules through an import
 
@@ -179,6 +202,13 @@ Work is saved ahead, in three forms, all described by `continuity-note`. The pro
 
 **Guaranteed by:** a rule for the model only (the rules `save-ahead` and `status-line` in `rules.md`). Nothing counts the saves, so a compaction loses at most the work done since the last save, and how small that is depends on the model's discipline.
 
+<!-- section: explain-office-hours -->
+### Office hours
+
+If you set office hours, outside them the model keeps your work local: it commits, and it does not push to a remote that is not personal, open a merge request, start a pipeline, edit a tracker or send a message. Weekends and the holidays you list open later, at the hour you choose. Unattended work outside the hours runs only when you authorise that piece of work with a hard stop, and commits made outside the window are re-created inside it with their real dates, never with faked ones. Without the setting the rule is off; the how-to guide on office hours shows the keys.
+
+**Guaranteed by:** a rule for the model only (the rule `office-hours` in `rules.md` and the skill `safe-operations`). Nothing blocks a push at night in this version; a guard that does is planned for a later version.
+
 <!-- section: explain-communication -->
 ### How the plugin talks to you
 
@@ -191,6 +221,9 @@ The model explains briefly and at a high level at four moments: at the start and
 
 The limits that describe Claude Code's own behaviour (which agents load `CLAUDE.md`, Cowork, compaction) come from its documentation as read while the plugin was designed. The plugin's tests do not exercise them, apart from the import itself.
 
+- The role lenses, the 8/10 gate, the budget, the rule on delivered API contracts, the taste thresholds and the office hours are rules for the model in this version, not mechanisms; the CI enforces the complexity thresholds on this repository only.
+- The 8/10 gate is still calibrating, and the lenses are provisional until they are re-evaluated.
+- The daily budget applies only where the host shows the model the account's usage; elsewhere the rule does not apply.
 - There is no mechanical check on merge requests: the review before one is a rule for the model, and the verdict of `blunt-reviewer` is a message to read, not a gate.
 - The rules do not reach `Explore`, `Plan` and agents with `omitClaudeMd: true`, because they travel in your `CLAUDE.md`.
 - Cowork skips imports that point outside its working folder, so the rules do not arrive there.
@@ -239,7 +272,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 
 ### Files
 
-`rules.md` is the working rules file, starting with the marker `PE-RULES v1`. The `.pe/` folder, at the root of a project, holds `reviews/` (the reports of `blunt-reviewer`) and `progress.md` (the progress note), and it never enters git because of its own `.gitignore` with `*`.
+`rules.md` is the working rules file, starting with the marker `PE-RULES v1`. The `.pe/` folder, at the root of a project, holds `reviews/` (the reports of `blunt-reviewer`) and `progress.md` (the progress note), and it never enters git because of its own `.gitignore` with `*`. In the plugin's data folder, next to the copy of `rules.md`, `quality-scoring` keeps `calibration.md`, its calibration log.
 
 <!-- section: license -->
 ## License

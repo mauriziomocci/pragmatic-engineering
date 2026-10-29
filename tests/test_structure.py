@@ -498,8 +498,8 @@ NOTICE = REPO_ROOT / "NOTICE"
 SECTION_ID = re.compile(r"^<!-- section: ([a-z0-9-]+) -->$", re.MULTILINE)
 REQUIRED_SECTIONS = ("tutorial", "how-to", "install", "uninstall", "explanation", "limits", "reference")
 EXPLAINED_POINTS = (
-    "explain-lanes", "explain-gates", "explain-review", "explain-review-cycle",
-    "explain-rules-import", "explain-continuity", "explain-communication",
+    "explain-lanes", "explain-gates", "explain-review", "explain-review-cycle", "explain-lenses",
+    "explain-rules-import", "explain-continuity", "explain-office-hours", "explain-communication",
 )
 GUARANTEE_LABELS = ("**Guaranteed by:**", "**Garantito da:**")  # README.md, README.it.md
 
@@ -657,6 +657,27 @@ def test_notice_credits_what_this_version_reuses():
     text = NOTICE.read_text(encoding="utf-8")
     for needed in ("superpowers", "Jesse Vincent", "MIT", "continuity-note", "Matt Pocock", "diataxis.fr"):
         assert needed in text, needed
+
+
+def test_readmes_date_the_lenses_and_call_them_rules():
+    for lenses, date in zip(pages("explain-lenses"), ("29 October 2026", "29 ottobre 2026")):
+        assert date in lenses and "`CALIBRATING`" in lenses
+        assert "`quality-scoring`" in lenses and "`interface-quality`" in lenses
+    for limits, words in zip(pages("limits"), ("not mechanisms", "non meccanismi")):
+        assert words in limits
+
+
+def test_office_hours_guide_gives_every_key_and_the_way_to_turn_it_off():
+    for text in pages("office-hours"):
+        for needed in (
+            "git config --global pe.officeHours 06-21", "pe.weekendFrom", "pe.holidays", "easter+1",
+            "pe.personalRemotes", "`none`", "git config --get pe.officeHours",
+        ):
+            assert needed in text, needed
+
+
+def test_uninstall_says_the_calibration_log_goes_with_the_data_folder():
+    assert [text for text in pages("uninstall") if "`calibration.md`" not in text or "`--keep-data`" not in text] == []
 
 
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
