@@ -624,7 +624,8 @@ SECTION_ID = re.compile(r"^<!-- section: ([a-z0-9-]+) -->$", re.MULTILINE)
 REQUIRED_SECTIONS = ("tutorial", "how-to", "install", "uninstall", "explanation", "limits", "reference")
 EXPLAINED_POINTS = (
     "explain-lanes", "explain-gates", "explain-review", "explain-review-cycle", "explain-lenses",
-    "explain-rules-import", "explain-continuity", "explain-office-hours", "explain-communication",
+    "explain-rules-import", "explain-working-rules", "explain-continuity", "explain-office-hours",
+    "explain-communication",
 )
 GUARANTEE_LABELS = ("**Guaranteed by:**", "**Garantito da:**")  # README.md, README.it.md
 LENS_PARTS = ("lenses-roles", "lenses-together", "lenses-score", "lenses-gate")  # the subsections of explain-lenses
@@ -689,6 +690,18 @@ def test_readmes_say_what_guarantees_each_explained_point():
         assert explained == list(EXPLAINED_POINTS), path.name
         blocks["explain-lenses"] = lens_group(text)
         assert [name for name in explained if blocks[name].count(label) != 1] == [], path.name
+
+
+def test_readmes_list_every_rule_of_rules_md_under_the_point_that_explains_it():
+    """A rule with no explained point has no home in the explanation: its label must close one of the points."""
+    rules = {marker for markers in EXPECTED_RULE_MARKERS.values() for marker in markers}
+    for path, text, label in zip((README, README_IT), pages(), GUARANTEE_LABELS):
+        blocks = marked_blocks(text)
+        blocks["explain-lenses"] = lens_group(text)
+        guarantees = "\n".join(
+            line for name in EXPLAINED_POINTS for line in blocks[name].splitlines() if line.startswith(label)
+        )
+        assert sorted(rule for rule in rules if "`%s`" % rule not in guarantees) == [], path.name
 
 
 def skill_text(name: str) -> str:
@@ -1017,6 +1030,10 @@ GUIDED_SENTENCES = {
          "after them)",
          "`<tip before the fixes>..<tip after the fixes>` (dall'ultimo commit prima delle correzioni all'ultimo "
          "dopo)"),
+    ),
+    "explanation": (
+        ("The first ten parts below each end with a line that says what guarantees the part.",
+         "Le prime dieci parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte."),
     ),
     "lenses-score": (
         ("Each lens starts from 10: each S1 takes away 4 points and caps the lens at 4, each S2 takes away 1.5 "
