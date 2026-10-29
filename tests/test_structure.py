@@ -90,17 +90,20 @@ def test_readme_names_every_repository_tool():
 RULES = REPO_ROOT / "rules.md"
 EXPECTED_RULE_MARKERS = {
     "Every agent": {
-        "precedence", "evidence", "reuse", "burden-of-proof", "test-first",
-        "suite-before-commit", "self-review", "no-bug-left", "english-identifiers",
-        "docs-same-commit", "candour", "secrets", "production-go", "save-ahead", "publishing",
+        "precedence", "evidence", "scope", "reuse", "burden-of-proof", "test-first",
+        "suite-before-commit", "self-review", "taste-gates", "no-bug-left", "english-identifiers",
+        "docs-same-commit", "api-contract", "isolated-sessions", "candour", "secrets", "production-go",
+        "office-hours", "save-ahead", "publishing",
     },
-    "Main session": {"explain", "no-quiz", "lanes", "heavy-gates", "backup-diff-go"},
+    "Main session": {
+        "explain", "no-quiz", "lanes", "heavy-gates", "backup-diff-go", "lenses", "quality-gate", "user-away", "budget",
+    },
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "759fd6cac39a3a5ac0ea8569c1ce77f17246062ee187606146f9aafaeccc21e8"
-# Requirements of spec section 17.3: each one must sit in the block that reaches the right agents
-# and say what the spec asks, so a rule gutted under its marker fails as well.
+RULES_SHA256 = "65d38f3cfc536c171142ecdd3cff2302a6e2a8210be35525b26e3eefb49a5323"
+# Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
+# that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 MIGRATION_REQUIREMENTS = {
     "self-review": ("Every agent", "following `blunt-review`"),
     "burden-of-proof": ("Every agent", "burden of proving"),
@@ -110,6 +113,16 @@ MIGRATION_REQUIREMENTS = {
     "heavy-gates": ("Main session", "explicit written approval"),
     "suite-before-commit": ("Every agent", "zero failures"),
     "production-go": ("Every agent", "its own explicit go"),
+    "candour": ("Every agent", "proposals to validate"),
+    "scope": ("Every agent", "no emoji anywhere"),
+    "taste-gates": ("Every agent", "about 40 lines"),
+    "api-contract": ("Every agent", "never changes shape"),
+    "isolated-sessions": ("Every agent", "stops only what it started"),
+    "office-hours": ("Every agent", "git config --get pe.officeHours"),
+    "lenses": ("Main session", "never traded"),
+    "quality-gate": ("Main session", "at least 8/10"),
+    "user-away": ("Main session", "wait for the user"),
+    "budget": ("Main session", "15% of the weekly limit"),
 }
 RULE_LINE = re.compile(r"^- \[PE:([a-z-]+)\] (?!\[PE:)\S")
 CITATION = re.compile(r"`([^` \n]+)`")
@@ -180,7 +193,8 @@ def test_rules_cite_only_existing_skills():
 
 
 def test_rules_stay_short():
-    assert len(rules_text()) <= 6000
+    # Every session and every subagent reads the whole file: 9,044 characters since the method rules came in.
+    assert len(rules_text()) <= 9500
 
 
 def test_sections_rejects_a_repeated_heading():
