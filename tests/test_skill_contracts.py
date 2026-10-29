@@ -141,8 +141,9 @@ CONTRACTS: Dict[str, Contract] = {
             "An audit criterion is a stop rule written in the project's own instructions or configuration, never "
             "inferred from any other document.",
             "The open blocking findings go up one level with the recommendation of whoever carries them, and the "
-            "coordinator takes them to the user or, during an autonomy, to the PM lens, which may only defer or park "
-            "them, because a gate closes on an open blocking finding only by the user's tracked deferral.",
+            "coordinator takes them to the user or, during an autonomy, to the PM lens, which may only park them or "
+            "propose a deferral to the user, because a gate closes on an open blocking finding only by the user's "
+            "tracked deferral.",
         ),
         absent=(
             "Delivering work", "Pythonic",
@@ -356,7 +357,8 @@ CONTRACTS: Dict[str, Contract] = {
             "Otherwise run `python3 recreate_night_commits.py <base>` from this skill's folder, with `<base>` the last "
             "commit already pushed, or the branch point of a branch never pushed.",
             "It refuses to start outside the window, with uncommitted changes in tracked files, on a commit already "
-            "on a remote branch or when a file the range deletes is still on disk; it tags the tip `night-backup-<YYYYMMDD-HHMMSS>`, runs "
+            "on a remote branch or when an untracked file, ignored or not, sits on a path the range writes or "
+            "deletes; it tags the tip `night-backup-<YYYYMMDD-HHMMSS>`, runs "
             "`git rebase --force-rebase --ignore-date --rebase-merges <base>` and checks in order that the tree is the "
             "tag's, that the commits and their messages are unchanged, and that both dates of every commit fall "
             "inside the window.",

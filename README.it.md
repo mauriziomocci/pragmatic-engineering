@@ -248,7 +248,7 @@ Il lavoro si salva in anticipo, in tre forme, tutte descritte da `continuity-not
 <!-- section: explain-office-hours -->
 ### Orario d'ufficio
 
-Se imposti un orario d'ufficio, fuori da quell'orario il modello tiene il tuo lavoro in locale: fa i commit, e non spinge verso un remoto che non sia personale, non apre merge request, non avvia pipeline, non modifica un tracker e non manda messaggi. I fine settimana e i festivi che elenchi aprono più tardi, all'ora che scegli. Il lavoro non presidiato fuori orario parte solo quando autorizzi quel lavoro con un orario di fine, e i commit fatti fuori finestra si ricreano dentro la finestra con le loro date vere, mai falsate. Senza l'impostazione la regola è spenta; la guida pratica sull'orario d'ufficio mostra le chiavi.
+Se imposti un orario d'ufficio, fuori da quell'orario il modello tiene il tuo lavoro in locale: fa i commit, e non spinge verso un remoto che non sia personale, non apre merge request, non avvia pipeline, non modifica un tracker e non manda messaggi. I fine settimana e i festivi che elenchi aprono più tardi, all'ora che scegli. Il lavoro non presidiato fuori orario parte solo quando autorizzi quel lavoro con un orario di fine, e i commit fatti fuori finestra si ricreano dentro le ore feriali della finestra, fine settimana compresi, con le loro date vere, mai falsate. Senza l'impostazione la regola è spenta; la guida pratica sull'orario d'ufficio mostra le chiavi.
 
 **Garantito da:** solo una regola per il modello (la regola `office-hours` in `rules.md` e la skill `safe-operations`). In questa versione nulla blocca un push di notte; una guardia che lo fa è prevista per una versione successiva.
 

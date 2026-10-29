@@ -149,28 +149,78 @@ def test_it_refuses_uncommitted_changes_in_a_tracked_file(tmp_path):
     assert "uncommitted changes in tracked files" in proc.stderr
 
 
-def stop_tracking_and_ignore(tmp_path: Path) -> Tuple[Path, str]:
-    """A night commit that untracks ``config.local`` and ignores it: the file stays on disk, ignored."""
-    repo, _ = night_repo(tmp_path)
-    base = commit(repo, {"config.local": "secret\n"}, "track the local configuration")
+def untrack_and_ignore(repo: Path) -> None:
+    """A commit that untracks ``config.local`` and ignores it: the file stays on disk, ignored."""
     git(repo, "rm", "-q", "--cached", "config.local")
     (repo / ".gitignore").write_text("config.local\n", encoding="utf-8")
     git(repo, "add", ".gitignore")
     git(repo, "commit", "-q", "-m", "stop tracking the local configuration")
+
+
+def stop_tracking_and_ignore(tmp_path: Path) -> Tuple[Path, str]:
+    """The base tracks ``config.local`` and a night commit untracks it."""
+    repo, _ = night_repo(tmp_path)
+    base = commit(repo, {"config.local": "secret\n"}, "track the local configuration")
+    untrack_and_ignore(repo)
     return repo, base
 
 
 def test_it_refuses_while_a_file_the_range_deletes_is_still_on_disk(tmp_path):
     """The rebase checks out the base, which overwrites an ignored file, and the replay then deletes it."""
     repo, base = stop_tracking_and_ignore(tmp_path)
-    proc = refuse(repo, base, "deleted file")
+    proc = refuse(repo, base, "untracked file")
     assert "config.local" in proc.stderr
     assert (repo / "config.local").read_text(encoding="utf-8") == "secret\n"
+
+
+def test_it_refuses_a_file_a_night_commit_adds_and_a_later_one_untracks(tmp_path):
+    """The net change of the range is empty, yet replaying the first commit would overwrite the local file."""
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"config.local": "committed by mistake\n"}, "add the local configuration")
+    untrack_and_ignore(repo)
+    (repo / "config.local").write_text("edited after\n", encoding="utf-8")
+    proc = refuse(repo, base, "untracked file")
+    assert "config.local" in proc.stderr
+    assert (repo / "config.local").read_text(encoding="utf-8") == "edited after\n"
+    assert not (repo / ".git" / "rebase-merge").exists()
 
 
 def test_a_file_the_range_deletes_and_that_is_gone_from_disk_does_not_stop_it(tmp_path):
     repo, base = stop_tracking_and_ignore(tmp_path)
     (repo / "config.local").unlink()
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_a_tracked_file_replaced_by_a_directory_of_the_same_name_does_not_stop_it(tmp_path):
+    """Nothing untracked is in the way: the old path is deleted and the new files are tracked."""
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"notes": "a file\n"}, "add a file")
+    base = head(repo)
+    git(repo, "rm", "-q", "notes")
+    commit(repo, {"notes/first.txt": "now a directory\n"}, "turn it into a directory")
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def disk_ignores_case(folder: Path) -> bool:
+    probe = folder / "Probe"
+    probe.write_text("x", encoding="utf-8")
+    try:
+        return (folder / "pROBE").exists()
+    finally:
+        probe.unlink()
+
+
+def test_a_rename_that_only_changes_the_case_does_not_stop_it(tmp_path):
+    if not disk_ignores_case(tmp_path):
+        pytest.skip("needs a case-insensitive disk: here two names differing in case are two files")
+    repo, _ = night_repo(tmp_path)
+    commit(repo, {"Readme.md": "text\n"}, "add the readme")
+    base = head(repo)
+    git(repo, "mv", "Readme.md", "README.md.tmp")
+    git(repo, "mv", "README.md.tmp", "README.md")
+    git(repo, "commit", "-q", "-m", "rename the readme")
     proc = run_script(SCRIPT, [base], repo)
     assert proc.returncode == 0, proc.stdout + proc.stderr
 

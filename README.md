@@ -248,7 +248,7 @@ Work is saved ahead, in three forms, all described by `continuity-note`. The pro
 <!-- section: explain-office-hours -->
 ### Office hours
 
-If you set office hours, outside them the model keeps your work local: it commits, and it does not push to a remote that is not personal, open a merge request, start a pipeline, edit a tracker or send a message. Weekends and the holidays you list open later, at the hour you choose. Unattended work outside the hours runs only when you authorise that piece of work with a hard stop, and commits made outside the window are re-created inside it with their real dates, never with faked ones. Without the setting the rule is off; the how-to guide on office hours shows the keys.
+If you set office hours, outside them the model keeps your work local: it commits, and it does not push to a remote that is not personal, open a merge request, start a pipeline, edit a tracker or send a message. Weekends and the holidays you list open later, at the hour you choose. Unattended work outside the hours runs only when you authorise that piece of work with a hard stop, and commits made outside the window are re-created inside the weekday hours of the window, weekends included, with their real dates, never with faked ones. Without the setting the rule is off; the how-to guide on office hours shows the keys.
 
 **Guaranteed by:** a rule for the model only (the rule `office-hours` in `rules.md` and the skill `safe-operations`). Nothing blocks a push at night in this version; a guard that does is planned for a later version.
 

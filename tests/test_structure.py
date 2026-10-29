@@ -940,6 +940,10 @@ GUIDED_SENTENCES = {
          "E restano le chiavi `pe.*` che hai impostato nella tua configurazione di git; la sezione «Configurare il "
          "plugin» qui sopra dice come toglierle."),
     ),
+    "explain-office-hours": (
+        ("re-created inside the weekday hours of the window, weekends included",
+         "si ricreano dentro le ore feriali della finestra, fine settimana compresi"),
+    ),
     "office-hours": (
         ("Set them once, from a terminal or by asking the model in a session (it shows you each command and runs it "
          "after your yes), with `pe.personalRemotes` in the same step as `pe.officeHours`:",

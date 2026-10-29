@@ -5,8 +5,8 @@ Usage: python3 recreate_night_commits.py <base>, run in the repository to fix. `
 pushed, or the branch point when the branch was never pushed.
 
 The script refuses to start, and changes nothing, in this order: no office hours set (``pe.officeHours``); a base
-that is not a commit, or nothing above it; uncommitted changes in tracked files; a file that ``<base>..HEAD`` deletes
-and that is still on disk, ignored or not, because the rebase overwrites it and then deletes it; the current hour
+that is not a commit, or nothing above it; uncommitted changes in tracked files; an untracked file, ignored or not, on a
+path that a commit of ``<base>..HEAD`` writes or deletes, because the replay overwrites or deletes it; the current hour
 outside the window; a commit of ``<base>..HEAD`` already on a remote-tracking branch, because published history is
 never rewritten (the branches are read as they are after the last fetch); a backup tag that already exists. Then it
 tags the tip, runs ``git rebase --force-rebase --ignore-date --rebase-merges <base>`` and runs four checks, stopping at
@@ -15,7 +15,6 @@ the first that fails. A failure prints the way back and never runs it.
 Every day uses the hours of ``pe.officeHours``, weekends and ``pe.holidays`` included, so a commit re-created on a
 weekend morning carries a date inside the weekday hours, which the date check accepts.
 """
-import os
 import re
 import subprocess
 import sys
@@ -100,14 +99,17 @@ def require_clean_tree() -> None:
         raise Refusal("clean tree", "there are uncommitted changes in tracked files: commit them first")
 
 
-def require_deleted_files_gone(base: str) -> None:
-    """The rebase checks out ``base`` first, so an ignored file the range deletes would be overwritten, then deleted."""
-    top = git("rev-parse", "--show-toplevel").strip()
-    deleted = git("diff", "--name-only", "-z", "--no-renames", "--diff-filter=D", base, "HEAD").split("\0")
-    present = next((path for path in deleted if path and os.path.lexists(os.path.join(top, path))), None)
-    if present is not None:
+def require_no_untracked_file_in_the_way(base: str) -> None:
+    """The rebase replays every commit of the range, and each replay may overwrite or delete an untracked file, ignored
+    or not, on the paths it writes. Tracked paths never show in ``--others``, so a rename or a file turned into a
+    folder is not refused."""
+    touched = set(git("log", "--format=", "--name-only", "-z", "--no-renames", "-m", base + "..HEAD").split("\0"))
+    untracked = git("ls-files", "-z", "--others").split("\0")
+    in_the_way = next((path for path in untracked if path and path in touched), None)
+    if in_the_way is not None:
         raise Refusal(
-            "deleted file", "%s is deleted by %s..HEAD and is still on disk: move it away first" % (present, base)
+            "untracked file",
+            "%s sits on a path %s..HEAD writes or deletes: move it away first" % (in_the_way, base),
         )
 
 
@@ -210,7 +212,7 @@ def recreate(base: str, now: datetime) -> str:
     window = office_window()
     shas = commits_to_re_create(base)
     require_clean_tree()
-    require_deleted_files_gone(base)
+    require_no_untracked_file_in_the_way(base)
     require_hour_in_window(window, now)
     require_unpublished(base, shas)
     tag = create_backup_tag(now)
