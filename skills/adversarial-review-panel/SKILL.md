@@ -68,9 +68,9 @@ smaller than this".
 
 It works on the burden of proof on adding, stated here in full because this lens
 uses it (the complete rule also lives in `blunt-review`). The default answer to
-adding anything is no, and whoever adds it proves the need. The order of preference is fixed:
-delete > do nothing > extend what exists > write new. The last is allowed only
-after the first three are ruled out. Its sharpest question is
+adding anything is no, and whoever adds it proves the need. The order of
+preference is fixed: delete > do nothing > extend what exists > write new. The
+last is allowed only after the first three are ruled out. Its sharpest question is
 **"what breaks if we delete this?"** — when the answer is "nothing", that is a
 finding, not a detail. Counts parts, never characters: shorter is not the target,
 fewer moving parts is.

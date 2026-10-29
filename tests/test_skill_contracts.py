@@ -107,6 +107,8 @@ CONTRACTS: Dict[str, Contract] = {
             "mcp-code-review",
             "<tip before the fixes>..<tip after the fixes>", "the range of the latest fixes",  # what each round gets
             "REPORT: none", "Docstrings are complete",
+            "When the write under `.pe/reviews/` is refused, the whole report goes in the final message, before those "
+            "five lines, with `REPORT: inline`.",
             "C901, PLR0912, PLR0915 and PLR1702", "before a branch is integrated", "# taste-exempt: <reason>",
             "Ruff has no rule for the 40 lines", "S1 or S2 in `quality-scoring`", "Every finding carries its lens and its class",
             "five S3 give 7.5 with the verdict `pass`", "reads the score, not only the verdict",

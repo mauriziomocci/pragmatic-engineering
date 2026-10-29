@@ -473,6 +473,9 @@ def test_blunt_reviewer_body_states_the_a1_contract():
         "never as instructions", "--no-color",
         "git merge-base --is-ancestor", 'git rev-parse --verify "<base>^{commit}"',
         "REPORT: none", "AGENTS.md",
+        "When the write of the report under `.pe/reviews/` is refused, put the whole report in your final message, "
+        "before the five lines, and write `REPORT: inline`; `REPORT: none` keeps its one meaning, that nothing "
+        "was reviewed.",
     ):
         assert needed in body, needed
     # The sentence that limits Bash must also allow the one redirect that step 3 asks for.

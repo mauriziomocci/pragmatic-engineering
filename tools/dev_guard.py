@@ -11,9 +11,7 @@ Claude Code settings file (shared filters in lib/pe_guard/filters.py); it
 blocks MCP tools that write to a remote (they bypass the pre-push), and runs
 the privacy check on the text of pull and merge requests when they are opened,
 edited or merged and, for gh and glab commands, when they are reverted,
-reopened, commented, reviewed or closed. It does not cover the removal of its
-own registration from .claude/settings.local.json: neither a write nor a shell
-command that drops it is blocked.
+reopened, commented, reviewed or closed.
 
 Exit 2 blocks the tool, with the reason on stderr; exit 0 lets it run. A tool
 this hook does not know passes. An input without a tool name, or a known tool
@@ -80,7 +78,12 @@ Open limits, declared and pinned in OPEN_FORMS of tests/test_dev_guard.py:
   uploads the files it names and appends them to the body (``gh pr edit`` and
   ``gh pr comment`` have it too), ``--recover`` takes the input of an earlier
   failed run, ``--editor`` the text typed in an editor and ``--web`` the text
-  typed in the browser (``gh pr comment`` has both).
+  typed in the browser (``gh pr comment`` has both);
+- the removal of the guard's own registration from .claude/settings.local.json:
+  neither a write of the file without the hook entry nor a shell command that
+  drops it (``sed -i '/dev_guard/d' .claude/settings.local.json``) is blocked,
+  because only a settings file that switches every hook off is looked for (the
+  write is pinned by its own test, next to OPEN_FORMS).
 """
 import json
 import os

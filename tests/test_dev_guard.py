@@ -726,8 +726,9 @@ def test_pr_tool_with_an_input_of_unknown_shape_blocks(payload):
 
 
 # What the module docstring declares open. Each command passes although the text the shell or gh would send holds
-# private data; the cwd file is what the hook reads and the sub file what the command really reads. When one of these
-# is closed, this test fails and the docstring must change with it.
+# private data (the last one, although it drops the guard's own registration); the cwd file is what the hook reads
+# and the sub file what the command really reads. When one of these is closed, this test fails and the docstring
+# must change with it.
 OPEN_FORMS = [
     # a folder change by another program than cd or pushd: the relative body file is read from the hook's folder
     ("env -C sub gh pr create --title t --body-file body.md", "clean\n", "Made for Zorblax.\n"),
@@ -757,6 +758,8 @@ OPEN_FORMS = [
     ("gh pr comment 1 --body=Zorbl{b,a}x", "clean\n", "clean\n"),
     # a gh call inside a script file is never seen, like a call held in a variable, an alias or a function
     ("bash make-pr.sh", "clean\n", "clean\n"),
+    # the guard's own registration: a shell command that drops it from the settings file is not seen
+    ("sed -i '/dev_guard/d' .claude/settings.local.json", "clean\n", "clean\n"),
 ]
 
 
@@ -766,6 +769,13 @@ def test_forms_the_hook_cannot_see_stay_open_as_the_module_declares(repo_with_te
     (repo_with_terms / "body.md").write_text(here, encoding="utf-8")
     (repo_with_terms / "sub" / "body.md").write_text(sub, encoding="utf-8")
     assert dev_guard.decide(bash_payload(repo_with_terms, command)) is None
+
+
+def test_a_settings_write_that_drops_the_guard_registration_stays_open_as_the_module_declares(tmp_path):
+    """The Write form of the last row of OPEN_FORMS: the tool is not Bash, so the payload differs."""
+    settings = tmp_path / ".claude" / "settings.local.json"
+    payload = {"tool_name": "Write", "tool_input": {"file_path": str(settings), "content": '{"permissions": {}}\n'}}
+    assert dev_guard.decide(payload) is None
 
 
 @pytest.mark.parametrize("tool,field", [
