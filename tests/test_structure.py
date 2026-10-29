@@ -252,3 +252,21 @@ def test_reference_checker_flags_a_bare_superpowers_name():
     assert unknown_references("use `brainstorming`") == [
         "`brainstorming` must be written superpowers:brainstorming"
     ]
+
+
+HOOKS_JSON = REPO_ROOT / "hooks" / "hooks.json"
+
+
+def test_hooks_json_runs_the_session_start_script_with_a_short_timeout():
+    config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
+    assert list(config) == ["hooks"]
+    assert list(config["hooks"]) == ["SessionStart"]
+    entries = config["hooks"]["SessionStart"]
+    assert len(entries) == 1 and "matcher" not in entries[0]
+    (hook,) = entries[0]["hooks"]
+    assert hook == {
+        "type": "command",
+        "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py"',
+        "timeout": 10,
+    }
+    assert (REPO_ROOT / "hooks" / "session_start.py").is_file()
