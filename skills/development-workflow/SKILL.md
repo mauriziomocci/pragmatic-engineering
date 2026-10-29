@@ -88,7 +88,7 @@ An agreement is written with what each lens verified by itself, and an agreement
 
 ## Budget
 
-Where the host exposes the account's usage, the day's allowance and ceiling of the budget rule are written in the progress note, with the weekly share they start from.
+Where the host exposes the account's usage, the day's allowance and ceiling of the budget rule are written in the progress note, with the weekly share they start from. The share used is also read at the opening and at the closing of each package of work, and written in the progress note next to the package's estimate, so that estimates can be calibrated.
 
 ## Instruction layers
 
@@ -129,3 +129,5 @@ Before a version change, classify the changes in the diff and state the semver p
 ## Continuity
 
 At the end of a session, or when the work passes to another agent, the full continuity note is written. Where the progress note lives, when it is updated and how a deliverable file's status line is made are in `continuity-note`, sections "The progress note" and "Status line of deliverable files".
+
+The coordinating session hands over at the first clean point of a new day, or when its context passes 300,000 tokens, read where the host shows it. The handover is explicit: the old session writes the continuity note and the line `handover to <name> at <time>` in the progress note, and from then on takes no action; the new one sends nothing before it has read that line. When the host cannot open a new session by itself, because the user is away and a proposal would wait for a click, the session finishes at a clean point and hands over the next day, writing the exception with its cost. An exception the user asks for is written with its cost too, and the user's choice prevails.

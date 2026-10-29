@@ -180,7 +180,7 @@ The workflow `.github/workflows/ci.yml` runs the same suite on every push and pu
 <!-- section: explanation -->
 ## How it works
 
-The nine parts below each end with a line that says what guarantees the part. In this version four things are mechanical: the `SessionStart` hook, which copies the rules and checks your `CLAUDE.md`; Claude Code's own `@` import, which delivers the rules file as your instructions; the `skills` field of the agent, which makes Claude Code load `blunt-review` and `quality-scoring` into it; and the `disable-model-invocation` field of the skill `autonomous-execution`, which keeps the model from starting it. Everything else is a rule for the model.
+The first nine parts below each end with a line that says what guarantees the part. In this version four things are mechanical: the `SessionStart` hook, which copies the rules and checks your `CLAUDE.md`; Claude Code's own `@` import, which delivers the rules file as your instructions; the `skills` field of the agent, which makes Claude Code load `blunt-review` and `quality-scoring` into it; and the `disable-model-invocation` field of the skill `autonomous-execution`, which keeps the model from starting it. Everything else is a rule for the model.
 
 <!-- section: explain-lanes -->
 ### Three lanes
@@ -258,6 +258,13 @@ If you set office hours, outside them the model keeps your work local: it commit
 The model explains briefly and at a high level at four moments: at the start and at the end of a work block, at every architecture choice (the choice, the main alternative discarded and why) and before a heavy gate. Each explanation ends with "is it clear?" in your language, and what you say is unclear is explained again with different words and an example. The answer is awaited only at the two heavy gates and at architecture choices, and never while you are away or during an autonomy; there is no quiz and no verification question, ever. The tone is frank: no agreeing to please, no flattery, weak reasoning challenged with evidence, risks and opportunity costs named, and a guess about your intent labelled as a guess. The skill `teach` carries the explanations and the method for teaching code; the rules file carries the tone.
 
 **Guaranteed by:** a rule for the model only (the rules `explain`, `no-quiz` and `candour` in `rules.md`, and the skill `teach`). "Is it clear?" does not prove that you understood, and the tone rules reduce the model's tendency to agree, they do not remove it.
+
+<!-- section: language-neutral -->
+### Any language, framework and database
+
+The plugin holds for every language, framework and database, and its rules name none. The good practices of the stack you work in come first from your project's conventions and your own configuration, then from the official documentation of the version in use, which the model reads with Context7 when it is installed; an interface that depends on the version is verified before it is used. They are not written in the plugin for three reasons: the model already knows the common ones, such texts age with every version, and they would cost tokens in every session.
+
+To add the knowledge of a stack, write your own skills; separate optional plugins for single stacks may follow. So far the plugin has been tried only on this repository, which is Python: the runs on other languages are still to come, and their list will be added here after them.
 
 <!-- section: limits -->
 ## Known limits

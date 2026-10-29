@@ -180,7 +180,7 @@ Il flusso `.github/workflows/ci.yml` esegue la stessa suite a ogni push e a ogni
 <!-- section: explanation -->
 ## Come funziona
 
-Le nove parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte. In questa versione quattro cose sono meccaniche: l'hook `SessionStart`, che copia le regole e controlla il tuo `CLAUDE.md`; l'import `@` di Claude Code, che consegna il file delle regole come tue istruzioni; il campo `skills` dell'agente, che fa caricare `blunt-review` e `quality-scoring` a Claude Code dentro l'agente; e il campo `disable-model-invocation` della skill `autonomous-execution`, che impedisce al modello di avviarla. Tutto il resto è una regola per il modello.
+Le prime nove parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte. In questa versione quattro cose sono meccaniche: l'hook `SessionStart`, che copia le regole e controlla il tuo `CLAUDE.md`; l'import `@` di Claude Code, che consegna il file delle regole come tue istruzioni; il campo `skills` dell'agente, che fa caricare `blunt-review` e `quality-scoring` a Claude Code dentro l'agente; e il campo `disable-model-invocation` della skill `autonomous-execution`, che impedisce al modello di avviarla. Tutto il resto è una regola per il modello.
 
 <!-- section: explain-lanes -->
 ### Tre corsie
@@ -258,6 +258,13 @@ Se imposti un orario d'ufficio, fuori da quell'orario il modello tiene il tuo la
 Il modello spiega in breve e ad alto livello in quattro momenti: all'inizio e alla fine di un blocco di lavoro, a ogni scelta di architettura (la scelta, l'alternativa principale scartata e perché) e prima di un cancello pesante. Ogni spiegazione chiude con «is it clear?» nella tua lingua, e ciò che dici non essere chiaro si spiega di nuovo con parole diverse e un esempio. La risposta si aspetta solo ai due cancelli pesanti e alle scelte di architettura, e mai mentre non ci sei o durante un'autonomia; non c'è nessun quiz e nessuna domanda di verifica, mai. Il tono è franco: niente consenso per compiacere, niente adulazione, ragionamenti deboli contestati con le prove, rischi e costi opportunità nominati, e un'ipotesi sulle tue intenzioni dichiarata come ipotesi. La skill `teach` porta le spiegazioni e il metodo per insegnare il codice; il file delle regole porta il tono.
 
 **Garantito da:** solo una regola per il modello (le regole `explain`, `no-quiz` e `candour` in `rules.md`, e la skill `teach`). «Is it clear?» non prova che tu abbia capito, e le regole sul tono riducono la tendenza del modello a darti ragione, non la eliminano.
+
+<!-- section: language-neutral -->
+### Qualsiasi linguaggio, framework e database
+
+Il plugin vale per ogni linguaggio, framework e database, e le sue regole non ne nominano nessuno. Le buone pratiche dello stack in cui lavori vengono prima dalle convenzioni del tuo progetto e dalla tua configurazione, poi dalla documentazione ufficiale della versione in uso, che il modello legge con Context7 quando è installato; un'interfaccia che dipende dalla versione si verifica prima di usarla. Non sono scritte nel plugin per tre ragioni: il modello conosce già quelle comuni, simili testi invecchiano a ogni versione, e costerebbero token in ogni sessione.
+
+Per aggiungere la conoscenza di uno stack, scrivi le tue skill; potranno seguire plugin separati e facoltativi per i singoli stack. Finora il plugin è stato provato solo su questo repository, che è Python: le prove su altri linguaggi devono ancora arrivare, e il loro elenco sarà aggiunto qui dopo di esse.
 
 <!-- section: limits -->
 ## Limiti noti

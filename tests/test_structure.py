@@ -578,6 +578,16 @@ def test_readmes_have_the_same_sections_in_the_same_order():
         assert [name for name, block in blocks.items() if not block.strip().startswith("#")] == []
 
 
+def test_readmes_explain_where_good_practices_come_from_with_the_same_shape():
+    """The subsection on language neutrality: one heading and two paragraphs in each language, Context7 named."""
+    headings = ("### Any language, framework and database", "### Qualsiasi linguaggio, framework e database")
+    for text, heading in zip(pages("language-neutral"), headings):
+        lines = text.strip().splitlines()
+        assert lines[0] == heading
+        assert len([part for part in "\n".join(lines[1:]).split("\n\n") if part.strip()]) == 2
+        assert "Context7" in text
+
+
 def test_readmes_link_each_other_at_the_top():
     assert "(README.it.md)" in "\n".join(README.read_text(encoding="utf-8").splitlines()[:5])
     assert "(README.md)" in "\n".join(README_IT.read_text(encoding="utf-8").splitlines()[:5])

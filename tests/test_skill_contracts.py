@@ -66,8 +66,18 @@ CONTRACTS: Dict[str, Contract] = {
             "in its own git worktree.",
             "not of the plugin, which cannot add them",
             "other than a lens or a review, which stays the subagent its skill names",
+            # three traps, one sentence each in the place that holds the topic
+            "Worktrees of one repository share the stash and git's memory of resolutions (rerere), so parallel work "
+            "is parked with a `wip:` commit, never with a stash.",
+            "A row is replayed live as soon as the first task makes it reachable, not at the end.",
+            # the documentation of the stack in use: the project's conventions first, the version in use second
+            "For the language, framework, database and libraries in use, the project's conventions and the user's "
+            "configuration come first, then the official documentation of the version in use, read with Context7 when "
+            "it is installed instead of from memory; an interface that depends on the version is verified before it "
+            "is used.",
         ),
         absent=(
+            "For the documentation of an external library",  # widened to the whole stack in use
             "the suite that the project's configuration declares", "Dependencies point one way",
             "Documentation is divided by type", "keeps a manual for them",  # one home: documentation-quality
         ),
@@ -213,6 +223,18 @@ CONTRACTS: Dict[str, Contract] = {
             "requires; the range alone still carries the thresholds, which travel in the reviewer's preloaded skill.",
             # the gate 6 exception names no reviewer, because the user's copy of that skill may use another one
             "Gate 6 has one exception: `autonomous-execution`, invoked by the user by name.",
+            # the coordinator hands over at a measurable point, explicitly, and says what to do when the host cannot
+            "The coordinating session hands over at the first clean point of a new day, or when its context passes "
+            "300,000 tokens, read where the host shows it.",
+            "The handover is explicit: the old session writes the continuity note and the line `handover to <name> "
+            "at <time>` in the progress note, and from then on takes no action; the new one sends nothing before it "
+            "has read that line.",
+            "When the host cannot open a new session by itself, because the user is away and a proposal would wait "
+            "for a click, the session finishes at a clean point and hands over the next day, writing the exception "
+            "with its cost.",
+            "An exception the user asks for is written with its cost too, and the user's choice prevails.",
+            "The share used is also read at the opening and at the closing of each package of work, and written in "
+            "the progress note next to the package's estimate, so that estimates can be calibrated.",
         ),
         claude_md_sections=("Feature lane: phases and gates", "Instruction layers", "Rule cycle", "Shared files"),
         absent=(
@@ -304,6 +326,7 @@ CONTRACTS: Dict[str, Contract] = {
             "card, a diary), or in the project's continuity note when the project's configuration declares one; only "
             "otherwise in `.pe/progress.md` at the root of the repository, with a `.pe/.gitignore` that contains `*`, "
             "so the folder never enters git.",
+            "Every time written in a note, a log or a report is read with `date` or from git, never estimated.",
         ),
         extra_files=("LICENSE",),
     ),
