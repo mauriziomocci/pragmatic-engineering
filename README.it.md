@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-pragmatic-engineering è un metodo di ingegneria per Claude Code, messo in ordine. Porta regole di lavoro a ogni agente di una sessione con una sola riga di import nel tuo `CLAUDE.md`, e aggiunge dieci skill che coprono le fasi e le tre corsie del lavoro, più un agente, `blunt-reviewer`, che rivede un intervallo git in modo indipendente e schietto. La versione 0.1.0 è il nucleo del metodo: le regole, le skill, il revisore e un hook `SessionStart` che tiene le regole al loro posto. Questa versione non ha nessun controllo meccanico sulle merge request: la revisione prima di una merge request è una regola per il modello, non un cancello.
+pragmatic-engineering è un metodo di ingegneria per Claude Code, messo in ordine. Porta regole di lavoro a ogni agente di una sessione con una sola riga di import nel tuo `CLAUDE.md`, e aggiunge undici skill che coprono le fasi e le tre corsie del lavoro, più un agente, `blunt-reviewer`, che rivede un intervallo git in modo indipendente e schietto. La versione 0.1.0 è il nucleo del metodo: le regole, le skill, il revisore e un hook `SessionStart` che tiene le regole al loro posto. Questa versione non ha nessun controllo meccanico sulle merge request: la revisione prima di una merge request è una regola per il modello, non un cancello.
 
 Questa pagina segue i quattro tipi di documentazione di Diataxis (<https://diataxis.fr>), una sezione per ciascuno: un tutorial, le guide pratiche, una spiegazione e un riferimento, con i limiti noti fra gli ultimi due. Per ogni parte del metodo la spiegazione dice che cosa la garantisce: un meccanismo, cioè codice che gira qualunque cosa faccia il modello, oppure solo una regola per il modello, cioè un testo che il modello deve seguire e che nessuno controlla.
 
@@ -121,7 +121,7 @@ Prove: `python3 -m pytest -q` dalla radice del repository. Requisiti: Python 3.9
 <!-- section: explanation -->
 ## Come funziona
 
-Le sette parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte. In questa versione quattro cose sono meccaniche: l'hook `SessionStart`, che copia le regole e controlla il tuo `CLAUDE.md`; l'import `@` di Claude Code, che consegna il file delle regole come tue istruzioni; il campo `skills` dell'agente, che fa caricare `blunt-review` a Claude Code dentro l'agente; e il campo `disable-model-invocation` della skill `autonomous-execution`, che impedisce al modello di avviarla. Tutto il resto è una regola per il modello.
+Le sette parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte. In questa versione quattro cose sono meccaniche: l'hook `SessionStart`, che copia le regole e controlla il tuo `CLAUDE.md`; l'import `@` di Claude Code, che consegna il file delle regole come tue istruzioni; il campo `skills` dell'agente, che fa caricare `blunt-review` e `quality-scoring` a Claude Code dentro l'agente; e il campo `disable-model-invocation` della skill `autonomous-execution`, che impedisce al modello di avviarla. Tutto il resto è una regola per il modello.
 
 <!-- section: explain-lanes -->
 ### Tre corsie
@@ -148,7 +148,7 @@ L'agente `blunt-reviewer` rivede un intervallo git con la skill `blunt-review` c
 
 La revisione si fa prima di aprire una merge request, sull'intero intervallo del ramo, e di nuovo a ogni giro dopo le correzioni.
 
-**Garantito da:** un meccanismo per una cosa: il campo `skills` dell'agente fa caricare `blunt-review` a Claude Code dentro l'agente. Regole per il resto: che una revisione si faccia prima di una merge request, che il prompt segua la grammatica (l'agente rifiuta gli altri prompt per istruzione propria, e nulla fuori da lui controlla) e che non scriva nulla fuori da `.pe/` sono dichiarati, non imposti. Nessun meccanismo registra che una revisione sia avvenuta, quindi il verdetto è un messaggio da leggere, non un cancello.
+**Garantito da:** un meccanismo per una cosa: il campo `skills` dell'agente fa caricare `blunt-review` e `quality-scoring` a Claude Code dentro l'agente. Regole per il resto: che una revisione si faccia prima di una merge request, che il prompt segua la grammatica (l'agente rifiuta gli altri prompt per istruzione propria, e nulla fuori da lui controlla) e che non scriva nulla fuori da `.pe/` sono dichiarati, non imposti. Nessun meccanismo registra che una revisione sia avvenuta, quindi il verdetto è un messaggio da leggere, non un cancello.
 
 <!-- section: explain-review-cycle -->
 ### Il ciclo di revisione dopo le correzioni
@@ -217,6 +217,7 @@ Claude Code carica una skill quando il compito corrisponde alla sua descrizione,
 | `engineering-principles` | Capire prima di implementare, riusare prima di costruire, principi di progetto e di collocazione, disciplina dei test, nessun difetto lasciato indietro, codice sicuro, igiene dei segreti, regole di scrittura. | Prima di capire un requisito, proporre un approccio, o scrivere o cambiare codice, test o documentazione; non per il lavoro palesemente banale. |
 | `evidence-based-investigation` | Verificare prima di affermare, dichiarare il livello di confidenza, escludere le ipotesi una a una, delimitare un difetto in quattro passi, separare il verificato dall'inferito. | Indagini, diagnosi e risposte tecniche in cui una conclusione sbagliata ha un costo; non per progetto o revisione. |
 | `blunt-review` | Come si scrive una revisione e quando un rilievo blocca; lenti per progetto, test, documentazione, infrastruttura e diagnosi; la revisione indipendente e il ciclo di revisione dopo le correzioni. | Ogni revisione, autorevisione compresa. Precaricata in `blunt-reviewer`. |
+| `quality-scoring` | Un voto da 1 a 10 per ogni lente che il lavoro tocca, calcolato dai rilievi classificati S1, S2 o S3; chi vota quale lente; la scheda del voto; il registro di taratura nella cartella dei dati del plugin. | Ogni revisione che alimenta il cancello 8/10 della fase 6, prima di integrare o rilasciare il lavoro. Precaricata in `blunt-reviewer`. |
 | `adversarial-review-panel` | Quattro lenti che si contraddicono, un controinterrogatorio e una sola decisione. | Decisioni in cui sbagliare costa caro: architettura, spec, refactoring rischiosi, sicurezza, scelte di tecnologia, modelli di dati; non per le revisioni ordinarie. |
 | `development-workflow` | Le tre corsie, sette fasi e quattro cancelli, una catena per funzionalità, il progetto in tre passi, i modelli per ruolo, i livelli di istruzioni, la chiusura. | Qualunque lavoro sul codice, un rilascio, un merge o una chiusura. |
 | `spec-driven-layout` | Dove spec-kit tiene i suoi file e quanto scrivere per il peso del lavoro. | Solo quando chiedi spec-kit. |
@@ -227,7 +228,7 @@ Claude Code carica una skill quando il compito corrisponde alla sua descrizione,
 
 ### Agente
 
-`blunt-reviewer`: modello Opus; strumenti Read, Grep, Glob, Bash e Write; precarica `pragmatic-engineering:blunt-review`. Accetta una riga, `<base>..<tip> [round=1|2] [full=<path>,...]`, scrive `.pe/reviews/<base7>..<tip7>-round<k>.md` e chiude con `VERDICT: pass | changes`, `FINDINGS: <n> (<b> blocking)`, `COVERAGE: full | partial`, `REPORT: <path>` e `THE THING: <...>`. La sessione principale lo lancia prima di una merge request, per un intervallo consegnato e per ogni giro del ciclo di revisione.
+`blunt-reviewer`: modello Opus; strumenti Read, Grep, Glob, Bash e Write; precarica `pragmatic-engineering:blunt-review` e `pragmatic-engineering:quality-scoring`. Accetta una riga, `<base>..<tip> [round=1|2] [full=<path>,...]`, scrive `.pe/reviews/<base7>..<tip7>-round<k>.md` e chiude con `VERDICT: pass | changes`, `FINDINGS: <n> (<b> blocking)`, `COVERAGE: full | partial`, `REPORT: <path>` e `THE THING: <...>`. La sessione principale lo lancia prima di una merge request, per un intervallo consegnato e per ogni giro del ciclo di revisione.
 
 ### Hook
 

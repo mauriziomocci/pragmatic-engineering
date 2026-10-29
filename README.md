@@ -2,7 +2,7 @@
 
 [Italiano](README.it.md)
 
-pragmatic-engineering is an engineering method for Claude Code, put in order. It brings working rules to every agent of a session through one import line in your `CLAUDE.md`, and it adds ten skills that cover the phases and the three lanes of the work, plus one agent, `blunt-reviewer`, that reviews a git range independently and bluntly. Version 0.1.0 is the core of the method: the rules, the skills, the reviewer and a `SessionStart` hook that keeps the rules in place. This version has no mechanical check on merge requests: the review before a merge request is a rule for the model, not a gate.
+pragmatic-engineering is an engineering method for Claude Code, put in order. It brings working rules to every agent of a session through one import line in your `CLAUDE.md`, and it adds eleven skills that cover the phases and the three lanes of the work, plus one agent, `blunt-reviewer`, that reviews a git range independently and bluntly. Version 0.1.0 is the core of the method: the rules, the skills, the reviewer and a `SessionStart` hook that keeps the rules in place. This version has no mechanical check on merge requests: the review before a merge request is a rule for the model, not a gate.
 
 This page follows the four kinds of documentation of Diataxis (<https://diataxis.fr>), one section for each: a tutorial, how-to guides, an explanation and a reference, with the known limits between the last two. For every part of the method the explanation says what guarantees it: a mechanism, meaning code that runs whatever the model does, or only a rule for the model, meaning text the model is asked to follow and nothing checks.
 
@@ -121,7 +121,7 @@ Tests: `python3 -m pytest -q` from the repository root. Requirements: Python 3.9
 <!-- section: explanation -->
 ## How it works
 
-The seven parts below each end with a line that says what guarantees the part. In this version four things are mechanical: the `SessionStart` hook, which copies the rules and checks your `CLAUDE.md`; Claude Code's own `@` import, which delivers the rules file as your instructions; the `skills` field of the agent, which makes Claude Code load `blunt-review` into it; and the `disable-model-invocation` field of the skill `autonomous-execution`, which keeps the model from starting it. Everything else is a rule for the model.
+The seven parts below each end with a line that says what guarantees the part. In this version four things are mechanical: the `SessionStart` hook, which copies the rules and checks your `CLAUDE.md`; Claude Code's own `@` import, which delivers the rules file as your instructions; the `skills` field of the agent, which makes Claude Code load `blunt-review` and `quality-scoring` into it; and the `disable-model-invocation` field of the skill `autonomous-execution`, which keeps the model from starting it. Everything else is a rule for the model.
 
 <!-- section: explain-lanes -->
 ### Three lanes
@@ -148,7 +148,7 @@ The agent `blunt-reviewer` reviews a git range with the skill `blunt-review` loa
 
 The review is made before a merge request is opened, on the whole range of the branch, and again on each round after fixes.
 
-**Guaranteed by:** a mechanism for one thing: the `skills` field of the agent makes Claude Code load `blunt-review` into it. Rules for the rest: that a review is made before a merge request, that the prompt follows the grammar (the agent refuses other prompts by its own instruction, and nothing outside it checks) and that it writes nothing outside `.pe/` are declared, not enforced. No mechanism records that a review took place, so the verdict is a message to read, not a gate.
+**Guaranteed by:** a mechanism for one thing: the `skills` field of the agent makes Claude Code load `blunt-review` and `quality-scoring` into it. Rules for the rest: that a review is made before a merge request, that the prompt follows the grammar (the agent refuses other prompts by its own instruction, and nothing outside it checks) and that it writes nothing outside `.pe/` are declared, not enforced. No mechanism records that a review took place, so the verdict is a message to read, not a gate.
 
 <!-- section: explain-review-cycle -->
 ### The review cycle after fixes
@@ -217,6 +217,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 | `engineering-principles` | Understand before implementing, reuse before building, design and placement principles, test discipline, no bug left behind, secure coding, secrets hygiene, writing rules. | Before understanding a requirement, proposing an approach, or writing or changing code, tests or documentation; not for plainly trivial work. |
 | `evidence-based-investigation` | Verify before asserting, state the confidence level, rule out hypotheses one by one, scope a defect in four steps, separate verified from inferred. | Investigations, diagnoses and technical answers where a wrong conclusion has a cost; not for design or review. |
 | `blunt-review` | How a review is written and when a finding blocks; lenses for design, tests, documentation, infrastructure and diagnosis; the independent review and the review cycle after fixes. | Every review, self-review included. Preloaded in `blunt-reviewer`. |
+| `quality-scoring` | A score from 1 to 10 for each lens the work touches, computed from findings classed S1, S2 or S3; who scores which lens; the score sheet; the calibration log in the plugin's data folder. | Every review that feeds the 8/10 gate of phase 6, before work is integrated or released. Preloaded in `blunt-reviewer`. |
 | `adversarial-review-panel` | Four lenses that argue against each other, a cross-examination, and one decision. | Decisions where being wrong is expensive: architecture, specs, risky refactors, security, technology choices, data models; not for ordinary reviews. |
 | `development-workflow` | The three lanes, seven phases and four gates, one chain per feature, the design in three steps, models by role, instruction layers, closure. | Any work on code, a release, a merge or a closure. |
 | `spec-driven-layout` | Where spec-kit keeps its files and how much to write for the weight of the work. | Only when you ask for spec-kit. |
@@ -227,7 +228,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 
 ### Agent
 
-`blunt-reviewer`: model Opus; tools Read, Grep, Glob, Bash and Write; preloads `pragmatic-engineering:blunt-review`. It accepts one line, `<base>..<tip> [round=1|2] [full=<path>,...]`, writes `.pe/reviews/<base7>..<tip7>-round<k>.md` and ends with `VERDICT: pass | changes`, `FINDINGS: <n> (<b> blocking)`, `COVERAGE: full | partial`, `REPORT: <path>` and `THE THING: <...>`. The main session launches it before a merge request, for a delivered range, and for each round of the review cycle.
+`blunt-reviewer`: model Opus; tools Read, Grep, Glob, Bash and Write; preloads `pragmatic-engineering:blunt-review` and `pragmatic-engineering:quality-scoring`. It accepts one line, `<base>..<tip> [round=1|2] [full=<path>,...]`, writes `.pe/reviews/<base7>..<tip7>-round<k>.md` and ends with `VERDICT: pass | changes`, `FINDINGS: <n> (<b> blocking)`, `COVERAGE: full | partial`, `REPORT: <path>` and `THE THING: <...>`. The main session launches it before a merge request, for a delivered range, and for each round of the review cycle.
 
 ### Hook
 

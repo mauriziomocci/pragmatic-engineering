@@ -198,6 +198,24 @@ CONTRACTS: Dict[str, Contract] = {
             "not a responding service", "whoever owns", "development-workflow",
         ),
     ),
+    "quality-scoring": Contract(
+        sections=(
+            "When to use", "The lenses", "The perimeter", "Findings", "Classes", "Mechanical thresholds",
+            "The score", "Who scores", "The score sheet", "Calibration",
+        ),
+        phrases=(
+            "S1, critical", "S2, serious", "S3, medium", "file:line", "One finding is one root cause",
+            "8 means no S1, no S2 and at most four S3", "Five S3 give 7.5", "never from whoever did the work",
+            "re-checks the other's S1 and S2", "CALIBRATING (k/5)", "STABLE", "five consecutive applications",
+            "on at least two projects", "two points or more", "the rubric never changes without the user",
+            "C901, PLR0912, PLR0915 and PLR1702", "blunt-reviewer", "blunt-review", "development-workflow",
+            "engineering-principles",
+            # the one scale that blunt-review's blocking findings use
+            "a scenario that fails", "an invariant contradicted by the code", "a security or privacy problem",
+            "an operation with no way back", "a missing or tautological test on a behaviour that changed",
+            "a document contradicted by the code",
+        ),
+    ),
 }
 
 
@@ -287,6 +305,14 @@ def test_status_line_has_one_spelling():
     }
     assert all(spelled.values()), spelled
     assert len(set.union(*spelled.values())) == 1, spelled
+
+
+def test_quality_scoring_names_the_calibration_log_in_the_form_claude_code_substitutes():
+    """Claude Code replaces ${CLAUDE_PLUGIN_DATA} in a skill's body; the bare $CLAUDE_PLUGIN_DATA is not replaced,
+    and the variable is not set in the shell the model runs."""
+    _, body = parse_frontmatter(skill_text("quality-scoring"))
+    assert "`${CLAUDE_PLUGIN_DATA}/calibration.md`" in body
+    assert "$CLAUDE_PLUGIN_DATA" not in body.replace("${CLAUDE_PLUGIN_DATA}", "")
 
 
 def test_every_a1_skill_has_a_contract():

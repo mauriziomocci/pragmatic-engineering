@@ -3,7 +3,7 @@ name: blunt-reviewer
 description: Independent blunt review of a git range, following the blunt-review skill. Use to review the whole range of a branch before its merge request is opened, a delivered range of work, and each round of the review cycle after fixes. The prompt is one line in a closed grammar and nothing else.
 tools: Read, Grep, Glob, Bash, Write
 model: opus
-skills: [pragmatic-engineering:blunt-review]
+skills: [pragmatic-engineering:blunt-review, pragmatic-engineering:quality-scoring]
 ---
 
 # blunt-reviewer

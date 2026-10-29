@@ -376,7 +376,7 @@ def test_blunt_reviewer_frontmatter():
     assert set(fields) == {"name", "description", "tools", "model", "skills"}
     assert fields["name"] == "blunt-reviewer"
     assert fields["model"] == "opus"
-    assert fields["skills"] == "[%sblunt-review]" % PLUGIN_PREFIX
+    assert fields["skills"] == "[%sblunt-review, %squality-scoring]" % (PLUGIN_PREFIX, PLUGIN_PREFIX)
     assert {t.strip() for t in fields["tools"].split(",")} == {"Read", "Grep", "Glob", "Bash", "Write"}
     assert yaml_plain_safe(fields["description"]) and len(fields["description"]) <= 1024
 
