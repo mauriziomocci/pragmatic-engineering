@@ -45,8 +45,8 @@ USAGE = "usage: privacy_check.py pre-push <remote-name> <remote-url> | scan <rev
 
 GENERIC_PATTERNS: Dict[str, Pattern[str]] = {
     "home-path-macos": re.compile(r"/Users/[A-Za-z0-9._-]+"),
-    "home-path-linux": re.compile(r"/home/[A-Za-z0-9._-]+/"),
-    "home-path-windows": re.compile(r"[A-Za-z]:\\+Users\\+[A-Za-z0-9._ -]+\\"),
+    "home-path-linux": re.compile(r"/home/[A-Za-z0-9._-]+"),
+    "home-path-windows": re.compile(r"[A-Za-z]:\\+Users\\+[A-Za-z0-9._ -]+"),
     "claude-project-dir": re.compile(r"-Users-[A-Za-z0-9._]+"),
     "github-token": re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}"),
     "github-fine-grained-token": re.compile(r"\bgithub_pat_[A-Za-z0-9_]{22,}"),

@@ -4,12 +4,16 @@
 Registered in the maintainer's .claude/settings.local.json, outside git, with
 the command ``python3 "<copy>/tools/dev_guard.py" || exit 2`` and
 ``"onFailure": "block"``, and run from the copy that
-tools/install_dev_hooks.py keeps under the git directory. It keeps the agent
-from skipping or switching off the privacy pre-push (shared filters in
-lib/pe_guard/filters.py), blocks MCP tools that write to a remote (they bypass
-the pre-push), and runs the privacy check on the text of pull and merge
-requests when they are opened, edited or merged and, for gh and glab commands,
-when they are reverted, reopened, commented, reviewed or closed.
+tools/install_dev_hooks.py keeps under the git directory. It blocks a push
+that skips git hooks, a command that sets core.hooksPath or touches the
+installed pre-push hook, and disableAllHooks written into a command or a
+Claude Code settings file (shared filters in lib/pe_guard/filters.py); it
+blocks MCP tools that write to a remote (they bypass the pre-push), and runs
+the privacy check on the text of pull and merge requests when they are opened,
+edited or merged and, for gh and glab commands, when they are reverted,
+reopened, commented, reviewed or closed. It does not cover the removal of its
+own registration from .claude/settings.local.json: neither a write nor a shell
+command that drops it is blocked.
 
 Exit 2 blocks the tool, with the reason on stderr; exit 0 lets it run. A tool
 this hook does not know passes. An input without a tool name, or a known tool
@@ -91,7 +95,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
     from pe_guard import filters
     import privacy_check
-except Exception as exc:  # fail closed: a broken shared module must block, not let every tool run
+except Exception as exc:  # taste-exempt: fail closed, a broken shared module must block, not let every tool run
     print("dev_guard: cannot load the checks (%s: %s); blocking to stay safe" % (exc.__class__.__name__, exc),
           file=sys.stderr)
     sys.exit(2)
@@ -383,7 +387,7 @@ def main() -> int:
         return 2
     try:
         reason = decide(payload)
-    except Exception as exc:  # fail closed: a crashed hook would let the tool run
+    except Exception as exc:  # taste-exempt: fail closed, a crashed hook would let the tool run
         print("dev_guard: check failed (%s: %s); blocking to stay safe" % (exc.__class__.__name__, exc), file=sys.stderr)
         return 2
     if reason:

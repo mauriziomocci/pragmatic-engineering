@@ -204,6 +204,8 @@ CONTRACTS: Dict[str, Contract] = {
             "git 2.38", "git rev-parse -q --verify MERGE_HEAD",
             "Outside the office hours of `safe-operations` the invocation does not push",
             "the decision log entry of an autonomy that opens `spec`", "the gate of phase 2 has no other exception",
+            # the one rewrite safe-operations asks for, so that the two skills can both be followed
+            "published history is never rewritten",
         ),
         user_only=True,
         absent=(

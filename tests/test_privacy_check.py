@@ -124,6 +124,12 @@ def test_generic_patterns_ignore_portable_paths():
     ("cd " + "/" + "Users" + "/alice", "home-path-macos"),
     ("HOME=" + "/" + "Users" + "/alice", "home-path-macos"),
     ('"' + "/" + "Users" + "/alice" + '"', "home-path-macos"),
+    ("/" + "home" + "/alice", "home-path-linux"),
+    ("HOME=" + "/" + "home" + "/alice", "home-path-linux"),
+    ("cd " + "/" + "home" + "/alice", "home-path-linux"),
+    ("C:" + "\\" + "Users" + "\\alice", "home-path-windows"),
+    ("set USERPROFILE=C:" + "\\" + "Users" + "\\alice", "home-path-windows"),
+    ("cd C:" + "\\" + "Users" + "\\alice", "home-path-windows"),
     ("-" + "Users" + "-alice", "claude-project-dir"),
 ])
 def test_generic_patterns_find_a_home_without_a_trailing_separator(text, expected):

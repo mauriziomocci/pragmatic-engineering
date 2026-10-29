@@ -18,7 +18,7 @@ Always forbidden, with no bypass:
 
 - merging, or scheduling a merge (auto-merge, merge when the pipeline succeeds); the most this skill gives is the verdict on mergeability;
 - pushing to protected branches (`main`, `master`, `develop`, `release*`);
-- force-push and rewriting history;
+- force-push and rewriting history, with one exception: re-creating inside the office hours the commits made outside them and never pushed, as `safe-operations` asks (published history is never rewritten);
 - release tags and deploys;
 - any change outside the work's branch.
 

@@ -174,7 +174,9 @@ def test_subagent_sees_the_imported_rules_and_heads_its_deliverable(project):
     assert agent_calls, "no subagent was launched"
     assert all(nonce not in json.dumps(call[1]) for call in agent_calls), "the value was handed to the subagent"
     writes = [call for call in calls if call[0] in PROBE_WRITERS]
-    assert writes and all(call[2] for call in writes), "%s was not written by the subagent" % PROBE_FILE
+    assert writes and all(call[2] for call in writes), (
+        "(a) the subagent wrote no %s: the imported rules did not reach it, or it could not write" % PROBE_FILE
+    )
     content = (workdir / PROBE_FILE).read_text(encoding="utf-8")
     assert nonce in content, "(a) the imported rules did not reach the subagent"
     assert content.lstrip().startswith("STATUS:"), "(b) the subagent did not head its deliverable with a status line"
