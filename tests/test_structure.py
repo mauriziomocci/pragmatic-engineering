@@ -356,3 +356,9 @@ def test_blunt_reviewer_body_states_the_a1_contract():
         assert "--no-ext-diff --no-textconv" in command, command
     assert unknown_references(body) == []
     assert len(text.splitlines()) < 200
+
+
+def test_agent_preloads_existing_skills():
+    fields, _ = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
+    names = [n.strip() for n in fields["skills"].strip("[]").split(",") if n.strip()]
+    assert names and all((REPO_ROOT / "skills" / n / "SKILL.md").is_file() for n in names)

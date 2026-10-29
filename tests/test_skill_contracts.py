@@ -56,6 +56,22 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         absent=("iterative-requirements-analysis", "financial-reconciliation", "smonta", "combacia", "Origine"),
     ),
+    "blunt-review": Contract(
+        sections=(
+            "When to use", "Matteo mode", "Output shape", "Forbidden", "Taste lens", "Systemic before local",
+            "Burden of proof on adding", "The eight-point review", "Lenses by kind of work",
+            "Blocking findings", "Independent review with blunt-reviewer", "The review cycle after fixes",
+            "Receiving findings",
+        ),
+        phrases=(
+            "THE THING:", "THE DECISION:", "no findings", "file:line", "fictional",
+            "delete existing code > do nothing > extend something that already exists > write something new",
+            "what breaks if it is deleted", "in doubt it is blocking", "blunt-reviewer", "round=2", "full=",
+            "Round 1", "Round 2", "superpowers:receiving-code-review", "adversarial-review-panel",
+            "mcp-code-review",
+        ),
+        absent=("Delivering work", "Pythonic"),
+    ),
 }
 
 
