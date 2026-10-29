@@ -132,7 +132,7 @@ Adapt the language of the document to the user's working language.
 
 The progress note is the short form of the continuity note: the state on a few lines, written for the agent that will read it after a compaction or in the next session.
 
-- **What it holds:** the state, in four parts: what is done, what is in progress, what comes next, and the decisions still open. Nothing else; the rest belongs to the full note.
+- **What it holds:** the state, in four parts: what is done, what is in progress, what comes next, and the decisions still open. It also holds the lines that other skills put there: the budget lines of `development-workflow`, the handover line and, when no other log is named, the decision log. Nothing else; the rest belongs to the full note.
 - **When it is updated:** at every milestone. A task is closed, a decision is taken, before launching or waiting for agents, before a long operation. It is updated at that moment, never saved for the end of the day. After a compaction it is read again before anything else is done.
 - **Where it lives:** in the place the user's own configuration names for the state of the work (a resume card, a diary), or in the project's continuity note when the project's configuration declares one; only otherwise in `.pe/progress.md` at the root of the repository, with a `.pe/.gitignore` that contains `*`, so the folder never enters git. Outside a repository, ask the user where to keep it.
 - **Never secrets.** The rule of "Redact secrets" above holds in full: the note says where a credential lives, never its value.

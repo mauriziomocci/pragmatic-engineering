@@ -118,7 +118,7 @@ claude plugin uninstall pragmatic-engineering@pragmatic-engineering
 
 L'ordine conta per due ragioni. La riga di rete di sicurezza senza il plugin fa avvisare il modello a ogni avvio di sessione. E la disinstallazione cancella la cartella dei dati del plugin, che contiene la copia di `rules.md` a cui punta il tuo import e `calibration.md`, il registro di taratura di `quality-scoring`, a meno che tu passi `--keep-data`; che cosa faccia Claude Code con un import che punta a un file mancante non è stato provato qui.
 
-Quattro cose restano, di proposito. Superpowers resta installato; `--prune` sul comando di disinstallazione toglie anche le dipendenze installate in automatico che non servono più. Il marketplace resta registrato finché non esegui `claude plugin marketplace remove pragmatic-engineering`. Restano le cartelle `.pe/` che il revisore e la nota di avanzamento hanno creato nei tuoi progetti: contengono rapporti di revisione e note, non entrano mai in git perché ciascuna porta un `.gitignore` con `*`, e le cancelli a mano se vuoi eliminarle. E restano le chiavi `pe.*` che hai impostato nella tua configurazione di git; la sezione «Configurare il plugin» qui sopra dice come toglierle.
+Cinque cose restano, di proposito. Superpowers resta installato; `--prune` sul comando di disinstallazione toglie anche le dipendenze installate in automatico che non servono più. Il marketplace resta registrato finché non esegui `claude plugin marketplace remove pragmatic-engineering`. Restano le cartelle `.pe/` che il revisore e la nota di avanzamento hanno creato nei tuoi progetti: contengono rapporti di revisione e note, non entrano mai in git perché ciascuna porta un `.gitignore` con `*`, e le cancelli a mano se vuoi eliminarle. I tag `night-backup-*` che `skills/safe-operations/recreate_night_commits.py` lascia nei tuoi repository restano finché non ne cancelli ciascuno con `git tag -d <nome>`. E restano le chiavi `pe.*` che hai impostato nella tua configurazione di git; la sezione «Configurare il plugin» qui sopra dice come toglierle.
 
 <!-- section: office-hours -->
 ### Impostare l'orario d'ufficio
@@ -292,7 +292,7 @@ I limiti che descrivono il comportamento di Claude Code (quali agenti caricano `
 <!-- section: reference -->
 ## Riferimento
 
-In questa versione non ci sono comandi.
+In questa versione non ci sono comandi, solo uno script, `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al modello di eseguire.
 
 ### Skill
 
@@ -325,7 +325,7 @@ Claude Code carica una skill quando il compito corrisponde alla sua descrizione,
 
 ### File
 
-`rules.md` è il file delle regole di lavoro, che comincia con il marcatore `PE-RULES v1`. La cartella `.pe/`, alla radice di un progetto, contiene `reviews/` (i rapporti di `blunt-reviewer`) e `progress.md` (la nota di avanzamento), e non entra mai in git grazie al proprio `.gitignore` con `*`. Nella cartella dei dati del plugin, accanto alla copia di `rules.md`, `quality-scoring` tiene `calibration.md`, il suo registro di taratura.
+`rules.md` è il file delle regole di lavoro, che comincia con il marcatore `PE-RULES v1`. La cartella `.pe/`, alla radice di un progetto, contiene `reviews/` (i rapporti di `blunt-reviewer`) e `progress.md` (la nota di avanzamento), e non entra mai in git grazie al proprio `.gitignore` con `*`. Nella cartella dei dati del plugin, accanto alla copia di `rules.md`, `quality-scoring` tiene `calibration.md`, il suo registro di taratura. `skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori da esso e mai pubblicati, e lascia nel repository un tag `night-backup-<YYYYMMDD-HHMMSS>`.
 
 <!-- section: license -->
 ## Licenza

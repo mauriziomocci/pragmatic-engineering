@@ -10,9 +10,10 @@ from typing import Dict, FrozenSet, List, Optional, Tuple, Union
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def git(repo: Path, *args: str) -> str:
-    """Run git in ``repo`` and return stdout; fail the test on a non-zero exit."""
-    proc = subprocess.run(["git", *args], cwd=str(repo), capture_output=True, text=True)
+def git(repo: Path, *args: str, env: Optional[Dict[str, str]] = None) -> str:
+    """Run git in ``repo`` and return stdout; fail the test on a non-zero exit. ``env`` adds to the environment."""
+    full_env = {**os.environ, **env} if env else None
+    proc = subprocess.run(["git", *args], cwd=str(repo), capture_output=True, text=True, env=full_env)
     if proc.returncode != 0:
         raise AssertionError("git %s failed: %s" % (" ".join(args), proc.stderr))
     return proc.stdout
@@ -25,8 +26,10 @@ def init_repo(path: Path) -> Path:
     return path
 
 
-def commit(repo: Path, files: Dict[str, Union[str, bytes]], message: str) -> str:
-    """Write ``files`` (text or bytes), commit everything and return the new sha."""
+def commit(
+    repo: Path, files: Dict[str, Union[str, bytes]], message: str, env: Optional[Dict[str, str]] = None
+) -> str:
+    """Write ``files`` (text or bytes), commit everything and return the new sha. ``env`` is for fixture dates."""
     for name, content in files.items():
         target = repo / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -35,7 +38,7 @@ def commit(repo: Path, files: Dict[str, Union[str, bytes]], message: str) -> str
         else:
             target.write_text(content, encoding="utf-8")
     git(repo, "add", "-A")
-    git(repo, "commit", "-q", "--allow-empty", "-m", message)
+    git(repo, "commit", "-q", "--allow-empty", "-m", message, env=env)
     return git(repo, "rev-parse", "HEAD").strip()
 
 

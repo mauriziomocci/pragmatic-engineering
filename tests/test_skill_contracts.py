@@ -51,6 +51,8 @@ CONTRACTS: Dict[str, Contract] = {
             "Invariants in the data", "more than three modules", "import-contract check",
             "A delivered contract never changes shape", "on a separate line at the top of the message",
             "scenario table", "in a single pass", '"contract unchanged"', '"CONTRACT CHANGE"',
+            "The spec is written against the table, and the live HTTP checks replay it row by row.",
+            "Every question on the contract that the table raises goes to the user in a single pass",
             "the tests of the touched area", "before the push", "proven with the real command it runs",
             "stops only what it started, by name",
             "an autonomy profile that opens `contract`",
@@ -126,7 +128,7 @@ CONTRACTS: Dict[str, Contract] = {
             "When the write under `.pe/reviews/` is refused, the whole report goes in the final message, before those "
             "five lines, with `REPORT: inline`.",
             "C901, PLR0912, PLR0915 and PLR1702", "before a branch is integrated", "# taste-exempt: <reason>",
-            "Ruff has no rule for the 40 lines", "S1 or S2 in `quality-scoring`", "Every finding carries its lens and its class",
+            "A linter such as Ruff has no rule for the 40 lines", "S1 or S2 in `quality-scoring`", "Every finding carries its lens and its class",
             "five S3 give 7.5 with the verdict `pass`", "reads the score, not only the verdict",
             "is itself the finding (see `documentation-quality`)",  # the four kinds live in that skill
             # the burden covers more than code, and names the defect it fights
@@ -140,7 +142,7 @@ CONTRACTS: Dict[str, Contract] = {
             "inferred from any other document.",
             "The open blocking findings go up one level with the recommendation of whoever carries them, and the "
             "coordinator takes them to the user or, during an autonomy, to the PM lens, which may only defer or park "
-            "them, because the gate of `spec` stays closed while one is open.",
+            "them, because no gate closes while one is open.",
         ),
         absent=(
             "Delivering work", "Pythonic",
@@ -327,6 +329,9 @@ CONTRACTS: Dict[str, Contract] = {
             "otherwise in `.pe/progress.md` at the root of the repository, with a `.pe/.gitignore` that contains `*`, "
             "so the folder never enters git.",
             "Every time written in a note, a log or a report is read with `date` or from git, never estimated.",
+            # four parts of its own, and the lines other skills write there, which the handover depends on
+            "It also holds the lines that other skills put there: the budget lines of `development-workflow`, the "
+            "handover line and, when no other log is named, the decision log.",
         ),
         extra_files=("LICENSE",),
     ),
@@ -355,6 +360,8 @@ CONTRACTS: Dict[str, Contract] = {
             "`git rebase --force-rebase --ignore-date --rebase-merges <base>` and checks in order that the tree is the "
             "tag's, that the commits and their messages are unchanged, and that both dates of every commit fall "
             "inside the window.",
+            "The script uses the hours of `pe.officeHours` on every day, weekends and holidays included, because the "
+            "later opening of `pe.weekendFrom` delays only pushes and traces in shared systems.",
             "At the first failed check it exits non-zero and prints the way back without running it.",
             "The dates of author and committer are checked again on the integrated branch before its push; once it is "
             "pushed, delete the tag with `git tag -d`.",

@@ -1,13 +1,15 @@
 """The re-creation script of safe-operations: refusals, the rebase and the four checks, in temporary repositories.
 
 The script rewrites history, so nothing here touches this repository: every test builds its own, with the test's
-isolated git configuration. No test fakes a date, so the one thing these runs cannot show is that git gives an old
-commit the time of the moment; the date check exists for that, and it is exercised on the dates the commits have.
+isolated git configuration. A fixture commit may carry an old date: that is test input, the state the script exists
+to fix, and neither the script nor the skill sets a date. The tests start from commits dated in the night and check
+that both dates of every commit come back inside the window.
 """
 import importlib.util
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, Tuple
 
 import pytest
 
@@ -34,6 +36,12 @@ def window_around_now() -> str:
 def window_without_now() -> str:
     hour = datetime.now().hour
     return "%02d-%02d" % ((hour + 2) % 24, (hour + 4) % 24)
+
+
+def old_date_env(which: Tuple[str, ...] = ("AUTHOR", "COMMITTER")) -> Dict[str, str]:
+    """Fixture dates yesterday, twelve hours away from the current hour, so outside any window around now."""
+    night_time = (datetime.now() - timedelta(days=1)).replace(hour=(datetime.now().hour + 12) % 24, minute=0, second=0)
+    return {"GIT_%s_DATE" % name: night_time.strftime("%Y-%m-%dT%H:%M:%S") for name in which}
 
 
 def night_repo(tmp_path: Path, window: str = "") -> Tuple[Path, str]:
@@ -133,11 +141,12 @@ def test_it_refuses_an_empty_range(tmp_path):
     refuse(repo, "HEAD", "range")
 
 
-def test_it_refuses_a_dirty_working_tree(tmp_path):
+def test_it_refuses_uncommitted_changes_in_a_tracked_file(tmp_path):
     repo, base = night_repo(tmp_path)
     commit(repo, {"a.txt": "night\n"}, "night")
-    (repo / "scratch.txt").write_text("not committed\n", encoding="utf-8")
-    refuse(repo, base, "clean tree")
+    (repo / "a.txt").write_text("not committed\n", encoding="utf-8")
+    proc = refuse(repo, base, "clean tree")
+    assert "uncommitted changes in tracked files" in proc.stderr
 
 
 def test_it_refuses_when_the_current_hour_is_outside_the_window(tmp_path):
@@ -215,6 +224,65 @@ def test_it_re_creates_two_commits_and_the_four_checks_pass(tmp_path):
     assert log_of(repo, base + "..HEAD") == log_of(repo, base + ".." + tag)
 
 
+def test_an_untracked_file_does_not_stop_the_re_creation(tmp_path):
+    repo, base = night_repo(tmp_path)
+    commit(repo, {"a.txt": "night\n"}, "night")
+    (repo / "scratch.txt").write_text("never meant for git\n", encoding="utf-8")
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert (repo / "scratch.txt").exists()
+
+
+def test_weekend_and_holiday_keys_do_not_move_the_window_of_the_script(tmp_path):
+    """The skill says so: the later weekend opening only delays pushes, so the script uses the weekday hours."""
+    repo, base = night_repo(tmp_path)
+    hour = datetime.now().hour
+    git(repo, "config", "pe.weekendFrom", "%02d" % ((hour + 3) % 24))
+    git(repo, "config", "pe.holidays", datetime.now().strftime("%m-%d"))
+    commit(repo, {"a.txt": "night\n"}, "night")
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def dates(repo: Path, rev_range: str) -> Dict[str, Tuple[int, int]]:
+    """Author and committer date, as unix seconds, of every commit of the range, by the commit's subject."""
+    lines = git(repo, "log", "--format=%s|%at|%ct", rev_range).splitlines()
+    return {subject: (int(at), int(ct)) for subject, at, ct in (line.split("|") for line in lines)}
+
+
+def test_old_commits_come_back_with_the_time_of_the_moment_a_merge_included(night, tmp_path):
+    """The property the script exists for: commits dated in the night, a merge among them, leave inside the window."""
+    repo, base = night_repo(tmp_path)
+    old = old_date_env()
+    git(repo, "checkout", "-q", "-b", "side")
+    commit(repo, {"s.txt": "side\n"}, "side commit", env=old)
+    git(repo, "checkout", "-q", "main")
+    commit(repo, {"m.txt": "main\n"}, "main commit", env=old)
+    git(repo, "merge", "-q", "--no-ff", "-m", "merge side", "side", env=old)
+    commit(repo, {"a.txt": "after\n"}, "after the merge", env=old)
+    before = dates(repo, base + "..HEAD")
+    started = int(time.time())
+    assert len(before) == 4 and all(started - stamp > 3600 for pair in before.values() for stamp in pair)
+    proc = run_script(SCRIPT, [base], repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    window = night.parse_window(window_around_now())
+    hours = git(repo, "log", "--format=%ad %cd", "--date=format-local:%H", base + "..HEAD").split()
+    assert set(dates(repo, base + "..HEAD")) == set(before) and len(hours) == 8
+    assert all(stamp >= started for pair in dates(repo, base + "..HEAD").values() for stamp in pair)
+    assert all(window.contains(int(hour)) for hour in hours)
+
+
+def test_a_made_up_failure_of_a_git_command_in_the_checks_ends_in_the_way_back(night, monkeypatch):
+    def broken(recreation):
+        raise night.Refusal("git", "`git log` failed: boom")
+
+    monkeypatch.setattr(night, "CHECKS", (("messages", broken),))
+    with pytest.raises(night.Refusal) as refusal:
+        night.verify(night.Recreation("base", "night-backup-x", night.parse_window("00-23")))
+    assert refusal.value.check == "messages" and "boom" in str(refusal.value)
+    assert refusal.value.way_back == ("git reset --keep night-backup-x",)
+
+
 def test_a_merge_in_the_range_stays_a_merge(tmp_path):
     repo, base = night_repo(tmp_path)
     git(repo, "checkout", "-q", "-b", "side")
@@ -238,6 +306,7 @@ def test_a_failed_rebase_prints_the_way_back_and_exits_non_zero(tmp_path):
     proc = run_script(SCRIPT, [other], repo)
     assert proc.returncode == 1
     assert "rebase" in proc.stderr and "git rebase --abort" in proc.stderr and tags(repo) in proc.stderr
+    assert "could not apply" in proc.stderr  # the cause git printed, not only that the rebase failed
 
 
 # --- the four checks, one by one ---------------------------------------------------------------------------------
@@ -269,20 +338,35 @@ def test_the_count_check_fails_when_the_tag_has_another_number_of_commits(night,
     assert night.commit_count_is_the_tags(night.Recreation(base, "HEAD~1", window)) is False
 
 
-def test_the_messages_check_fails_when_one_message_differs_and_ignores_the_order(night, tmp_path, monkeypatch):
+def alternative_line(repo: Path, base: str, messages: Tuple[str, str]) -> None:
+    """A branch ``alt`` above ``base`` whose two commits carry ``messages`` and end on the content of ``two_lines``."""
+    git(repo, "checkout", "-q", "-b", "alt", base)
+    commit(repo, {"a.txt": "one\n"}, messages[0])
+    commit(repo, {"a.txt": "two\n"}, messages[1])
+    git(repo, "checkout", "-q", "main")
+
+
+def test_the_messages_check_ignores_the_order_of_the_commits(night, tmp_path, monkeypatch):
     repo, _ = night_repo(tmp_path)
     base, tip = two_lines(repo)
-    git(repo, "checkout", "-q", "-b", "alt", base)
-    commit(repo, {"a.txt": "one\n"}, "one")
-    commit(repo, {"a.txt": "two\n"}, "other words")
-    git(repo, "checkout", "-q", "main")
+    alternative_line(repo, base, ("two", "one"))
     monkeypatch.chdir(repo)
     window = night.parse_window("00-23")
     assert night.messages_are_the_tags(night.Recreation(base, tip, window)) is True
-    assert night.messages_are_the_tags(night.Recreation(base, "alt", window)) is False
+    assert night.messages_are_the_tags(night.Recreation(base, "alt", window)) is True
 
 
-def test_the_dates_check_looks_at_both_dates_of_every_commit(night, tmp_path, monkeypatch):
+def test_the_messages_check_fails_when_one_message_differs(night, tmp_path, monkeypatch):
+    repo, _ = night_repo(tmp_path)
+    base, tip = two_lines(repo)
+    alternative_line(repo, base, ("one", "other words"))
+    monkeypatch.chdir(repo)
+    assert night.messages_are_the_tags(night.Recreation(base, "alt", night.parse_window("00-23"))) is False
+
+
+def test_the_dates_check_passes_when_both_dates_are_inside_and_fails_when_the_window_is_elsewhere(
+    night, tmp_path, monkeypatch
+):
     repo, _ = night_repo(tmp_path)
     base, tip = two_lines(repo)
     monkeypatch.chdir(repo)
@@ -290,6 +374,16 @@ def test_the_dates_check_looks_at_both_dates_of_every_commit(night, tmp_path, mo
     outside = night.parse_window(window_without_now())
     assert night.dates_are_in_the_window(night.Recreation(base, tip, inside)) is True
     assert night.dates_are_in_the_window(night.Recreation(base, tip, outside)) is False
+
+
+@pytest.mark.parametrize("which", [("AUTHOR",), ("COMMITTER",)], ids=["author-only", "committer-only"])
+def test_the_dates_check_fails_when_only_one_of_the_two_dates_is_old(night, tmp_path, monkeypatch, which):
+    repo, _ = night_repo(tmp_path)
+    base = head(repo)
+    commit(repo, {"a.txt": "one\n"}, "one", env=old_date_env(which))
+    monkeypatch.chdir(repo)
+    recreation = night.Recreation(base, "HEAD", night.parse_window(window_around_now()))
+    assert night.dates_are_in_the_window(recreation) is False
 
 
 def test_a_failed_check_names_itself_and_prints_the_way_back_without_running_it(night, tmp_path, monkeypatch, capsys):

@@ -118,7 +118,7 @@ claude plugin uninstall pragmatic-engineering@pragmatic-engineering
 
 The order matters for two reasons. The safety line without the plugin makes the model warn you at every session start. And the uninstall deletes the plugin's data folder, which holds the copy of `rules.md` that your import points to and `calibration.md`, the calibration log of `quality-scoring`, unless you pass `--keep-data`; what Claude Code does with an import that points to a missing file has not been tried here.
 
-Four things stay behind on purpose. Superpowers stays installed; `--prune` on the uninstall command also removes dependencies that were installed automatically and are no longer needed. The marketplace stays registered until `claude plugin marketplace remove pragmatic-engineering`. The `.pe/` folders that the reviewer and the progress note created in your projects stay: they hold review reports and notes, never enter git because each carries a `.gitignore` with `*`, and you delete them by hand if you want them gone. And the `pe.*` keys you set stay in your git configuration; the configure section above says how to remove them.
+Five things stay behind on purpose. Superpowers stays installed; `--prune` on the uninstall command also removes dependencies that were installed automatically and are no longer needed. The marketplace stays registered until `claude plugin marketplace remove pragmatic-engineering`. The `.pe/` folders that the reviewer and the progress note created in your projects stay: they hold review reports and notes, never enter git because each carries a `.gitignore` with `*`, and you delete them by hand if you want them gone. The `night-backup-*` tags that `skills/safe-operations/recreate_night_commits.py` leaves in your repositories stay until you delete each one with `git tag -d <name>`. And the `pe.*` keys you set stay in your git configuration; the configure section above says how to remove them.
 
 <!-- section: office-hours -->
 ### Set your office hours
@@ -292,7 +292,7 @@ The limits that describe Claude Code's own behaviour (which agents load `CLAUDE.
 <!-- section: reference -->
 ## Reference
 
-There are no commands in this version.
+There are no commands in this version, only one script, `skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells the model to run.
 
 ### Skills
 
@@ -325,7 +325,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 
 ### Files
 
-`rules.md` is the working rules file, starting with the marker `PE-RULES v1`. The `.pe/` folder, at the root of a project, holds `reviews/` (the reports of `blunt-reviewer`) and `progress.md` (the progress note), and it never enters git because of its own `.gitignore` with `*`. In the plugin's data folder, next to the copy of `rules.md`, `quality-scoring` keeps `calibration.md`, its calibration log.
+`rules.md` is the working rules file, starting with the marker `PE-RULES v1`. The `.pe/` folder, at the root of a project, holds `reviews/` (the reports of `blunt-reviewer`) and `progress.md` (the progress note), and it never enters git because of its own `.gitignore` with `*`. In the plugin's data folder, next to the copy of `rules.md`, `quality-scoring` keeps `calibration.md`, its calibration log. `skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository.
 
 <!-- section: license -->
 ## License

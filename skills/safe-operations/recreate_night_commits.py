@@ -5,14 +5,15 @@ Usage: python3 recreate_night_commits.py <base>, run in the repository to fix. `
 pushed, or the branch point when the branch was never pushed.
 
 The script refuses to start, and changes nothing, in this order: no office hours set (``pe.officeHours``); a base
-that is not a commit, or nothing above it; uncommitted changes; the current hour outside the window; a commit of
+that is not a commit, or nothing above it; uncommitted changes in tracked files; the current hour outside the window; a commit of
 ``<base>..HEAD`` already on a remote-tracking branch, because published history is never rewritten (the branches are
 read as they are after the last fetch); a backup tag that already exists. Then it tags the tip, runs
 ``git rebase --force-rebase --ignore-date --rebase-merges <base>`` and runs four checks, stopping at the first that
 fails. A failure prints the way back and never runs it.
 
-Weekends and ``pe.holidays`` are not part of this check: re-creation may run from the opening of the weekday window,
-because the later weekend opening only delays pushes and the traces in company systems.
+Every day uses the hours of ``pe.officeHours``, weekends and ``pe.holidays`` included: re-creation is local work and may
+run from the opening of the weekday window, because the later opening of ``pe.weekendFrom`` only delays pushes and the
+traces in shared systems.
 """
 import re
 import subprocess
@@ -30,6 +31,7 @@ class Refusal(Exception):
     def __init__(self, check: str, detail: str, way_back: Sequence[str] = ()) -> None:
         super().__init__("%s: %s" % (check, detail))
         self.check = check
+        self.detail = detail
         self.way_back = tuple(way_back)
 
 
@@ -93,8 +95,8 @@ def commits_to_re_create(base: str) -> List[str]:
 
 
 def require_clean_tree() -> None:
-    if git("status", "--porcelain").strip():
-        raise Refusal("clean tree", "there are uncommitted changes: commit them first")
+    if git("status", "--porcelain", "--untracked-files=no").strip():
+        raise Refusal("clean tree", "there are uncommitted changes in tracked files: commit them first")
 
 
 def require_hour_in_window(window: Window, now: datetime) -> None:
@@ -127,9 +129,10 @@ def create_backup_tag(now: datetime) -> str:
 
 
 def rebase(base: str, tag: str) -> None:
-    if not git_succeeds("rebase", "--force-rebase", "--ignore-date", "--rebase-merges", base):
+    proc = _run("rebase", "--force-rebase", "--ignore-date", "--rebase-merges", base)
+    if proc.returncode != 0:
         raise Refusal(
-            "rebase", "`git rebase` failed",
+            "rebase", "`git rebase` failed: %s" % proc.stderr.strip(),
             ("git rebase --abort", "the tip before the rebase is the tag %s" % tag),
         )
 
@@ -179,12 +182,15 @@ CHECKS: Tuple[Tuple[str, Callable[[Recreation], bool]], ...] = (
 
 
 def verify(recreation: Recreation) -> None:
+    """History is already rewritten here, so every failure, a git error inside a check included, ends in the way back."""
+    way_back = ("git reset --keep %s" % recreation.tag,)
     for name, passes in CHECKS:
-        if not passes(recreation):
-            raise Refusal(
-                name, "the check failed after the rebase",
-                ("git reset --keep %s" % recreation.tag,),
-            )
+        try:
+            passed = passes(recreation)
+        except Refusal as refusal:
+            raise Refusal(name, "the check could not run: %s" % refusal.detail, way_back) from refusal
+        if not passed:
+            raise Refusal(name, "the check failed after the rebase", way_back)
 
 
 def recreate(base: str, now: datetime) -> str:

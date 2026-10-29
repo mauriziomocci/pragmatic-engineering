@@ -285,7 +285,8 @@ LANGUAGE_NAMES = (
 )
 EXAMPLE_MARKERS = ("for example", "for instance", "such as", "e.g.")
 LANGUAGE_NAME = re.compile(
-    r"(?<!\w)(?:%s)(?!\w)" % "|".join(re.escape(name) for name in sorted(LANGUAGE_NAMES, key=len, reverse=True))
+    r"(?<!\w)(?:%s)(?!\w)" % "|".join(re.escape(name) for name in sorted(LANGUAGE_NAMES, key=len, reverse=True)),
+    re.IGNORECASE,
 )
 LIST_ITEM = re.compile(r"\s*(?:[-*]|\d+\.|\|)\s")
 SENTENCE_END = re.compile(r"(?<=[.!?])(?<!e\.g\.)(?<!i\.e\.)\s+")
@@ -324,12 +325,17 @@ def test_skills_and_agents_name_a_language_only_as_an_example():
     assert offenders == []
 
 
-@pytest.mark.parametrize("added", ["Python", "pytest", "C#", "C++", ".NET", "Node.js", "SQLite"])
+@pytest.mark.parametrize("added", ["Python", "pytest", "C#", "C++", ".NET", "Node.js", "SQLite", "Ruff", "RUFF"])
 def test_the_neutrality_check_catches_a_name_and_accepts_it_with_a_marker(added):
     unmarked = "The suite runs with %s on every push." % added
     assert unmarked_language_sentences(unmarked) == [unmarked]
     assert unmarked_language_sentences("The suite runs, for example, with %s on every push." % added) == []
     assert LANGUAGE_NAME.findall(rules_text() + "\n- A rule that names %s." % added) == [added]
+
+
+def test_the_plugins_own_interpreter_is_not_taken_for_a_language_of_the_users_stack():
+    """`python3` runs the plugin's scripts and hooks; the whole-word match leaves it alone, so no allowance is needed."""
+    assert unmarked_language_sentences("Run `python3 script.py` from the skill's folder.") == []
 
 
 def test_the_neutrality_check_reads_a_sentence_across_wrapped_lines_and_stops_at_a_list_item():
@@ -923,7 +929,11 @@ GUIDED_SENTENCES = {
          "`git config --local --unset pe.autonomy` per il profilo."),
     ),
     "uninstall": (
-        ("Four things stay behind on purpose.", "Quattro cose restano, di proposito."),
+        ("Five things stay behind on purpose.", "Cinque cose restano, di proposito."),
+        ("The `night-backup-*` tags that `skills/safe-operations/recreate_night_commits.py` leaves in your "
+         "repositories stay until you delete each one with `git tag -d <name>`.",
+         "I tag `night-backup-*` che `skills/safe-operations/recreate_night_commits.py` lascia nei tuoi repository "
+         "restano finché non ne cancelli ciascuno con `git tag -d <nome>`."),
         ("And the `pe.*` keys you set stay in your git configuration; the configure section above says how to "
          "remove them.",
          "E restano le chiavi `pe.*` che hai impostato nella tua configurazione di git; la sezione «Configurare il "
@@ -979,6 +989,14 @@ GUIDED_SENTENCES = {
          "l'autonomia (compresa la regola per cui il modello ne imposta il profilo solo quando glielo chiedi)"),
     ),
     "reference": (
+        ("There are no commands in this version, only one script, `skills/safe-operations/recreate_night_commits.py`, "
+         "which `safe-operations` tells the model to run.",
+         "In questa versione non ci sono comandi, solo uno script, `skills/safe-operations/recreate_night_commits.py`, "
+         "che `safe-operations` dice al modello di eseguire."),
+        ("`skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made "
+         "outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository.",
+         "`skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori "
+         "da esso e mai pubblicati, e lascia nel repository un tag `night-backup-<YYYYMMDD-HHMMSS>`."),
         ("runs each `git config` command only after your yes, the autonomy profile included.",
          "esegue ogni comando `git config` solo dopo il tuo sì, profilo di autonomia compreso."),
     ),
