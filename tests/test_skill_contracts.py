@@ -36,6 +36,26 @@ CONTRACTS: Dict[str, Contract] = {
             "The Pragmatic Programmer", "Fundamentals of Software Engineering", "entry page",
         ),
     ),
+    "evidence-based-investigation": Contract(
+        sections=(
+            "When to use", "When not to use", "Investigation rules", "Confidence levels",
+            "The multi-pass loop", "Scoping a defect", "Scoping techniques for fixes and data corrections",
+            "Output rules", "Anti-patterns",
+        ),
+        phrases=(
+            "superpowers:systematic-debugging",
+            "Verified in the real environment",
+            "Tests passing, deployed, real-environment verification pending",
+            "Unit tests only",
+            "working twin",
+            "Symptom | Identified cause | Required fix | Covered by this fix?",
+            "This fix resolves",
+            "It does NOT resolve",
+            "own recent changes",
+            "Verified", "Inferred", "Assumed", "Unverifiable",
+        ),
+        absent=("iterative-requirements-analysis", "financial-reconciliation", "smonta", "combacia", "Origine"),
+    ),
 }
 
 
