@@ -1086,6 +1086,12 @@ GUIDED_SENTENCES = {
          "Ogni lente parte da 10: ogni S1 toglie 4 punti e limita la lente a 4, ogni S2 toglie 1,5 punti e la "
          "limita a 7, ogni S3 toglie 0,5 punti, il voto minimo è 1 e il risultato si arrotonda per difetto al "
          "mezzo punto, quindi 8 significa nessun S1, nessun S2 e al più quattro S3."),
+        ("For example, a lens with one S2 and one S3 scores 6.5, because the steps apply in this order: the S2 "
+         "takes 10 down to 8.5, its cap brings that to 7, and then the S3 takes 0.5 away. One serious finding takes "
+         "a lens below 8 by itself.",
+         "Per esempio, una lente con un S2 e un S3 prende 6,5, perché i passi si applicano in quest'ordine: l'S2 "
+         "porta 10 a 8,5, il suo limite lo riporta a 7, e poi l'S3 toglie 0,5. Un solo rilievo serio porta da solo "
+         "una lente sotto 8."),
     ),
     "lenses-gate": (
         ("Choosing the deferral is the go to ship the work with a deferred defect, and that go stays with you: "

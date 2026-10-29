@@ -151,7 +151,7 @@ CONTRACTS: Dict[str, Contract] = {
             "a dependency that duplicates",  # not in the rule it summarises
             "in doubt it is blocking",  # one scale: the classes of quality-scoring decide
             "and the decision belongs to the user",  # the stop above names who decides
-            "to the PM lens, which decides on them",  # it may only defer or park: the gate of spec stays closed
+            "to the PM lens, which decides on them",  # it may only park them or propose a deferral: the gate stays closed
         ),
     ),
     "adversarial-review-panel": Contract(
@@ -215,8 +215,9 @@ CONTRACTS: Dict[str, Contract] = {
             "`spec` instead of `pass`.",
             # the gate stays closed at the cap: the PM lens parks, it does not approve
             "The gate of `spec` stays closed while a critical or serious finding is open: at the cap of rounds the PM "
-            "lens may only defer or park the open findings, which go to the decision log and to the user, and the "
-            "partial closure of `autonomous-execution` prevails when that skill runs.",
+            "lens may only park the open findings or propose a deferral to the user, as `blunt-review` says; the "
+            "findings go to the decision log, and the partial closure of `autonomous-execution` prevails when that "
+            "skill runs.",
             "When the user's configuration names its own agents for these lenses, those agents run them.",
             "One entry per decision, in the log the user's or the project's configuration names, otherwise in the "
             "progress note: who decided, the positions, the costs and the state (confirmed, overturned, pending).",
@@ -244,7 +245,8 @@ CONTRACTS: Dict[str, Contract] = {
         absent=(
             "phase-model-skill-mapping", "--no-ff", "Jira", "The project's suite before every commit",
             "Gate 2 has none",  # an autonomy that opens spec is its one exception
-            "the PM lens decides on what is still open",  # at the cap it may only defer or park
+            "the PM lens decides on what is still open",  # at the cap it may only park or propose a deferral
+            "defer or park",  # the one wording of blunt-review: park the findings or propose a deferral to the user
             "`publish`",  # publishing is not an opening of the plugin, a declared difference from the master
             "nothing else moves", "spec-kit on request",  # the user's own openings and adoption of spec-kit count
         ),
