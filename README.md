@@ -24,11 +24,13 @@ You need Claude Code and a git project to work in. Each step says what you shoul
 
 3. Add the two lines to `~/.claude/CLAUDE.md`, after a dated copy of the file, as the install guide shows, then quit and start Claude Code again. You should see no notice this time. If the notice comes back, the lines are not written as printed: the hook looks for the import path and for the whole safety line.
 
-4. Ask: "Quote your rule `PE:backup-diff-go`." You should see an answer that says that instruction, settings and memory files change only after a dated backup, a diff and your go. That rule lives in `rules.md` and in nothing else a session loads, not in the safety line and not in a skill, so a right answer shows that the import reached the session. If the model says it has no such rule, the import did not arrive: check the two lines of step 3 and ask again in a new session.
+4. Ask: "Configure the plugin." You should see the model show, in a few lines, the values the keys have now, an unset one said to be unset, and ask which keys you want to set; then one question at a time about those keys, each saying what the key does, what happens while it is unset and a value it proposes. Before it changes anything it shows you the exact `git config` command and waits for your yes, then reads the value back; for the autonomy profile it only shows the command, because you set that one from your own terminal. You can answer that you want none: nothing changes until you say yes to a command.
 
-5. Ask for a small change with a test, for example a function with one behaviour. You should see, in this order: the model names the lane (a feature) and says in a few sentences what it is about to do, ending with "is it clear?"; it stops for your written approval of a short spec before the code, because the two heavy gates stay even for small work; it writes the failing test first and runs it; it writes the code; it reviews its own diff following `blunt-review` and closes with a statement that the tests pass or a list of what does not; it stops again for your approval of the result; it never pushes without your go.
+5. Ask: "Quote your rule `PE:backup-diff-go`." You should see an answer that says that instruction, settings and memory files change only after a dated backup, a diff and your go. That rule lives in `rules.md` and in nothing else a session loads, not in the safety line and not in a skill, so a right answer shows that the import reached the session. If the model says it has no such rule, the import did not arrive: check the two lines of step 3 and ask again in a new session.
 
-6. Commit the work on a branch and say: "Review this branch before I open the merge request." You should see the model launch `blunt-reviewer` with one line, `<merge-base>..HEAD`, where `<merge-base>` is the commit `git merge-base` prints. The reviewer writes its report in `.pe/reviews/`, in a file named `<base7>..<tip7>-round1.md` whose first line is a status line, and its final message ends with five lines: `VERDICT:`, `FINDINGS:`, `COVERAGE:`, `REPORT:` and `THE THING:`. With `VERDICT: changes`, the blocking findings are fixed, committed, and a second review runs on the fixes; the explanation of the review cycle below says how it goes.
+6. Ask for a small change with a test, for example a function with one behaviour. You should see, in this order: the model names the lane (a feature) and says in a few sentences what it is about to do, ending with "is it clear?"; it stops for your written approval of a short spec before the code, because the two heavy gates stay even for small work; it writes the failing test first and runs it; it writes the code; it reviews its own diff following `blunt-review` and closes with a statement that the tests pass or a list of what does not; it stops again for your approval of the result; it never pushes without your go.
+
+7. Commit the work on a branch and say: "Review this branch before I open the merge request." You should see the model launch `blunt-reviewer` with one line, `<merge-base>..HEAD`, where `<merge-base>` is the commit `git merge-base` prints. The reviewer writes its report in `.pe/reviews/`, in a file named `<base7>..<tip7>-round1.md` whose first line is a status line, and its final message ends with five lines: `VERDICT:`, `FINDINGS:`, `COVERAGE:`, `REPORT:` and `THE THING:`. With `VERDICT: changes`, the blocking findings are fixed, committed, and a second review runs on the fixes; the explanation of the review cycle below says how it goes.
 
 <!-- section: how-to -->
 ## How-to guides
@@ -77,6 +79,22 @@ If the pragmatic-engineering rules (marker PE-RULES v1) or its skills are missin
 The import is what brings the rules to the session. The safety line is what warns you when they stop arriving, since `SessionStart` cannot run once the plugin is uninstalled or disabled.
 
 Updating: the manifest pins the version, so Claude Code moves you to a new release only when its version string changes, and auto-update is off by default for marketplaces other than Anthropic's. To update by hand, refresh the marketplace with `claude plugin marketplace update pragmatic-engineering`, run `claude plugin update pragmatic-engineering@pragmatic-engineering` and restart. The next `SessionStart` copies the new `rules.md`, and the new rules apply from the session after that.
+
+<!-- section: configure -->
+### Configure the plugin
+
+The quickest way is to ask in a session, for example "configure the plugin": the `configure` skill shows the values you have now and asks one question at a time, only about the keys you choose; it is told to run a command only after your yes and never to set the autonomy profile, which only you set, from your own terminal, and nothing checks that it obeys. Or set the keys by hand, with the guides "Set your office hours" and "Let the work go on without you" below.
+
+The plugin reads six keys of git's configuration:
+
+| Key | What it sets | Where | When unset | Example |
+|---|---|---|---|---|
+| `pe.officeHours` | The office-hours window, from the first hour up to the second, which is outside it | Global | The rule is off | `06-21` |
+| `pe.weekendFrom` | The hour from which Saturdays, Sundays and holidays open | Global | They open at the start of the window | `10` |
+| `pe.holidays` | The holidays: `MM-DD`, `easter+N` or `easter-N`, separated by commas | Global | No date is a holiday | `01-01,12-25,easter+1` |
+| `pe.personalRemotes` | The prefixes of the push URLs of your own remotes; it takes more than one value | Global | No remote is personal | `https://github.com/<you>/` |
+| `pe.autonomy` | What the lenses may decide while you are away, from `spec`, `schema`, `design` and `contract` | Local: in the repository you set it in | Nothing is opened | `spec,design` |
+| `pe.privateTermsFile` | The file of private terms that `tools/privacy_check.py` reads; only for those who work on this repository | Local: in the clone of this repository | The privacy check refuses to run | `<path outside the repository>` |
 
 <!-- section: uninstall -->
 ### Uninstall and go back
@@ -275,6 +293,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 | `safe-operations` | Verify the target, dry run, say the blast radius and the way back, a separate go for production, never poll, verify at every level. | Before a command or tool that changes an external system, and, with office hours set, before a push, a merge request, a pipeline, a tracker edit or a message. |
 | `interface-quality` | The ten principles of a simple interface, the measures before a change (every state, both themes, 375, 768 and 1280 px, WCAG AA measured), the UX study before code, the UX lens and the user lens. | Every change to a user interface, and to the responses, messages and documentation of an API. |
 | `documentation-quality` | The four kinds of documentation and the two questions that tell them apart, the entry page, documents that describe only what exists and say their limits, the manual of an administration interface. | Writing, splitting, reorganising or reviewing documentation; not for docstrings, comments or messages to people. |
+| `configure` | Shows the current values of the `pe.*` keys, asks one question at a time about the ones you choose, checks the format of each answer and runs the `git config` command of a global key only after your yes; the autonomy profile it leaves to you. | When you ask how to configure or set up the plugin, its office hours, weekends, holidays, personal remotes or autonomy; not for the settings of another tool. |
 
 ### Agent
 

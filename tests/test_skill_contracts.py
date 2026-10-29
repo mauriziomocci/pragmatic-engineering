@@ -347,6 +347,24 @@ CONTRACTS: Dict[str, Contract] = {
             "and its thresholds: `quality-scoring`",
         ),
     ),
+    "configure": Contract(
+        sections=("When to use", "The keys", "The flow", "What configure never does", "Where the rest lives"),
+        # The formats are the ones step 3 checks; the six sentences are the behaviour the user asked for.
+        phrases=(
+            "`HH-HH`", "`MM-DD`, `easter+N` and `easter-N`", "`spec`, `schema`, `design` and `contract`",
+            "Ask one question at a time, only about the keys the user wants, and wait for the answer before the next one.",
+            "Check the answer against the format of its key. On a wrong one, say why and ask again.",
+            "For a global key, run it only after the user's explicit yes to that command, "
+            "then read the value back with the command of step 1.",
+            "For `pe.autonomy`, never run it: show it for the user's own terminal, "
+            "because only the user sets the profile.",
+            'At the end, list the configured values in a few lines and ask "is it clear?", as `teach` says.',
+            "This skill never changes a key the user did not ask about, never writes a configuration file directly "
+            "and never runs a command the user has not seen.",
+            "What each opening of `pe.autonomy` means lives in `development-workflow`; "
+            "the office-hours rule lives in `safe-operations`.",
+        ),
+    ),
 }
 
 
@@ -505,6 +523,11 @@ def test_quality_scoring_names_the_calibration_log_in_the_form_claude_code_subst
 def test_documentation_quality_stays_within_its_cap():
     """6,000 characters, a third of the cap of a skill: it points to the rules other skills hold, never repeats them."""
     assert len(skill_text("documentation-quality")) <= 6000
+
+
+def test_configure_stays_within_its_cap():
+    """4,000 characters: it asks the questions and points to the rules the other skills hold."""
+    assert len(skill_text("configure")) <= 4000
 
 
 def test_every_a1_skill_has_a_contract():

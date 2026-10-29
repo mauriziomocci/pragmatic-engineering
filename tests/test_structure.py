@@ -5,7 +5,7 @@ import re
 import subprocess
 import unicodedata
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Set, Tuple
 
 import pytest
 
@@ -732,6 +732,42 @@ def test_autonomy_guide_sets_the_key_in_one_repository_only():
         assert "git config --local pe.autonomy spec,schema,design,contract" in text.splitlines()
         assert "`git config --local --unset pe.autonomy`" in text
     assert [text for text in pages() if "--global pe.autonomy" in text] == []
+
+
+PE_KEY = re.compile(r"\bpe\.[A-Za-z]+\b")
+TABLE_KEY = re.compile(r"^\| `(pe\.[A-Za-z]+)` \|", re.MULTILINE)
+
+
+def keys_the_plugin_uses() -> Set[str]:
+    """The ``pe.<key>`` names the rules, the skills and the code read: the keys a reader can set."""
+    folders = [REPO_ROOT / name for name in ("lib", "tools", "hooks")]
+    paths = [RULES, *(REPO_ROOT / "skills").glob("*/SKILL.md")]
+    paths += [p for folder in folders for p in folder.rglob("*") if p.is_file() and p.suffix != ".pyc"]
+    return {key for path in paths for key in PE_KEY.findall(path.read_text(encoding="utf-8"))}
+
+
+def test_the_configure_tables_list_exactly_the_keys_the_plugin_uses():
+    """A seventh key read anywhere, or a row left out of one language, turns this red."""
+    used = keys_the_plugin_uses()
+    assert used, "no key found: the scan reads nothing"
+    for name, section in zip(("README.md", "README.it.md"), pages("configure")):
+        assert set(TABLE_KEY.findall(section)) == used, name
+    assert [key for key in sorted(used) if key not in skill_text("configure")] == []
+
+
+def test_the_key_check_sees_a_row_removed_from_a_table():
+    section = pages("configure")[1]
+    row = next(line for line in section.splitlines() if line.startswith("| `pe.holidays` |"))
+    assert set(TABLE_KEY.findall(section.replace(row + "\n", ""))) == keys_the_plugin_uses() - {"pe.holidays"}
+
+
+def test_readmes_place_the_configure_section_the_tutorial_step_and_the_skill_row():
+    asks = ('"Configure the plugin."', '"Configura il plugin."')
+    for text, ask in zip(pages(), asks):
+        ids = list(marked_blocks(text))
+        assert ids[ids.index("install") + 1] == "configure"
+        assert ask in marked_blocks(text)["tutorial"]
+        assert "| `configure` |" in marked_blocks(text)["reference"]
 
 
 def test_uninstall_says_the_calibration_log_goes_with_the_data_folder():

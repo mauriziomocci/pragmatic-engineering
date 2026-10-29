@@ -24,11 +24,13 @@ Ti servono Claude Code e un progetto git su cui lavorare. Ogni passo dice che co
 
 3. Aggiungi le due righe a `~/.claude/CLAUDE.md`, dopo una copia datata del file, come mostra la guida all'installazione, poi esci e riavvia Claude Code. Questa volta non dovresti vedere nessun avviso. Se l'avviso torna, le righe non sono scritte come stampate: l'hook cerca il percorso dell'import e la riga di rete di sicurezza per intero.
 
-4. Chiedi: "Quote your rule `PE:backup-diff-go`." (puoi anche chiederlo in italiano). Dovresti vedere una risposta che dice che i file di istruzioni, impostazioni e memoria cambiano solo dopo una copia datata, un diff e il tuo via. Quella regola sta in `rules.md` e in nient'altro che una sessione carichi, non nella riga di rete di sicurezza e non in una skill, quindi una risposta giusta mostra che l'import ha raggiunto la sessione. Se il modello dice di non avere una regola con quel nome, l'import non è arrivato: ricontrolla le due righe del passo 3 e riprova in una sessione nuova.
+4. Chiedi: "Configura il plugin." Dovresti vedere il modello mostrare, in poche righe, i valori che le chiavi hanno adesso, con una chiave non impostata detta non impostata, e chiederti quali chiavi vuoi impostare; poi una domanda alla volta su quelle chiavi, ciascuna con ciò che la chiave fa, che cosa succede finché non è impostata e un valore che propone. Prima di cambiare qualcosa ti mostra il comando `git config` esatto e aspetta il tuo sì, poi rilegge il valore; per il profilo di autonomia mostra soltanto il comando, perché quello lo imposti tu dal tuo terminale. Puoi rispondere che non ne vuoi nessuna: nulla cambia finché non dici sì a un comando.
 
-5. Chiedi una piccola modifica con un test, per esempio una funzione con un solo comportamento. Dovresti vedere, in quest'ordine: il modello nomina la corsia (una funzionalità) e dice in poche frasi che cosa sta per fare, chiudendo con «is it clear?» nella tua lingua; si ferma per la tua approvazione scritta di una spec breve prima del codice, perché i due cancelli pesanti restano anche per un lavoro piccolo; scrive il test che fallisce per primo e lo esegue; scrive il codice; rivede il proprio diff seguendo `blunt-review` e chiude con una dichiarazione che i test passano o con l'elenco di ciò che non passa; si ferma di nuovo per la tua approvazione del risultato; non fa mai un push senza il tuo via.
+5. Chiedi: "Quote your rule `PE:backup-diff-go`." (puoi anche chiederlo in italiano). Dovresti vedere una risposta che dice che i file di istruzioni, impostazioni e memoria cambiano solo dopo una copia datata, un diff e il tuo via. Quella regola sta in `rules.md` e in nient'altro che una sessione carichi, non nella riga di rete di sicurezza e non in una skill, quindi una risposta giusta mostra che l'import ha raggiunto la sessione. Se il modello dice di non avere una regola con quel nome, l'import non è arrivato: ricontrolla le due righe del passo 3 e riprova in una sessione nuova.
 
-6. Fai il commit del lavoro su un ramo e di': "Review this branch before I open the merge request." (anche in italiano). Dovresti vedere il modello lanciare `blunt-reviewer` con una sola riga, `<merge-base>..HEAD`, dove `<merge-base>` è il commit che stampa `git merge-base`. Il revisore scrive il rapporto in `.pe/reviews/`, in un file chiamato `<base7>..<tip7>-round1.md` la cui prima riga è una riga di stato, e il suo messaggio finale chiude con cinque righe: `VERDICT:`, `FINDINGS:`, `COVERAGE:`, `REPORT:` e `THE THING:`. Con `VERDICT: changes` si correggono i rilievi bloccanti, si fa il commit e parte una seconda revisione sulle correzioni; la spiegazione del ciclo di revisione, più sotto, dice come procede.
+6. Chiedi una piccola modifica con un test, per esempio una funzione con un solo comportamento. Dovresti vedere, in quest'ordine: il modello nomina la corsia (una funzionalità) e dice in poche frasi che cosa sta per fare, chiudendo con «is it clear?» nella tua lingua; si ferma per la tua approvazione scritta di una spec breve prima del codice, perché i due cancelli pesanti restano anche per un lavoro piccolo; scrive il test che fallisce per primo e lo esegue; scrive il codice; rivede il proprio diff seguendo `blunt-review` e chiude con una dichiarazione che i test passano o con l'elenco di ciò che non passa; si ferma di nuovo per la tua approvazione del risultato; non fa mai un push senza il tuo via.
+
+7. Fai il commit del lavoro su un ramo e di': "Review this branch before I open the merge request." (anche in italiano). Dovresti vedere il modello lanciare `blunt-reviewer` con una sola riga, `<merge-base>..HEAD`, dove `<merge-base>` è il commit che stampa `git merge-base`. Il revisore scrive il rapporto in `.pe/reviews/`, in un file chiamato `<base7>..<tip7>-round1.md` la cui prima riga è una riga di stato, e il suo messaggio finale chiude con cinque righe: `VERDICT:`, `FINDINGS:`, `COVERAGE:`, `REPORT:` e `THE THING:`. Con `VERDICT: changes` si correggono i rilievi bloccanti, si fa il commit e parte una seconda revisione sulle correzioni; la spiegazione del ciclo di revisione, più sotto, dice come procede.
 
 <!-- section: how-to -->
 ## Guide pratiche
@@ -77,6 +79,22 @@ If the pragmatic-engineering rules (marker PE-RULES v1) or its skills are missin
 L'import è ciò che porta le regole alla sessione. La riga di rete di sicurezza è ciò che ti avvisa quando smettono di arrivare, perché `SessionStart` non può girare quando il plugin è disinstallato o disabilitato.
 
 Aggiornare: il manifesto fissa la versione, quindi Claude Code ti porta a una nuova versione solo quando cambia la sua stringa di versione, e l'aggiornamento automatico è spento di norma per i marketplace diversi da quelli di Anthropic. Per aggiornare a mano, aggiorna il marketplace con `claude plugin marketplace update pragmatic-engineering`, esegui `claude plugin update pragmatic-engineering@pragmatic-engineering` e riavvia. Il `SessionStart` successivo copia il nuovo `rules.md`, e le nuove regole valgono dalla sessione dopo.
+
+<!-- section: configure -->
+### Configura il plugin
+
+Il modo più rapido è chiedere in una sessione, per esempio "configura il plugin": la skill `configure` mostra i valori che hai adesso e fa una domanda alla volta, solo sulle chiavi che scegli; le è detto di eseguire un comando solo dopo il tuo sì e di non impostare mai il profilo di autonomia, che imposti solo tu, dal tuo terminale, e nulla controlla che obbedisca. Oppure imposta le chiavi a mano, con le guide «Impostare l'orario d'ufficio» e «Lasciare andare avanti il lavoro senza di te» più sotto.
+
+Il plugin legge sei chiavi della configurazione di git:
+
+| Chiave | Che cosa imposta | Dove | Se non impostata | Esempio |
+|---|---|---|---|---|
+| `pe.officeHours` | La finestra dell'orario d'ufficio, dalla prima ora fino alla seconda, che ne è fuori | Globale | La regola è spenta | `06-21` |
+| `pe.weekendFrom` | L'ora da cui aprono i sabati, le domeniche e i giorni festivi | Globale | Aprono all'inizio della finestra | `10` |
+| `pe.holidays` | I giorni festivi: `MM-DD`, `easter+N` o `easter-N`, separati da virgole | Globale | Nessuna data è festiva | `01-01,12-25,easter+1` |
+| `pe.personalRemotes` | I prefissi degli URL di push dei tuoi remoti; accetta più di un valore | Globale | Nessun remoto è personale | `https://github.com/<tuo-account>/` |
+| `pe.autonomy` | Che cosa le lenti possono decidere mentre non ci sei, fra `spec`, `schema`, `design` e `contract` | Locale: nel repository in cui la imposti | Non si apre nulla | `spec,design` |
+| `pe.privateTermsFile` | Il file dei termini privati che legge `tools/privacy_check.py`; solo per chi lavora su questo repository | Locale: nel clone di questo repository | Il controllo di riservatezza si rifiuta di girare | `<percorso fuori dal repository>` |
 
 <!-- section: uninstall -->
 ### Disinstallare e tornare indietro
@@ -275,6 +293,7 @@ Claude Code carica una skill quando il compito corrisponde alla sua descrizione,
 | `safe-operations` | Verificare il bersaglio, prova a secco, dire il raggio d'azione e la via del ritorno, un via a parte per la produzione, mai interrogare in ciclo, verificare a ogni livello. | Prima di un comando o di uno strumento che cambia un sistema esterno e, con l'orario d'ufficio impostato, prima di un push, di una merge request, di una pipeline, di una modifica a un tracker o di un messaggio. |
 | `interface-quality` | I dieci principi di un'interfaccia semplice, le misure prima di un cambio (ogni stato, due temi, 375, 768 e 1280 px, WCAG AA misurato), lo studio UX prima del codice, la lente UX e la lente utente. | Ogni cambio di un'interfaccia, e delle risposte, dei messaggi e della documentazione di un'API. |
 | `documentation-quality` | I quattro tipi di documentazione e le due domande che li distinguono, la pagina d'ingresso, documenti che descrivono solo ciò che esiste e ne dicono i limiti, il manuale di un'interfaccia di amministrazione. | Scrivere, dividere, riorganizzare o rivedere documentazione; non per docstring, commenti o messaggi a persone. |
+| `configure` | Mostra i valori attuali delle chiavi `pe.*`, fa una domanda alla volta su quelle che scegli, controlla il formato di ogni risposta ed esegue il comando `git config` di una chiave globale solo dopo il tuo sì; il profilo di autonomia lo lascia a te. | Quando chiedi come configurare o impostare il plugin, il suo orario d'ufficio, i fine settimana, i giorni festivi, i remoti personali o l'autonomia; non per le impostazioni di un altro strumento. |
 
 ### Agente
 

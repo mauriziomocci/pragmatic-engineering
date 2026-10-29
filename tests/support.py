@@ -75,6 +75,7 @@ A1_SKILLS: Tuple[str, ...] = (
     "quality-scoring",
     "interface-quality",
     "documentation-quality",
+    "configure",
 )
 AGENTS: Tuple[str, ...] = ("blunt-reviewer",)
 SUPERPOWERS_TESTED_VERSION = "7.0.0"
