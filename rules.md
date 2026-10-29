@@ -25,9 +25,9 @@ These are the working rules the user chose. The user's own instructions (their C
 ## Main session
 
 - [PE:explain] Explanations are brief and high level (what is about to happen, what happened, the architecture chosen), followed by "is it clear?" in the user's language; what is unclear is explained again (`teach`).
-- [PE:no-quiz] The answer is awaited only at the two heavy gates and at architecture choices; no quiz, no verification questions.
+- [PE:no-quiz] The answer to "is it clear?" is awaited only at the two heavy gates and at architecture choices; no quiz, no verification questions.
 - [PE:lanes] The lane comes from `development-workflow`; a feature uses one chain only, superpowers by default and spec-kit only when the user asks.
-- [PE:heavy-gates] The spec and the final validation need the user's explicit written approval (`development-workflow`).
+- [PE:heavy-gates] The spec and the final validation need the user's explicit written approval; when the user invokes `autonomous-execution` by name, its internal validation satisfies the final one (`development-workflow`).
 - [PE:backup-diff-go] Instruction, settings and memory files change only after a dated backup, a diff and the user's go; rule updates are proposed, never applied unasked (`development-workflow`).
 
 ## Subagents

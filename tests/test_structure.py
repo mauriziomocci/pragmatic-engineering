@@ -1,4 +1,5 @@
 """Structure checks on the repository itself."""
+import json
 import re
 import subprocess
 import unicodedata
@@ -10,7 +11,9 @@ import pytest
 import privacy_check
 from support import (
     A1_SKILLS,
+    AGENTS,
     REPO_ROOT,
+    SPECKIT_TESTED_VERSION,
     SUPERPOWERS_SKILLS,
     SUPERPOWERS_TESTED_VERSION,
     installed_superpowers,
@@ -90,42 +93,68 @@ EXPECTED_RULE_MARKERS = {
     "Main session": {"explain", "no-quiz", "lanes", "heavy-gates", "backup-diff-go"},
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
-# Requirements of spec section 17.3: each one must sit in the block that reaches the right agents.
+RULES_PREAMBLE = (
+    "These are the working rules the user chose. The user's own instructions (their CLAUDE.md files, "
+    "project configuration and explicit requests) prevail on conflict; a conflict with the five "
+    "precedence rules goes to the user and is never resolved silently. Most rules name the skill "
+    "where they live; the others live here."
+)
+# Requirements of spec section 17.3: each one must sit in the block that reaches the right agents
+# and say what the spec asks, so a rule gutted under its marker fails as well.
 MIGRATION_REQUIREMENTS = {
-    "self-review": "Every agent",
-    "burden-of-proof": "Every agent",
-    "no-bug-left": "Every agent",
-    "english-identifiers": "Every agent",
-    "docs-same-commit": "Every agent",
-    "heavy-gates": "Main session",
-    "suite-before-commit": "Every agent",
-    "production-go": "Every agent",
+    "self-review": ("Every agent", "following `blunt-review`"),
+    "burden-of-proof": ("Every agent", "burden of proving"),
+    "no-bug-left": ("Every agent", "closure statement"),
+    "english-identifiers": ("Every agent", "in English"),
+    "docs-same-commit": ("Every agent", "same commit"),
+    "heavy-gates": ("Main session", "explicit written approval"),
+    "suite-before-commit": ("Every agent", "zero failures"),
+    "production-go": ("Every agent", "its own explicit go"),
 }
-RULE_LINE = re.compile(r"^- \[PE:([a-z-]+)\] \S")
+RULE_LINE = re.compile(r"^- \[PE:([a-z-]+)\] (?!\[PE:)\S")
+CITATION = re.compile(r"`([^` \n]+)`")
 
 
-def rule_markers(block: str):
-    return [RULE_LINE.match(line).group(1) for line in block.splitlines() if line.startswith("- ")]
+def rules_text() -> str:
+    return RULES.read_text(encoding="utf-8")
+
+
+def rule_markers(block: str) -> List[str]:
+    """Markers of the rule lines of ``block``; a line that is not a rule line is skipped."""
+    return [m.group(1) for m in map(RULE_LINE.match, block.splitlines()) if m]
+
+
+def rule_line(block: str, marker: str) -> str:
+    """The rule line of ``block`` that carries ``marker``, empty when there is none."""
+    return next((line for line in block.splitlines() if line.startswith("- [PE:%s] " % marker)), "")
 
 
 def test_rules_start_with_the_marker_line():
-    assert RULES.read_text(encoding="utf-8").splitlines()[0] == "PE-RULES v1"
+    assert rules_text().splitlines()[0] == "PE-RULES v1"
+
+
+def test_rules_preamble_is_the_marker_the_title_and_one_sentence():
+    head = rules_text().split("\n## ", 1)[0]
+    assert [line for line in head.splitlines() if line.strip()] == [
+        "PE-RULES v1",
+        "# pragmatic-engineering: working rules",
+        RULES_PREAMBLE,
+    ]
 
 
 def test_rules_have_the_common_core_and_two_blocks():
-    assert list(sections(RULES.read_text(encoding="utf-8"))) == list(EXPECTED_RULE_MARKERS)
+    assert list(sections(rules_text())) == list(EXPECTED_RULE_MARKERS)
 
 
 def test_every_rule_line_carries_one_known_marker():
-    blocks = sections(RULES.read_text(encoding="utf-8"))
-    for block in blocks.values():
+    for title, block in sections(rules_text()).items():
         for line in block.splitlines():
-            if line.startswith("- "):
-                assert RULE_LINE.match(line), line
+            if line.strip():
+                assert RULE_LINE.match(line), "%s: %r" % (title, line)
 
 
 def test_each_rule_marker_is_in_its_block_once():
-    blocks = sections(RULES.read_text(encoding="utf-8"))
+    blocks = sections(rules_text())
     seen = []
     for title, expected in EXPECTED_RULE_MARKERS.items():
         markers = rule_markers(blocks[title])
@@ -134,23 +163,71 @@ def test_each_rule_marker_is_in_its_block_once():
     assert len(seen) == len(set(seen))
 
 
-@pytest.mark.parametrize("marker,block", sorted(MIGRATION_REQUIREMENTS.items()))
-def test_migration_requirements_sit_in_the_right_block(marker, block):
-    assert marker in rule_markers(sections(RULES.read_text(encoding="utf-8"))[block])
+@pytest.mark.parametrize(
+    "marker,block,phrase",
+    [(marker, block, phrase) for marker, (block, phrase) in sorted(MIGRATION_REQUIREMENTS.items())],
+)
+def test_migration_requirements_sit_in_the_right_block_and_say_it(marker, block, phrase):
+    line = rule_line(sections(rules_text())[block], marker)
+    assert line, "%s is not a rule of %s" % (marker, block)
+    assert phrase in line
 
 
 def test_rules_cite_only_existing_skills():
-    assert unknown_references(RULES.read_text(encoding="utf-8")) == []
+    text = rules_text()
+    assert unknown_references(text) == []
+    known = set(A1_SKILLS) | set(AGENTS) | {"superpowers:%s" % name for name in SUPERPOWERS_SKILLS}
+    assert [token for token in CITATION.findall(text) if token not in known] == []
 
 
 def test_rules_stay_short():
-    assert len(RULES.read_text(encoding="utf-8")) <= 6000
+    assert len(rules_text()) <= 6000
+
+
+def test_sections_rejects_a_repeated_heading():
+    with pytest.raises(ValueError):
+        sections("# Title\n\n## A\nx\n\n## A\ny\n")
+
+
+def test_sections_keeps_deeper_headings_and_fenced_text_in_their_block():
+    text = "# T\nlost\n## A\nx\n### deeper\n```\n## fenced\n```\n## B\ny\n"
+    assert sections(text) == {"A": "x\n### deeper\n```\n## fenced\n```", "B": "y"}
+
+
+def write_registry(home: Path, text: str) -> None:
+    registry = home / ".claude" / "plugins" / "installed_plugins.json"
+    registry.parent.mkdir(parents=True)
+    registry.write_text(text, encoding="utf-8")
+
+
+def test_installed_superpowers_reads_the_user_scope_entry(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    entries = [{"scope": "project", "installPath": "/project"}, {"scope": "user", "installPath": "/user"}]
+    write_registry(tmp_path, json.dumps({"plugins": {"superpowers@claude-plugins-official": entries}}))
+    assert installed_superpowers() == Path("/user")
+
+
+def test_installed_superpowers_is_none_without_a_registry(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert installed_superpowers() is None
+
+
+def test_installed_superpowers_fails_on_a_broken_registry(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_registry(tmp_path, '{"plugins": {"superpowers@claude-plugins')
+    with pytest.raises(ValueError):
+        installed_superpowers()
 
 
 def test_pinned_superpowers_names_match_the_installed_plugin():
     root = installed_superpowers()
     if root is None:
         pytest.skip("superpowers is not installed here; names pinned for %s" % SUPERPOWERS_TESTED_VERSION)
+    manifest = json.loads((root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    assert manifest["version"] == SUPERPOWERS_TESTED_VERSION, (
+        "superpowers is %s, citations were verified for %s: re-verify them, then bump"
+        % (manifest["version"], SUPERPOWERS_TESTED_VERSION)
+    )
     installed = {p.name for p in (root / "skills").iterdir() if (p / "SKILL.md").is_file()}
     assert installed == set(SUPERPOWERS_SKILLS), (
         "superpowers changed: check every citation, then update SUPERPOWERS_SKILLS and the version"
@@ -161,5 +238,17 @@ def test_reference_checker_catches_what_it_must():
     problems = unknown_references(
         "use `superpowers:writing-plan`, `writing-plans`, `blunt-reviews`, `speckit-foo` and `team-lead`"
     )
-    assert len(problems) == 5
+    assert problems == [
+        "superpowers:writing-plan does not exist",
+        "speckit-foo is not a spec-kit %s command" % SPECKIT_TESTED_VERSION,
+        "`writing-plans` must be written superpowers:writing-plans",
+        "`blunt-reviews` looks like a misspelt blunt-review",
+        "team-lead does not exist in this version",
+    ]
     assert unknown_references("use `superpowers:writing-plans`, `blunt-review` and `pre-push`") == []
+
+
+def test_reference_checker_flags_a_bare_superpowers_name():
+    assert unknown_references("use `brainstorming`") == [
+        "`brainstorming` must be written superpowers:brainstorming"
+    ]
