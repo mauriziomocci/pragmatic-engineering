@@ -343,20 +343,21 @@ CONTRACTS: Dict[str, Contract] = {
             "read with `date`, never estimated", "only as local commits", "hard stop", "real dates, never faked ones",
             "keep the machine awake", "Deletions outside the work's own folder",
             "`06-21` runs from 06:00 up to 20:59",  # the end hour is outside the window
-            # the re-creation: the user's own procedure first; otherwise a backup tag, one rebase that gives both dates
-            # of every commit, merges included, the time of the moment, and four checks before any push
+            # the re-creation: the user's own procedure first; otherwise the script, which refuses to start on
+            # published commits, tags the tip, rebases with the time of the moment and runs the four checks
             "Commits made outside the window and never pushed are re-created inside it with their real dates, never "
             "faked ones, before the branch is integrated; when the user's own rules name a re-creation procedure, that "
             "one applies.",
-            "Otherwise, with `<base>` the last commit already pushed, or the branch point when the branch was never "
-            "pushed, tag the tip with `git tag night-backup-<YYYYMMDD>` and run "
-            "`git rebase --force-rebase --ignore-date --rebase-merges <base>`, which gives both dates of every commit, "
-            "merges included, the time of the moment.",
-            "Before any push four checks pass: the tree is the one of the tag "
-            "(`git diff --quiet night-backup-<YYYYMMDD> HEAD`); `git rev-list --count` and `git log --format=%B` print "
-            "the same on `<base>..night-backup-<YYYYMMDD>` as on `<base>..HEAD`, so no commit and no message is lost; "
-            "and `git log --format='%ad %cd' --date=format-local:%H <base>..HEAD` prints only hours inside the "
-            "window, for both dates.",
+            "Otherwise run `python3 recreate_night_commits.py <base>` from this skill's folder, with `<base>` the last "
+            "commit already pushed, or the branch point of a branch never pushed.",
+            "It refuses to start outside the window, with uncommitted changes or on a commit already on a remote "
+            "branch; it tags the tip `night-backup-<YYYYMMDD-HHMMSS>`, runs "
+            "`git rebase --force-rebase --ignore-date --rebase-merges <base>` and checks in order that the tree is the "
+            "tag's, that the commits and their messages are unchanged, and that both dates of every commit fall "
+            "inside the window.",
+            "At the first failed check it exits non-zero and prints the way back without running it.",
+            "The dates of author and committer are checked again on the integrated branch before its push; once it is "
+            "pushed, delete the tag with `git tag -d`.",
             "When the user says in chat that they are working outside the window, interactive work goes on, and the "
             "traces in company systems still wait for the window, unless the user's own rules give an exception on "
             "request.",
@@ -364,7 +365,12 @@ CONTRACTS: Dict[str, Contract] = {
             "`development-workflow` says, and the authorisation with its hard stop is still needed: a chat autonomy "
             "that covers the night is one, a profile never is.",
         ),
-        absent=("--reset-author",),  # it replays a branch with merges as a straight line
+        extra_files=("recreate_night_commits.py",),
+        absent=(
+            "--reset-author",  # it replays a branch with merges as a straight line
+            "git tag night-backup-<YYYYMMDD>",  # the tag is named to the second and made by the script
+            "Before any push four checks pass",  # the script runs the checks
+        ),
     ),
     "quality-scoring": Contract(
         sections=(
