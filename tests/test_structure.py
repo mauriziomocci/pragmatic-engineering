@@ -106,7 +106,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "05e0405b178bb2b44dca599c067e02d00c06c73dbd34fc56ffe118daecef41dc"
+RULES_SHA256 = "acb34cdffe36d1ecd9f61c750d155fb1ce23688d49cdd01bcb837e388ca34c5d"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -116,7 +116,7 @@ MIGRATION_REQUIREMENTS = {
     "no-bug-left": ("Every agent", "closure statement"),
     "english-identifiers": ("Every agent", "in English"),
     "docs-same-commit": ("Every agent", "same commit"),
-    "heavy-gates": ("Main session", "explicit written approval"),
+    "heavy-gates": ("Main session", "explicit written approval", "an autonomy naming spec approval"),
     "suite-before-commit": ("Every agent", "zero failures"),
     "evidence": ("Every agent", "never taken as evidence"),
     "reuse": ("Every agent", "the reuse statement"),
@@ -124,7 +124,7 @@ MIGRATION_REQUIREMENTS = {
     "candour": ("Every agent", "proposals to validate"),
     "scope": ("Every agent", "no emoji anywhere", "no documentation file unless asked"),
     "taste-gates": ("Every agent", "about 40 lines"),
-    "api-contract": ("Every agent", "never changes shape"),
+    "api-contract": ("Every agent", "never changes shape", "or by a profile while no client uses it"),
     "isolated-sessions": ("Every agent", "stops only what it started"),
     "office-hours": (
         "Every agent", "git config --get pe.officeHours", "explicit authorisation in chat", "and never pushed",
@@ -134,7 +134,11 @@ MIGRATION_REQUIREMENTS = {
         "as a proposal to the user",
     ),
     "quality-gate": ("Main session", "at least 8/10", "integration or release", "each with its cost"),
-    "user-away": ("Main session", "wait for the user"),
+    "user-away": (
+        "Main session", "wait for the user", "git config --local --get pe.autonomy",
+        "unless the user's words or the profile narrow them", "deletions outside the worktree",
+        "in chat with a hard stop", "by profile only, a contract no client uses",
+    ),
     "budget": ("Main session", "15% of the weekly limit"),
 }
 RULE_LINE = re.compile(r"^- \[PE:([a-z-]+)\] (?!\[PE:)\S")
@@ -240,7 +244,10 @@ def test_rules_point_to_a_home_that_holds_them(marker, skill, home):
 
 def test_rules_stay_short():
     # Every session and every subagent reads the whole file: each added word is paid for in all of them.
-    assert len(rules_text()) <= 9500
+    # 9,500 until the autonomy of user-away came in; 9,650 since it was aligned with the rules the plugin
+    # carries, which open the autonomy unless the user's words narrow it and let deletions inside the worktree
+    # go on while the user is away.
+    assert len(rules_text()) <= 9650
 
 
 def test_sections_rejects_a_repeated_heading():
@@ -698,6 +705,14 @@ def test_office_hours_guide_gives_every_key_and_the_way_to_turn_it_off():
 def test_office_hours_guide_says_the_end_hour_is_outside_the_window():
     stated = ("`06-21` runs from 06:00 up to 20:59", "`06-21` va dalle 06:00 alle 20:59")
     assert [text for text, words in zip(pages("office-hours"), stated) if words not in text] == []
+
+
+def test_autonomy_guide_sets_the_key_in_one_repository_only():
+    """The model reads only the value local to the repository: a global one would open every repository."""
+    for text in pages("autonomy"):
+        assert "git config --local pe.autonomy spec,schema,design,contract" in text.splitlines()
+        assert "`git config --local --unset pe.autonomy`" in text
+    assert [text for text in pages() if "--global pe.autonomy" in text] == []
 
 
 def test_uninstall_says_the_calibration_log_goes_with_the_data_folder():

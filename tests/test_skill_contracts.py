@@ -52,6 +52,13 @@ CONTRACTS: Dict[str, Contract] = {
             "scenario table", "in a single pass", '"contract unchanged"', '"CONTRACT CHANGE"',
             "the tests of the touched area", "before the push", "proven with the real command it runs",
             "stops only what it started, by name",
+            "an autonomy profile that opens `contract`",
+            "until the API's first release or first client",
+            # independent work that needs its own context: one phrase, so the order is pinned too,
+            # and no claim that every host has the tools
+            "in this order: a new session through the desktop app's `start_session` tool, when the session has it; "
+            "otherwise a `spawn_task` chip the user opens with one click; otherwise a subagent in its own git worktree",
+            "not of the plugin, which cannot add them",
         ),
         absent=(
             "the suite that the project's configuration declares", "Dependencies point one way",
@@ -144,9 +151,18 @@ CONTRACTS: Dict[str, Contract] = {
             "Decision log", "found by a lens or later by people", "quality-scoring", "interface-quality",
             '"contract unchanged"', '"fix or defer?"', "transactions, security, permissions and migrations",
             "under 10-15 lines",
+            # the autonomy: who opens it, where it is read, what it opens and what never moves
+            "Gate 2 has one", "for a named piece of work or day with a hard stop",
+            "git config --local --get pe.autonomy", "a profile only the user sets",
+            "never from the global value or a versioned file", "a review cycle closed on `pass`",
+            "unless the user's words or the profile narrow them",
+            "by profile only, `contract`", "nothing else moves", "the user's answer in chat prevails",
         ),
         claude_md_sections=("Feature lane: phases and gates", "Instruction layers", "Rule cycle", "Shared files"),
-        absent=("phase-model-skill-mapping", "--no-ff", "Jira", "The project's suite before every commit"),
+        absent=(
+            "phase-model-skill-mapping", "--no-ff", "Jira", "The project's suite before every commit",
+            "Gate 2 has none",  # an autonomy that opens spec is its one exception
+        ),
     ),
     "spec-driven-layout": Contract(
         sections=(
@@ -182,9 +198,13 @@ CONTRACTS: Dict[str, Contract] = {
             "auto-merge",  # scheduling a merge is merging
             "git 2.38", "git rev-parse -q --verify MERGE_HEAD",
             "Outside the office hours of `safe-operations` the invocation does not push",
+            "the decision log entry of an autonomy that opens `spec`", "the gate of phase 2 has no other exception",
         ),
         user_only=True,
-        absent=("git-commit-assistant", "/opt/homebrew", "Autorizzazione", "carve-out", "such as 2.32"),
+        absent=(
+            "git-commit-assistant", "/opt/homebrew", "Autorizzazione", "carve-out", "such as 2.32",
+            "the gate of phase 2 has no exception",
+        ),
     ),
     "teach": Contract(
         sections=(
@@ -227,6 +247,7 @@ CONTRACTS: Dict[str, Contract] = {
             "`06-21` runs from 06:00 up to 20:59",  # the end hour is outside the window
             # one command re-creates every commit with both dates of the moment; a cherry-pick of the range keeps one
             '`git rebase --exec "git commit --amend --no-edit --reset-author" <base>`',
+            "An autonomy that opens `design`", "the authorisation with its hard stop is still needed",
         ),
     ),
     "quality-scoring": Contract(
@@ -252,6 +273,7 @@ CONTRACTS: Dict[str, Contract] = {
             # an accepted change must outlive a plugin update, and the log must show it
             "with its date and the reason", "never in the files of the plugin",
             "from the last place it is installed",
+            "nor the autonomy exception",  # a contract changed under the profile is no S1
         ),
     ),
     "interface-quality": Contract(
@@ -272,6 +294,7 @@ CONTRACTS: Dict[str, Contract] = {
             "answers or changes the proposal", "impact on code and architecture", "except a trivial text fix",
             "recognition over recall", "never their components inside the project's template",
             "choices among existing values", "assume the persona does not understand", "is a tracked task",
+            "or to the PM lens under an autonomy that opens `spec`",
         ),
     ),
     "documentation-quality": Contract(

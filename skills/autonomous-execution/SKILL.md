@@ -26,7 +26,7 @@ Always forbidden, with no bypass:
 
 Stop if one is missing.
 
-1. An approved spec with citable evidence: the user's statement in this session, or a dated approval marker inside the spec. Quote the source of the approval word for word in the opening report. No evidence means stop: the gate of phase 2 has no exception, and this skill executes a spec, it does not invent one.
+1. An approved spec with citable evidence: the user's statement in this session, a dated approval marker inside the spec, or the decision log entry of an autonomy that opens `spec` (`development-workflow`). Quote the source of the approval word for word in the opening report. No evidence means stop: the gate of phase 2 has no other exception, and this skill executes a spec, it does not invent one.
 2. Atomic tasks, each with a checkbox and the command that tests it.
 3. The work's branch exists, is checked out and is not a protected branch (`main`, `master`, `develop`, `release*`): the loop commits every task to it, with nobody present.
 4. The full suite has run before the first task. Green is a clean baseline. Failures that were already there are handled at once with the rule of the section on unrelated bugs, never discovered in the middle of a task.

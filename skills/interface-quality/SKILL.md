@@ -57,7 +57,7 @@ On every change to an interface or to an API, except a trivial text fix, one rou
 1. The UX lens proposes from the need of the person who uses the product. It runs as a subagent on Opus, briefed with this skill, the touched pages or routes and the person's task.
 2. The review lens (`blunt-review`) attacks on evidence, cost, the simpler alternative and the impact on code and architecture.
 3. The UX lens answers or changes the proposal.
-4. Then the decision: on the person's need the UX lens prevails, on correctness, evidence and the quality of the code the review lens prevails. A disagreement that survives goes to the user, and to the project's designer where there is one, with both positions.
+4. Then the decision: on the person's need the UX lens prevails, on correctness, evidence and the quality of the code the review lens prevails. A disagreement that survives goes to the user, or to the PM lens under an autonomy that opens `spec` (`development-workflow`), and to the project's designer where there is one, with both positions.
 
 Neither lens agrees by default. Each re-checks the other's claims on the screenshots, the measurements and the code before accepting them, and an agreement without an independent check is a finding. The UX lens scores clarity, aspect and accessibility with `quality-scoring`.
 
