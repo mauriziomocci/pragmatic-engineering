@@ -10,6 +10,7 @@ from typing import List, Tuple
 import pytest
 
 import privacy_check
+import session_start
 from support import (
     A1_SKILLS,
     AGENTS,
@@ -428,3 +429,77 @@ def test_continuity_note_keeps_its_mit_notice_with_both_holders():
     notice = (REPO_ROOT / "skills" / "continuity-note" / "LICENSE").read_text(encoding="utf-8")
     assert notice.startswith("MIT License")
     assert "Maurizio Mocci" in notice and "Matt Pocock" in notice
+
+
+README_IT = REPO_ROOT / "README.it.md"  # README (English) is defined by the Task 5 tests
+NOTICE = REPO_ROOT / "NOTICE"
+SECTION_ID = re.compile(r"^<!-- section: ([a-z0-9-]+) -->$")
+REQUIRED_SECTIONS = ("tutorial", "how-to", "install", "uninstall", "explanation", "limits", "reference")
+EXPLAINED_POINTS = (
+    "explain-lanes", "explain-gates", "explain-review", "explain-review-cycle",
+    "explain-rules-import", "explain-continuity", "explain-communication",
+)
+
+
+def section_ids(text: str):
+    lines = text.splitlines()
+    ids = []
+    for index, line in enumerate(lines):
+        match = SECTION_ID.match(line)
+        if match:
+            following = next((item for item in lines[index + 1:] if item.strip()), "")
+            assert following.startswith("#"), match.group(1)
+            ids.append(match.group(1))
+    return ids
+
+
+def marked_blocks(text: str):
+    """Text from each section marker to the next one."""
+    blocks = {}
+    current, lines = None, []
+    for line in text.splitlines():
+        match = SECTION_ID.match(line)
+        if match:
+            if current is not None:
+                blocks[current] = "\n".join(lines)
+            current, lines = match.group(1), []
+        elif current is not None:
+            lines.append(line)
+    if current is not None:
+        blocks[current] = "\n".join(lines)
+    return blocks
+
+
+def test_readmes_have_the_same_sections_in_the_same_order():
+    english = section_ids(README.read_text(encoding="utf-8"))
+    italian = section_ids(README_IT.read_text(encoding="utf-8"))
+    assert english == italian
+    assert set(REQUIRED_SECTIONS) <= set(english)
+
+
+def test_readmes_link_each_other_at_the_top():
+    assert "(README.it.md)" in "\n".join(README.read_text(encoding="utf-8").splitlines()[:5])
+    assert "(README.md)" in "\n".join(README_IT.read_text(encoding="utf-8").splitlines()[:5])
+
+
+def test_readmes_name_every_component_and_only_existing_ones():
+    names = list(A1_SKILLS) + list(AGENTS) + ["SessionStart"]
+    for path in (README, README_IT):
+        text = path.read_text(encoding="utf-8")
+        assert [name for name in names if name not in text] == [], path.name
+        assert unknown_references(text) == [], path.name
+        assert session_start.SAFETY_LINE in text, path.name
+
+
+def test_readmes_say_what_guarantees_each_explained_point():
+    for path, label in ((README, "**Guaranteed by:**"), (README_IT, "**Garantito da:**")):
+        blocks = marked_blocks(path.read_text(encoding="utf-8"))
+        explained = [name for name in blocks if name.startswith("explain-")]
+        assert explained == list(EXPLAINED_POINTS), path.name
+        assert [name for name in explained if blocks[name].count(label) != 1] == [], path.name
+
+
+def test_notice_credits_what_this_version_reuses():
+    text = NOTICE.read_text(encoding="utf-8")
+    for needed in ("superpowers", "Jesse Vincent", "MIT", "continuity-note", "Matt Pocock", "diataxis.fr"):
+        assert needed in text, needed
