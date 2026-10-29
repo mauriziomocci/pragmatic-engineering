@@ -72,6 +72,17 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         absent=("Delivering work", "Pythonic"),
     ),
+    "adversarial-review-panel": Contract(
+        sections=(
+            "What this is for", "When to run it (and when not to)", "The four lenses",
+            "Cross-examination (one pass, after the lenses)", "Resolving conflicts: precedence, not a judge",
+            "Output shape (mandatory)", "After the decision: the review cycle", "Common failure modes",
+        ),
+        phrases=(
+            "THE DECISION:", "Missed by all:", "no objection", "blunt-review",
+            "delete > do nothing > extend what exists > write new", "what breaks if we delete this?",
+        ),
+    ),
 }
 
 
