@@ -47,7 +47,7 @@ End with exactly these five lines:
     VERDICT: pass | changes
     FINDINGS: <n> (<b> blocking; <lens> S1=<a> S2=<c> S3=<d>; ...)
     COVERAGE: full | partial
-    REPORT: <path of the report>
+    REPORT: <path of the report> | inline | none
     THE THING: <the single fix that matters most, or none>
 
 `changes` means at least one blocking finding, as `blunt-review` defines it. `<n>` counts every finding, notes below S3 included, and `<b>` the blocking ones. Then comes one group for every lens of the perimeter that you score (`code`, `legacy`, `architecture`, `api`, `docs`), zeros included, with its counts of S1, S2 and S3: the main session computes the scores from this line with `quality-scoring`, without a judgment of its own.

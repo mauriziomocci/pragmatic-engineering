@@ -82,8 +82,9 @@ Open limits, declared and pinned in OPEN_FORMS of tests/test_dev_guard.py:
 - the removal of the guard's own registration from .claude/settings.local.json:
   neither a write of the file without the hook entry nor a shell command that
   drops it (``sed -i '/dev_guard/d' .claude/settings.local.json``) is blocked,
-  because only a settings file that switches every hook off is looked for (the
-  write is pinned by its own test, next to OPEN_FORMS).
+  because only the setting that switches every hook off is looked for, in a
+  settings file or in a command (the write is pinned by its own test, next to
+  OPEN_FORMS).
 """
 import json
 import os
