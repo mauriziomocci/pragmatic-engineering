@@ -4,7 +4,15 @@ from typing import Dict, Tuple
 
 import pytest
 
-from support import A1_SKILLS, REPO_ROOT, parse_frontmatter, sections, unknown_references, yaml_plain_safe
+from support import (
+    A1_SKILLS,
+    REPO_ROOT,
+    SUPERPOWERS_SKILLS,
+    parse_frontmatter,
+    sections,
+    unknown_references,
+    yaml_plain_safe,
+)
 
 SKILLS_DIR = REPO_ROOT / "skills"
 MAX_LINES = 500
@@ -82,6 +90,24 @@ CONTRACTS: Dict[str, Contract] = {
             "THE DECISION:", "Missed by all:", "no objection", "blunt-review",
             "delete > do nothing > extend what exists > write new", "what breaks if we delete this?",
         ),
+    ),
+    "development-workflow": Contract(
+        sections=(
+            "The three lanes", "Feature lane: phases and gates", "One chain per feature",
+            "Superpowers skills by phase", "Three-step design", "Tasks, models and escalation",
+            "Instruction layers", "Rule cycle", "Shared files", "Phase 6 and the merge request",
+            "Closure", "Continuity",
+        ),
+        phrases=tuple("superpowers:" + name for name in sorted(SUPERPOWERS_SKILLS)) + (
+            "speckit-specify", "speckit-clarify", "speckit-plan", "speckit-tasks", "speckit-implement",
+            "spec-kit 0.8.9", "docs/superpowers/specs/", "specs/NNN-slug/", "is it clear?",
+            "Opus", "Sonnet", "Haiku", "tracer bullet", "spike", "work log", "merge-base",
+            "blunt-reviewer", "semver", "safe-operations",
+            "evidence-based-investigation", "spec-driven-layout", "continuity-note", "teach",
+            "autonomous-execution", "blunt-review", "adversarial-review-panel",
+        ),
+        claude_md_sections=("Feature lane: phases and gates", "Instruction layers", "Rule cycle", "Shared files"),
+        absent=("phase-model-skill-mapping", "--no-ff", "Jira"),
     ),
 }
 
