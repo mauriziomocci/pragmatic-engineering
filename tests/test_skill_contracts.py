@@ -159,6 +159,16 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         extra_files=("LICENSE",),
     ),
+    "safe-operations": Contract(
+        sections=(
+            "When to use", "Before", "Production and shared systems", "Long operations", "After",
+            "Effects on third parties", "What stays with the user",
+        ),
+        phrases=(
+            "active target", "dry run", "blast radius", "way back", "explicit go", "every level",
+            "not a responding service", "whoever owns", "development-workflow",
+        ),
+    ),
 }
 
 
@@ -240,3 +250,12 @@ def test_extra_files(name):
 
 def test_contract_names_are_a1_skills():
     assert set(CONTRACTS) <= set(A1_SKILLS)
+
+
+def test_every_a1_skill_has_a_contract():
+    assert set(CONTRACTS) == set(A1_SKILLS)
+
+
+def test_no_skill_directory_outside_the_list():
+    present = {p.name for p in SKILLS_DIR.iterdir() if p.is_dir()}
+    assert present == set(A1_SKILLS)
