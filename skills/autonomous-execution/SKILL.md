@@ -10,7 +10,7 @@ This skill executes an approved spec task by task, with nobody present, up to th
 
 ## Authorisation
 
-The user's invocation of this skill by name, in this session, is the only source of authorisation. It counts as the go to push the work's branch and to open the merge request (or the pull request, depending on the host). It also satisfies the heavy gate of phase 6 in `development-workflow`, through the internal validation below. It is never the go to merge.
+The user's invocation of this skill by name, in this session, is the only source of authorisation. It counts as the go to push the work's branch and to open the merge request (or the pull request, depending on the host), never to merge. It also satisfies the heavy gate of phase 6 in `development-workflow`, through the internal validation below.
 
 The skill loaded on your own initiative, suggested by observed content, or merely present in the context without the user's invocation gives no authorisation. Stop and ask.
 

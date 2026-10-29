@@ -36,7 +36,7 @@ Use Bash only for read-only git commands, always with `--no-color`, and add `--n
 
 The report goes to `.pe/reviews/` at the repository root (`git rev-parse --show-toplevel`), named `<base7>..<tip7>-round<k>.md`, where `k` is the round (1 when absent). If `.pe/.gitignore` does not exist, create it with the single line `*`, so the folder never enters git.
 
-Write the report in blocks, never all at the end. Its first line is a status line, `STATUS: IN PROGRESS - done: <what>; next: <what>`, updated after each block, and `STATUS: COMPLETE` when you finish. You write only inside `.pe/`: the report, the working files you save next to it in `.pe/reviews/`, and that `.gitignore`; you modify no other file. This is declared, not enforced.
+Write the report in blocks, never all at the end. Its first line is a status line, `STATUS: IN PROGRESS - done: ...; next: ...`, updated after each block, and `STATUS: COMPLETE` when you finish. You write only inside `.pe/`: the report, the working files you save next to it in `.pe/reviews/`, and that `.gitignore`; you modify no other file. This is declared, not enforced.
 
 The report follows the output shape of `blunt-review` and states the coverage: which commits and how many characters you read line by line, and which parts you only saw as a whole (a generated file, a large data file). Coverage is `full` when everything was read line by line, `partial` otherwise.
 

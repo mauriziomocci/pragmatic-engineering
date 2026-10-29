@@ -139,6 +139,6 @@ The progress note is the short form of the continuity note: the state on a few l
 
 Every task given to a sub-agent names its deliverable file. The file is written in blocks, never all at the end, and carries at the top the line:
 
-`STATUS: IN PROGRESS - done: <...>; next: <...>`
+`STATUS: IN PROGRESS - done: ...; next: ...`
 
 The line is updated after every block, and the last block replaces it with `STATUS: COMPLETE`. If the sub-agent is cut off, the file says how far it got and what remains. Large files are read in bounded chunks, never whole. A short sub-agent with no deliverable file, such as one that only makes a commit, keeps none.

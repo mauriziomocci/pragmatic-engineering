@@ -1,4 +1,5 @@
 """Contract of every A1 skill: frontmatter, required sections and phrases, size, references."""
+import re
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
@@ -19,6 +20,9 @@ MAX_LINES = 500
 MAX_CHARS = 18000  # after a compaction only the first 5,000 tokens of a skill are re-attached
 MAX_DESCRIPTION = 1024
 FORBIDDEN = ("Jira", "HackSoftware", "Two Scoops", "PostgreSQL", "Django", "select_related", "Co-Authored-By")
+# The three files that tell a sub-agent how to open its deliverable file; rules.md is pinned by digest.
+STATUS_LINE_FILES = ("rules.md", "agents/blunt-reviewer.md", "skills/continuity-note/SKILL.md")
+STATUS_LINE = re.compile(r"`(STATUS: IN PROGRESS - done:[^`]*)`")
 
 
 @dataclass(frozen=True)
@@ -168,7 +172,9 @@ CONTRACTS: Dict[str, Contract] = {
             "is it clear?", "The problem", "The path through the code", "Choices and discarded alternatives",
             "A concrete case", "Limits", "How to check it yourself", "continuity-note", "file::function",
             "no quiz",
+            "accepted that cost",  # the weak check is a trade-off the user chose, declared, not a gap
         ),
+        absent=("whenever it is relevant",),  # an instruction with no trigger
     ),
     "continuity-note": Contract(
         sections=(
@@ -220,7 +226,8 @@ def test_required_sections_in_order(name):
 
 @pytest.mark.parametrize("name", sorted(CONTRACTS))
 def test_required_phrases(name):
-    text = skill_text(name)
+    # The body only: the description promises, and a promise in the description must not shield a missing rule.
+    _, text = parse_frontmatter(skill_text(name))
     missing = [phrase for phrase in CONTRACTS[name].phrases if phrase not in text]
     assert missing == []
 
@@ -273,8 +280,13 @@ def test_extra_files(name):
         assert (SKILLS_DIR / name / extra).is_file(), extra
 
 
-def test_contract_names_are_a1_skills():
-    assert set(CONTRACTS) <= set(A1_SKILLS)
+def test_status_line_has_one_spelling():
+    spelled = {
+        name: set(STATUS_LINE.findall((REPO_ROOT / name).read_text(encoding="utf-8")))
+        for name in STATUS_LINE_FILES
+    }
+    assert all(spelled.values()), spelled
+    assert len(set.union(*spelled.values())) == 1, spelled
 
 
 def test_every_a1_skill_has_a_contract():

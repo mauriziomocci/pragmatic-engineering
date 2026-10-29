@@ -67,4 +67,4 @@ When a session resumes, show the state on one screen, taken from the continuity 
 - There is no quiz, and no verification question of any kind.
 - The user is never asked to explain something back in their own words as a condition for going on.
 - There is no exam, and no step of the work waits for proof that the user understood.
-- "is it clear?" does not prove understanding. It is an invitation the user may take or leave, and this skill says so plainly whenever it is relevant.
+- "is it clear?" does not prove understanding. The user chose it over a verification gate and accepted that cost: it is a declared limit, not a gap to close with a check.

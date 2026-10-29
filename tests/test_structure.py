@@ -429,6 +429,9 @@ def test_continuity_note_keeps_its_mit_notice_with_both_holders():
     notice = (REPO_ROOT / "skills" / "continuity-note" / "LICENSE").read_text(encoding="utf-8")
     assert notice.startswith("MIT License")
     assert "Maurizio Mocci" in notice and "Matt Pocock" in notice
+    # MIT's one condition is that the permission notice travels with every copy: from the grant to the end.
+    root = (REPO_ROOT / "LICENSE").read_text(encoding="utf-8")
+    assert notice[notice.index("Permission is hereby"):] == root[root.index("Permission is hereby"):]
 
 
 README_IT = REPO_ROOT / "README.it.md"  # README (English) is defined by the Task 5 tests
