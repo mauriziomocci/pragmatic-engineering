@@ -126,8 +126,11 @@ CONTRACTS: Dict[str, Contract] = {
             # the stop of the cycle defers to the project's own criterion, and nobody waits for an absent user
             "If round 2 also ends with `changes`, there is no third round, unless the project has its own audit "
             "criterion, which then says when the cycle stops.",
+            "An audit criterion is a stop rule written in the project's own instructions or configuration, never "
+            "inferred from any other document.",
             "The open blocking findings go up one level with the recommendation of whoever carries them, and the "
-            "coordinator takes them to the user or, during an autonomy, to the PM lens, which decides on them.",
+            "coordinator takes them to the user or, during an autonomy, to the PM lens, which may only defer or park "
+            "them, because the gate of `spec` stays closed while one is open.",
         ),
         absent=(
             "Delivering work", "Pythonic",
@@ -135,6 +138,7 @@ CONTRACTS: Dict[str, Contract] = {
             "a dependency that duplicates",  # not in the rule it summarises
             "in doubt it is blocking",  # one scale: the classes of quality-scoring decide
             "and the decision belongs to the user",  # the stop above names who decides
+            "to the PM lens, which decides on them",  # it may only defer or park: the gate of spec stays closed
         ),
     ),
     "adversarial-review-panel": Contract(
@@ -192,8 +196,13 @@ CONTRACTS: Dict[str, Contract] = {
             # where the user's own rules or configuration say more, the plugin defers
             "It also opens any further opening the user's own rules define, such as publishing, though the plugin "
             "itself defines none, and the user's answer in chat prevails.",
-            "When the project has its own audit criterion, that criterion closes the review cycle of `spec` instead "
-            "of `pass`, and at the cap of rounds the PM lens decides on what is still open, as `blunt-review` says.",
+            "When the project has its own audit criterion, a stop rule written in its own instructions or "
+            "configuration and never inferred from any other document, that criterion closes the review cycle of "
+            "`spec` instead of `pass`.",
+            # the gate stays closed at the cap: the PM lens parks, it does not approve
+            "The gate of `spec` stays closed while a critical or serious finding is open: at the cap of rounds the PM "
+            "lens may only defer or park the open findings, which go to the decision log and to the user, and the "
+            "partial closure of `autonomous-execution` prevails when that skill runs.",
             "When the user's configuration names its own agents for these lenses, those agents run them.",
             "One entry per decision, in the log the user's or the project's configuration names, otherwise in the "
             "progress note: who decided, the positions, the costs and the state (confirmed, overturned, pending).",
@@ -209,6 +218,7 @@ CONTRACTS: Dict[str, Contract] = {
         absent=(
             "phase-model-skill-mapping", "--no-ff", "Jira", "The project's suite before every commit",
             "Gate 2 has none",  # an autonomy that opens spec is its one exception
+            "the PM lens decides on what is still open",  # at the cap it may only defer or park
             "`publish`",  # publishing is not an opening of the plugin, a declared difference from the master
             "nothing else moves", "spec-kit on request",  # the user's own openings and adoption of spec-kit count
         ),
@@ -444,8 +454,8 @@ CONTRACTS: Dict[str, Contract] = {
             "Check the answer against the format of its key. On a wrong one, say why and ask again.",
             "Show the exact command, with `--global` for a global key even when step 1 found its value in another "
             "file.",
-            "For `pe.autonomy` use `--local` inside the repository the user names, and read it back with "
-            "`git config --local --get pe.autonomy`.",
+            "For `pe.autonomy` use `git -C <repository> config --local pe.autonomy <value>` for the repository the "
+            "user names, and read it back with `git -C <repository> config --local --get pe.autonomy`.",
             "Run each command only after the user's explicit yes to that command, then read the value back with the "
             "command of step 1.",
             "Set `pe.autonomy` only when the user asked for it in chat, never on your own initiative and never "

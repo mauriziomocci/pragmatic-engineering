@@ -787,11 +787,13 @@ GUIDED_SENTENCES = {
         ("and the safety line, a long line that starts with",
          "e la riga di rete di sicurezza, una riga lunga che comincia con"),
         ("Silence alone does not show that the hook ran; to check, run `ls -l` on the path that follows the `@` in "
-         "your import line: it lists `rules.md`, which the hook copies there, and an error that the file is missing "
-         "means the hook has not run.",
+         "your import line: it lists `rules.md`, which shows only that the hook copied it at least once (at step 2), "
+         "not that it ran at this start, and an error that the file is missing means the hook has not run. Step 5 is "
+         "the check that the rules arrive.",
          "Il solo silenzio non mostra che l'hook sia girato; per controllare, esegui `ls -l` sul percorso che segue "
-         "la `@` nella tua riga di import: elenca `rules.md`, che l'hook copia lì, e un errore di file mancante "
-         "significa che l'hook non è girato."),
+         "la `@` nella tua riga di import: elenca `rules.md`, il che mostra solo che l'hook l'ha copiato almeno una "
+         "volta (al passo 2), non che sia girato a questo avvio, e un errore di file mancante significa che l'hook "
+         "non è girato. Il controllo che le regole arrivano è il passo 5."),
         ("(for the autonomy profile you choose the openings, and it proposes none)",
          "(per il profilo di autonomia scegli tu le aperture, e non ne propone nessuna)"),
         ("Before it changes anything it shows you the exact `git config` command and waits for your yes, then reads "
