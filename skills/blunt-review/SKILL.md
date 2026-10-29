@@ -63,7 +63,7 @@ After the defects, name the pattern that generates them. "Three defects, all thr
 
 The default answer to "should we add this?" is no, whether the thing is a function, a layer, a parameter, a dependency, a tool, an option or an abstraction. Whoever adds it proves the need. The order of preference is fixed: delete existing code > do nothing > extend something that already exists > write something new. The last is allowed only after the first three are ruled out, and the author says so.
 
-Signs that the burden is not met are the ones in the taste lens, plus a configuration nobody sets, a dependency that duplicates what the project already has, and a feature for a future nobody asked for. The question that settles it is what breaks if it is deleted. If nothing breaks, the finding is to delete it. The same holds in design: every component of a spec earns its place.
+Signs that the burden is not met are the ones in the taste lens, plus a configuration nobody sets and a feature for a future nobody asked for. The question that settles it is what breaks if it is deleted. If nothing breaks, the finding is to delete it. The same holds in design: every component of a spec earns its place.
 
 The exception is explicit. Code that makes a property hold (tests, guards, input validation, error handling) is not accumulation, and "less code" is never an argument to skip a test, drop a guard or swallow an error. This is not fanaticism: the target is fewer moving parts, not fewer characters. Deleting error handling, replacing a clear name with a cryptic one, or inlining until nothing reads makes code shorter and worse.
 
@@ -79,7 +79,7 @@ Before a commit is proposed, review the change on these eight points, whatever t
 4. Consistency with the code base: types, naming and patterns.
 5. Scalability: no data access that grows with the data without a bound. The repeated query inside a loop is the best-known case; the same holds for any unbounded fetch, recursion or serialisation.
 6. Security: no unexpected side effect, no data exposure, every input validated at the boundary.
-7. Comments and docstrings say why, never what.
+7. Docstrings are complete and say why, never what; comments follow the same rule.
 8. Documentation in sync: every document the change affects is updated in the same commit.
 
 ## Lenses by kind of work
@@ -135,7 +135,7 @@ The split is deliberate. The diagnosis is internal and gets the full review: is 
 
 A finding is blocking when it describes a scenario that fails, a security or privacy problem, a missing or tautological test on a behaviour that changed, an invariant or a document contradicted by the code, or an operation with no way back; in doubt it is blocking.
 
-The verdict is `changes` only when there is at least one blocking finding. Findings that are not blocking go into the commit of the fixes when there is one, otherwise into the merge request description together with the decision taken. A review whose coverage is `partial` is split into smaller parts, or the user accepts it.
+The verdict is `changes` only when there is at least one blocking finding. Findings that are not blocking go into the commit of the fixes when there is one, otherwise into the merge request description together with the decision taken. A review whose coverage is `partial` is split into smaller parts, or the user accepts it; with `REPORT: none` nothing was reviewed because the range was invalid, and the remedy is a correct range.
 
 ## Independent review with blunt-reviewer
 
@@ -145,9 +145,9 @@ The verdict is `changes` only when there is at least one blocking finding. Findi
 
 The cycle starts after an independent check (the panel, `blunt-reviewer` on a branch, or `blunt-reviewer` on a delivery) and after the fixes of its findings. The corrected result is committed before every round, because the reviewer receives a git range.
 
-**Round 1.** A `blunt-reviewer` with fresh context, one that wrote neither the work nor the fixes, rereads the corrected result: a document in full through `full=`, code through its fixes with the whole range of the work available for context. On `pass` the cycle ends.
+**Round 1.** A `blunt-reviewer` with fresh context, one that wrote neither the work nor the fixes, rereads the corrected result: a document in full through `full=`; code through the range of the fixes, `<tip before the fixes>..<tip after the fixes>`, with the rest of the branch readable through read-only git for context. On `pass` the cycle ends.
 
-**Round 2.** On `changes`, the blocking findings are fixed and another fresh reviewer rereads only the latest fixes, with `round=2`. On `pass` the cycle ends.
+**Round 2.** On `changes`, the blocking findings are fixed and another fresh reviewer rereads the range of the latest fixes, with `round=2`. On `pass` the cycle ends.
 
 **Stop.** If round 2 also ends with `changes`, there is no third round. The open blocking findings go up one level with the recommendation of whoever carries them, and the coordinator takes them to the user. The cycle continues only on `changes`.
 

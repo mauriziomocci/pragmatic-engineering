@@ -80,11 +80,11 @@ The four categories stay visible in the answer. Verified statements stand as the
 
 Write the final answer (the pull request description, the customer email, the ticket comment, the design note, the postmortem), then reread it with three questions. For every sentence that asserts something: is it verified or inferred? For every sentence that implies certainty: is there evidence you could show if challenged? For every conclusion: would a pedantic, adversarial reader find a hole? Revise, and repeat. Do not send the first draft when the second would have been more honest.
 
-One customer answer needed three revisions, each triggered by "are you sure?". The first removed an assumption about which column of a report the customer had read. The second removed a claim about where the money was and kept only what the gateway reported. The third replaced a vague "in the following days" with the exact date and the report needed to confirm it. Ask yourself that question before sending.
+One customer answer needed three revisions, each triggered by "are you sure?". The first removed an assumption about which column of a report the customer had read. The second removed a claim about where the money was and kept only what the gateway reported. The third replaced a vague "in the following days" with the cutoff date and the name of the report that would give the exact one. Ask yourself that question before sending.
 
 ### Pass 7: extract what is reusable
 
-The investigation cost time, so keep the lesson. It becomes a knowledge-base entry when the pattern is likely to repeat, a tool when the manual sequence is likely to be run again, a regression test when the bug can be pinned, or a proposed rule for the right layer, following the rules cycle of `development-workflow`. Always cite the incident that produced the lesson, so that a future reader can judge whether it still applies.
+The investigation cost time, so keep the lesson. It becomes a knowledge-base entry when the pattern is likely to repeat, a tool when the manual sequence is likely to be run again, a regression test when the bug can be pinned, or a proposed rule for the right layer, following the rule cycle of `development-workflow`. Always cite the incident that produced the lesson, so that a future reader can judge whether it still applies.
 
 Each pass is cheap. Skipping passes feels like saving time and produces a wrong answer that costs a multiple of that time to undo. Match the depth of the investigation to the consequence of being wrong.
 
@@ -99,7 +99,7 @@ When a defect is found, never stop at the first problem. These are four steps of
 
 ## Scoping techniques for fixes and data corrections
 
-Four techniques sharpen the passes above when the investigation ends in a correction of code or data.
+When the investigation ends in a correction of code or data, apply all four techniques.
 
 1. **Enumerate every writer of the state before designing the fix.** Before correcting or migrating a field, list every place in the code that writes it (search for the assignments, not only the obvious one you started from) and classify each path: does it produce the corrupted value or a legitimate one? The population to correct is defined by this classification, not by the first path found. A field written by three code paths, only one of which corrupted it, is the typical case.
 2. **Use the discriminator the system already encodes.** To separate the affected records from the unaffected ones, look for a distinction the code base already makes (a field, an invariant stated in a docstring, a status) before inventing a filter. If the documentation of a property says that a value set while an owner reference is empty means "created automatically", that sentence is the exact filter.

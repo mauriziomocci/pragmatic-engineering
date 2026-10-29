@@ -60,9 +60,14 @@ CONTRACTS: Dict[str, Contract] = {
             "This fix resolves",
             "It does NOT resolve",
             "own recent changes",
-            "Verified", "Inferred", "Assumed", "Unverifiable",
+            "**Verified**:", "**Inferred**:", "**Assumed**:", "**Unverifiable**:",  # the four bullets of Pass 5
+            "apply all four techniques",
+            "the name of the report that would give the exact one",
         ),
-        absent=("iterative-requirements-analysis", "financial-reconciliation", "smonta", "combacia", "Origine"),
+        absent=(
+            "iterative-requirements-analysis", "financial-reconciliation", "smonta", "combacia", "Origine",
+            "rules cycle",  # the section is called "Rule cycle"
+        ),
     ),
     "blunt-review": Contract(
         sections=(
@@ -77,8 +82,14 @@ CONTRACTS: Dict[str, Contract] = {
             "what breaks if it is deleted", "in doubt it is blocking", "blunt-reviewer", "round=2", "full=",
             "Round 1", "Round 2", "superpowers:receiving-code-review", "adversarial-review-panel",
             "mcp-code-review",
+            "<tip before the fixes>..<tip after the fixes>", "the range of the latest fixes",  # what each round gets
+            "REPORT: none", "Docstrings are complete",
         ),
-        absent=("Delivering work", "Pythonic"),
+        absent=(
+            "Delivering work", "Pythonic",
+            "whole range",  # round 1 is the range of the fixes, not of the work
+            "a dependency that duplicates",  # not in the rule it summarises
+        ),
     ),
     "adversarial-review-panel": Contract(
         sections=(
