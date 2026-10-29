@@ -192,6 +192,14 @@ def test_rules_cite_only_existing_skills():
     assert [token for token in CITATION.findall(text) if token not in known] == []
 
 
+def test_commit_and_push_test_scopes_agree_across_files():
+    """One rule in three places: the tests of the touched area before every commit, the whole suite before the push."""
+    rule = rule_line(sections(rules_text())["Every agent"], "suite-before-commit")
+    for text in (rule, skill_text("engineering-principles")):
+        assert "the tests of the touched area" in text and "before the push" in text
+    assert "The tests of the touched area before every commit" in skill_text("development-workflow")
+
+
 def test_rules_stay_short():
     # Every session and every subagent reads the whole file: 9,044 characters since the method rules came in.
     assert len(rules_text()) <= 9500

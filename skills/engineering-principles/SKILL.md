@@ -1,6 +1,6 @@
 ---
 name: engineering-principles
-description: Use when understanding a requirement, proposing an approach, or writing or changing code or documentation. Understand before implementing, reuse before building, design and placement principles, scalability and cost, test discipline on top of superpowers:test-driven-development, no bug left behind, secure coding, secrets hygiene and writing rules.
+description: Use when understanding a requirement, proposing an approach, or writing or changing code or documentation. Understand before implementing, reuse before building, design and placement principles with the bar of the architecture, delivered API contracts and the client's scenarios, scalability and cost, test discipline on top of superpowers:test-driven-development with isolated sessions, no bug left behind, secure coding, secrets hygiene and writing rules.
 ---
 
 # engineering-principles
@@ -29,13 +29,33 @@ One source holds for knowledge as well as for code: documentation, configuration
 
 ## Design
 
-Give every module one responsibility and separate the concerns: what changes for different reasons lives in different places. Aim for high cohesion inside a module and low coupling between modules. A module hides its decisions behind a small public surface, and others use that surface and nothing behind it. Dependencies point one way, from the consumer toward the domain, never the reverse: a batch job does not depend on a presentation module.
+Give every module one responsibility and separate the concerns: what changes for different reasons lives in different places. Aim for high cohesion inside a module and low coupling between modules. A module hides its decisions behind a small public surface, and others use that surface and nothing behind it.
 
 Judge every choice by one question: is the result easy to change? Anticipate a change only when it is named and probable, and then isolate its impact behind a stable interface. Values that differ between environments live in configuration. Generality built for hypothetical futures is a defect, not a virtue.
 
 State contracts explicitly: preconditions, postconditions and invariants. Check them in the code, and stop immediately in front of an impossible state instead of carrying on with it.
 
-Before creating a model, module, service or any significant component, decide where it belongs; never default to the module you happen to be in. Follow the better existing precedent, and never copy an anti-pattern for the sake of consistency. State the decision in this form: "[component] goes in [location] because [single responsibility, cohesion, direction of dependencies]. Alternatives [X, Y] rejected because [...]. [consumer] uses [domain], not the reverse." When the placement changes module boundaries, such as a new module or a moved model, take it to the user before writing anything. Only a field or a trivial helper with an obvious home skips this.
+Before creating a model, module, service or any significant component, decide where it belongs; never default to the module you happen to be in. Follow the better existing precedent, and never copy an anti-pattern for the sake of consistency. State the decision in this form: "[component] goes in [location] because [single responsibility, cohesion, direction of dependencies]. Alternatives [X, Y] rejected because [...]. [consumer] uses [domain], not the reverse." When the placement is not trivial, or changes module boundaries such as a new module or a moved model, take it to the user before writing anything. Only a field or a trivial helper with an obvious home skips this.
+
+The bar of the architecture holds for every structure: few parts, clear owners, dependencies pointing one way.
+
+- One direction, with no cycles: the common core, then the domain modules, then presentation, interfaces and commands. No domain module imports from presentation, and no batch job depends on an interface.
+- One owner for each concept: each model, rule and invariant has one home module; the others read through its query functions and write through its services.
+- Thin edges, deep core: no business rule and no data query in views, templates, serializers or commands.
+- Invariants in the data: database constraints, or the single service that writes the data, never a view, a template or a docstring.
+- A change stays local: a plan that touches more than three modules, or one change that forces edits in many, justifies the coupling, or the design is wrong.
+- What is expensive to reverse (a schema, module boundaries, a public interface, a new dependency) goes through `adversarial-review-panel` first, with a short decision record: the alternatives rejected and the way back.
+- In a project with a CI, an import-contract check (layers, forbidden imports, no cycles) fails the pipeline, and so does a test that no view or template queries the data layer.
+
+## Delivered API contracts
+
+A contract is delivered once it is merged, running in an environment, or documented to the developers of a client. A delivered contract never changes shape. The server may change which data it returns, never the shape: no field renamed, removed or added in a response, no new enum value, no new error code, no new status for a request that succeeds today, no new mandatory parameter, no route added or renamed. A new rule is expressed with the fields, values and error codes that already exist, and the server stays tolerant of what clients already send.
+
+A change that seems necessary is announced on a separate line at the top of the message, never inside a list: the route, the field, the value or the status that would change, why, who is affected, and the alternatives that change nothing. It is made only with the user's go given after that notice, never implied by a wider approval and never decided while the user is away. A gross error in the contract itself follows the same path.
+
+Before a spec that touches an API a client uses, write the scenario table from the client's real code and screens: for each scenario, the exact calls the client makes (method, path, body and order, with the client's `file:line`) and the answer the server must give (the status and the fields that decide). The spec is written against the table, the live HTTP checks replay it row by row, and every question on the contract that it raises goes to the user in a single pass, never one at a time. Without the client's code, say so and ask for it before the spec.
+
+Every spec and every brief that touches an API states "contract unchanged", or "CONTRACT CHANGE" with the user's permission quoted, and a test compares the shape of the API schema with the delivered one.
 
 ## Scalability and cost
 
@@ -48,7 +68,8 @@ The red-green cycle is the one of `superpowers:test-driven-development`: write t
 - Break the work into atomic tasks first, each one concrete and each with a checkbox: not "implement feature X" but "create file X with class Y containing method Z that does W, with tests T1-T3". Run them one at a time, in order, without batching or skipping ahead. Only genuinely trivial work, such as a typo, a mechanical rename, an obvious configuration value or a documentation change, skips the test-first rule, and it must be obviously trivial.
 - A test that cannot fail is not a test: no tautologies, and no assertion that only checks the mock the test set up. Cover the boundaries and the edge cases, and assert the exact expected value, not merely that something came back.
 - Where the code has invariants, add property-based tests: state the invariant (sorting twice gives what sorting once gives) and let a generator search for the input that breaks it.
-- Before every commit, run the suite that the project's configuration declares, with zero failures, and in the same environment as the CI when the project has one. A red found after the push has cost the whole team.
+- Before every commit, run the tests of the touched area, with zero failures; the module's suite once for each block of work; and the whole suite once on the integrated branch, with the pipeline's pre-checks, before the push, in the same environment as the CI when the project has one, so the CI never runs a known red. A step of the CI is proven with the real command it runs. A red found after the push has cost the whole team.
+- Isolated sessions: each session or subagent has its own preview host (such as `<name>.localhost`, because cookies belong to a host), database, cache index, ports and test user, which the project's configuration provides. It stops only what it started, by name, never with a blanket stop of every container, a whole compose project or a kill by pattern. A brief to a session that starts servers, tests or previews names its resources.
 - Tests use the same database engine as production.
 - No test is skipped without a traceable reason (an issue or a TODO with a reference), and no expected-failure marker is used to hide a red.
 
@@ -85,6 +106,7 @@ A secret (a key, token, password or certificate) never goes into a versioned fil
 - Documentation is divided by type following Diataxis (https://diataxis.fr): tutorials, how-to guides, reference and explanation, one type per page. One exception is declared, the entry page: the README, which for someone arriving lines up the first session, the guides, the explanation and the reference, each in its own section. This skill carries no text of the framework.
 - The answer to a technical FAQ starts from the fact, then names the entities involved, gives the path in the form `file::function`, adds one concrete case and points to the source.
 - For the documentation of an external library, use Context7 when it is installed, instead of memory.
+- A project whose interface people use every day keeps a manual for them, not for the system administrators: a tutorial for the first journey and a how-to for each task, with screenshots generated by a script from demonstration data, and its text written once, the other formats generated from it.
 
 ## Further reading
 

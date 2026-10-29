@@ -38,7 +38,7 @@ class Contract:
 CONTRACTS: Dict[str, Contract] = {
     "engineering-principles": Contract(
         sections=(
-            "When to use", "Understand and reuse", "Design", "Scalability and cost", "Tests",
+            "When to use", "Understand and reuse", "Design", "Delivered API contracts", "Scalability and cost", "Tests",
             "No bug left behind", "Secure coding", "Secrets hygiene", "Writing", "Further reading",
         ),
         phrases=(
@@ -46,7 +46,14 @@ CONTRACTS: Dict[str, Contract] = {
             "All tests pass, no known residual bugs", "it works and I do not know why",
             "property-based", "diataxis.fr", "Context7", "file::function",
             "The Pragmatic Programmer", "Fundamentals of Software Engineering", "entry page",
+            "When the placement is not trivial", "One direction, with no cycles", "One owner for each concept",
+            "Invariants in the data", "more than three modules", "import-contract check",
+            "A delivered contract never changes shape", "on a separate line at the top of the message",
+            "scenario table", "in a single pass", '"contract unchanged"', '"CONTRACT CHANGE"',
+            "the tests of the touched area", "before the push", "proven with the real command it runs",
+            "stops only what it started, by name", "a manual for them",
         ),
+        absent=("the suite that the project's configuration declares", "Dependencies point one way"),
     ),
     "evidence-based-investigation": Contract(
         sections=(
