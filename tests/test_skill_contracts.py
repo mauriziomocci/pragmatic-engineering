@@ -121,7 +121,7 @@ CONTRACTS: Dict[str, Contract] = {
         sections=(
             "The three lanes", "Feature lane: phases and gates", "One chain per feature",
             "Superpowers skills by phase", "Three-step design", "Tasks, models and escalation",
-            "Instruction layers", "Rule cycle", "Shared files", "Phase 6 and the merge request",
+            "Role lenses", "Budget", "Instruction layers", "Rule cycle", "Shared files", "Phase 6 and the merge request",
             "Closure", "Continuity",
         ),
         phrases=tuple("superpowers:" + name for name in sorted(SUPERPOWERS_SKILLS)) + (
@@ -133,6 +133,12 @@ CONTRACTS: Dict[str, Contract] = {
             "autonomous-execution", "blunt-review", "adversarial-review-panel",
             "The tests of the touched area before every commit",  # one test scope per commit, as the task routine
             "which comes only in phase 7",
+            "PM lens", "UX lens", "user lens", "review lens", "pre-mortem of three lines", "measured cost",
+            "an agreement without an independent check is a finding", "possible theatre", "Never traded",
+            "scope is cut, never quality", "30 minutes", "five costs", "never decided in the user's absence",
+            "Decision log", "found by a lens or later by people", "quality-scoring", "interface-quality",
+            '"contract unchanged"', '"fix or defer?"', "transactions, security, permissions and migrations",
+            "under 10-15 lines",
         ),
         claude_md_sections=("Feature lane: phases and gates", "Instruction layers", "Rule cycle", "Shared files"),
         absent=("phase-model-skill-mapping", "--no-ff", "Jira", "The project's suite before every commit"),

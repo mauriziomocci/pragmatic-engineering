@@ -1,6 +1,6 @@
 ---
 name: development-workflow
-description: Use for any work on code, a release, a merge or a closure. The three lanes (feature, support and incidents, operations), seven phases and four gates, one tool chain per feature (superpowers by default, spec-kit on request), the design in three steps, models by role, instruction layers, the rule cycle, shared files, phase 6 before a merge request, closure and continuity.
+description: Use for any work on code, a release, a merge or a closure. The three lanes (feature, support and incidents, operations), seven phases and four gates, one tool chain per feature (superpowers by default, spec-kit on request), the design in three steps, models by role, the role lenses and decisions while the user is away, the daily budget, instruction layers, the rule cycle, shared files, phase 6 before a merge request, closure and continuity.
 ---
 
 # development-workflow
@@ -22,12 +22,12 @@ A phase starts only when the gate before it is closed. No gate is skipped.
 | Phase | What happens | Gate |
 |---|---|---|
 | Start | The plugin's rules arrive through the import in the user's `CLAUDE.md`. `SessionStart` warns when the import is missing. | none |
-| 1 Idea and requirements | `superpowers:brainstorming`, or `speckit-specify` and `speckit-clarify`. `evidence-based-investigation`. `engineering-principles`: understand first, then reuse. | none |
-| 2 Spec | Three-step design. `adversarial-review-panel` on costly decisions. The spec goes in the folder of the chosen chain. | heavy |
+| 1 Idea and requirements | The frame of the PM lens (Role lenses), even when phases 1-4 are condensed. `superpowers:brainstorming`, or `speckit-specify` and `speckit-clarify`. `evidence-based-investigation`. `engineering-principles`: understand first, then reuse. | none |
+| 2 Spec | Three-step design. `adversarial-review-panel` on costly decisions. On an interface or on API responses, one round of the UX lens and the review lens first (`interface-quality`). A spec touching a delivered API states "contract unchanged" or "CONTRACT CHANGE" and follows the client's scenario table (`engineering-principles`). The spec goes in the folder of the chosen chain. | heavy |
 | 3 Plan | `superpowers:writing-plans`, or `speckit-plan`. | light |
 | 4 Tasks | `superpowers:writing-plans` (titles `### Task N`), or `speckit-tasks` (lines `T001`). | light |
 | 5 Implementation | In sequence, with the engine of the chosen chain: `superpowers:subagent-driven-development` or `speckit-implement`. `superpowers:test-driven-development`. The tests of the touched area before every commit. Documentation in the same commit. | escalation when a decision is missing |
-| 6 Validation | Full suite. `superpowers:verification-before-completion`. `blunt-reviewer` on the whole diff. With findings, the review cycle of `blunt-review`. | heavy |
+| 6 Validation | Full suite. `superpowers:verification-before-completion`. `blunt-reviewer` on the whole diff. With findings, the review cycle of `blunt-review`. A score for each touched lens (`quality-scoring`); below 8 the gate stops and asks "fix or defer?". | heavy |
 | 7 Closure | `superpowers:finishing-a-development-branch`, only after the gate of phase 6. The rest as in Closure. | none |
 
 A heavy gate is a short synthesis, the question "is it clear?" in the user's language, and the user's written approval. A bare "ok" to a spec nobody read is not approval. A light gate is a quick coherence check: the foundations were validated at the heavy gate. After the light gate of phase 4, read the whole task list once more with fresh eyes before any code. It is the last coherence check, not a second brainstorm.
@@ -88,13 +88,29 @@ Before going deep, build a tracer bullet: a thin slice that runs end to end thro
 
 Tasks are atomic, each with a checkbox, run one at a time and in order, never in a batch. `engineering-principles` says how a task is written. For each task: the failing test first, the code, the tests of the touched area, a review of the diff following `blunt-review`, then the box is ticked.
 
-Models follow the role. Opus for judgment, design and review. Sonnet for the execution of a fully specified task. Haiku never, for code, design, review or documentation. The main session keeps the model the user chose. The roles apply to the agents it dispatches, and the model is always set explicitly, because an omitted one inherits the session's.
+Models follow the role. Opus for judgment, design and review. Sonnet for the execution of a fully specified task. Haiku never, for code, design, review or documentation. The main session keeps the model the user chose. The roles apply to the agents it dispatches, and the model is always set explicitly, because an omitted one inherits the session's. Effort is high for transactions, security, permissions and migrations. Reads are targeted. Orders are few and complete, naming the files, the isolated resources and the shape of the report; reports stay under 10-15 lines, with commits, results and the confidence level. Each piece of work gets a new session.
 
 Escalation: an unforeseen edge case, a wrong assumption in the spec, an undeclared refactor or an incoherence with the existing code stops the task and goes back to whoever decides. The executor invents nothing. If the answer to "what do I do here?" cannot be derived from the task and the spec, escalate. The spec or the plan is revised before work resumes. An executor that reports it is blocked or needs context gets more context, a more capable model or a smaller task, never the same retry.
 
 A new instruction from the user in the middle of an execution suspends the plan until it is reconciled with the instruction.
 
 Keep a work log of decisions and difficulties. It is the hook for later sessions; when the user keeps one, use that one. Explanations to the user follow `teach`.
+
+## Role lenses
+
+Four lenses, named for roles, never for people, and provisional until their re-evaluation. The main session holds the PM lens; the UX lens runs as a subagent on Opus and the user lens on Sonnet, both briefed with `interface-quality`; the review lens is `blunt-review`.
+
+The PM lens opens phase 1 of every feature, condensed or not, with a frame: a pre-mortem of three lines (how it can fail, each with what prevents it); the why (what for, for whom, what happens if we do not do it, how we know it is done); the reuse statement, without which the plan goes back; the smallest version and its measured cost, never an invented one. It mediates when the other lenses ask for more than the frame holds, keeps the budget and holds the 8/10 gate. Company constraints come only from the user, and every cut of scope is a proposal to the user.
+
+Each lens re-checks the others' claims on the evidence before accepting them. An agreement is written with what each lens verified by itself, and an agreement without an independent check is a finding; a round on a question that is not trivial and changes nothing of the first proposal is flagged as possible theatre. Never traded: evidence, known defects, test first, tests, guards, validation, error handling, bug fixes, and the bars of taste and architecture. When time or tokens run short, scope is cut, never quality, and there the review lens prevails without convincing anyone.
+
+**While the user is away.** When the user says so or, with `pe.officeHours` set, a blocking question gets no answer for 30 minutes inside the window, and only in work the user started: the review lens decides a technical case; the PM lens decides scope, interface, time, or a disagreement between the UX and review lenses inside an approved spec, in one sentence with the reason, after hearing both and weighing five costs (tokens, time, quality, working behaviour, the satisfaction of customer and end user). Data model and API contract are never decided in the user's absence: a provisional proposal on a local branch, the dependent tasks parked, the others carried on. Outside the window only technical decisions are taken. Production, shared systems, deletions, merges into protected branches, irreversible actions and changed requirements wait for the user. Every such decision is provisional, written with both positions and the five costs, and reported to the user first.
+
+**Decision log.** One entry per decision, in the log the project's configuration names, otherwise in the progress note: who decided, the positions, the costs and the state (confirmed, overturned, pending). Defects are marked by origin, found by a lens or later by people, and decisions taken again are marked, because the calibration of `quality-scoring` counts missed defects from there.
+
+## Budget
+
+Where the host exposes the account's usage, the day's allowance and ceiling of the budget rule are computed at the first block of the day and written in the progress note, with the weekly share they start from; usage is read again at every block.
 
 ## Instruction layers
 
@@ -120,8 +136,9 @@ Before changing an instruction, settings or memory file (a `CLAUDE.md`, a `setti
 1. Run the full suite and follow `superpowers:verification-before-completion`: no claim of success without the output of the command.
 2. Launch `blunt-reviewer` with the prompt `<merge-base>..HEAD` and nothing else, as its closed grammar requires. Here `<merge-base>` is the result of `git merge-base HEAD <remote target>`. Launch it in the background while the suite runs and the merge request description is prepared, so phase 6 does not wait for it in series.
 3. With verdict `changes`, follow the review cycle of `blunt-review`. Its rounds run on the ranges of the fixes.
-4. The description carries the reviewer's lines `VERDICT:`, `FINDINGS:` and `COVERAGE:`, declared as the reviewer's own, because no mechanism records them in this version. It also carries the non-blocking findings with the decision taken and, with `superpowers:subagent-driven-development`, the ledger lines described in One chain per feature.
-5. The merge request is opened only after the review and the heavy gate of phase 6.
+4. Score each touched lens with `quality-scoring`, from the reviewer's `FINDINGS:` line and the sheets of the UX lens. With a lens below 8 the gate stops: the PM lens proposes to the user the fix or a tracked deferral, each with its cost.
+5. The description carries the scores and the reviewer's lines `VERDICT:`, `FINDINGS:` and `COVERAGE:`, declared as the reviewer's own, because no mechanism records them in this version. It also carries the non-blocking findings with the decision taken and, with `superpowers:subagent-driven-development`, the ledger lines described in One chain per feature.
+6. The merge request is opened only after the review and the heavy gate of phase 6.
 
 A rebase without conflicts asks for no new review. A conflict resolution does, on the range that contains it.
 
