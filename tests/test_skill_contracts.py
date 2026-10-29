@@ -214,6 +214,21 @@ CONTRACTS: Dict[str, Contract] = {
             "a scenario that fails", "an invariant contradicted by the code", "a security or privacy problem",
             "an operation with no way back", "a missing or tautological test on a behaviour that changed",
             "a document contradicted by the code",
+            "interface-quality",
+        ),
+    ),
+    "interface-quality": Contract(
+        sections=(
+            "When to use", "Simplicity first", "Measured before proposing", "The UX study",
+            "APIs are an interface", "The UX lens and the review lens", "The user lens",
+        ),
+        phrases=(
+            "One page, one job, one primary action", "never alphabetically", "both themes",
+            "375, 768 and 1280 px", "4.5:1", "3:1", "44 px", "2.5.5", "2.5.8", "prefers-reduced-motion", "axe",
+            "approved before its code", "never replaces it", "a delivered contract never changes shape",
+            "one round", "an agreement without an independent check is a finding", "never Haiku",
+            "at most three personas", "four questions", "from templates, not seen on screen",
+            "blunt-review", "quality-scoring", "engineering-principles",
         ),
     ),
 }

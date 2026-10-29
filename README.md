@@ -2,7 +2,7 @@
 
 [Italiano](README.it.md)
 
-pragmatic-engineering is an engineering method for Claude Code, put in order. It brings working rules to every agent of a session through one import line in your `CLAUDE.md`, and it adds eleven skills that cover the phases and the three lanes of the work, plus one agent, `blunt-reviewer`, that reviews a git range independently and bluntly. Version 0.1.0 is the core of the method: the rules, the skills, the reviewer and a `SessionStart` hook that keeps the rules in place. This version has no mechanical check on merge requests: the review before a merge request is a rule for the model, not a gate.
+pragmatic-engineering is an engineering method for Claude Code, put in order. It brings working rules to every agent of a session through one import line in your `CLAUDE.md`, and it adds twelve skills that cover the phases and the three lanes of the work, plus one agent, `blunt-reviewer`, that reviews a git range independently and bluntly. Version 0.1.0 is the core of the method: the rules, the skills, the reviewer and a `SessionStart` hook that keeps the rules in place. This version has no mechanical check on merge requests: the review before a merge request is a rule for the model, not a gate.
 
 This page follows the four kinds of documentation of Diataxis (<https://diataxis.fr>), one section for each: a tutorial, how-to guides, an explanation and a reference, with the known limits between the last two. For every part of the method the explanation says what guarantees it: a mechanism, meaning code that runs whatever the model does, or only a rule for the model, meaning text the model is asked to follow and nothing checks.
 
@@ -225,6 +225,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 | `teach` | Brief explanations followed by "is it clear?", the six-layer method for teaching code, the state on one screen on resume. | When you ask how code works or to be taught, when a session resumes, before a heavy gate. |
 | `continuity-note` | The continuity note, the progress note and the status line of deliverable files. | When work passes to another agent or session, and at every milestone in its short form. |
 | `safe-operations` | Verify the target, dry run, say the blast radius and the way back, a separate go for production, never poll, verify at every level. | Before a command or tool that changes an external system. |
+| `interface-quality` | The ten principles of a simple interface, the measures before a change (every state, both themes, 375, 768 and 1280 px, WCAG AA measured), the UX study before code, the UX lens and the user lens. | Every change to a user interface, and to the responses, messages and documentation of an API. |
 
 ### Agent
 

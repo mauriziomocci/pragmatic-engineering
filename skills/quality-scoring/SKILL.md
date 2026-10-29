@@ -69,7 +69,7 @@ So 8 means no S1, no S2 and at most four S3. Five S3 give 7.5. A reviewer never 
 
 ## Who scores
 
-Scores come from an independent review on the evidence, never from whoever did the work. The review lens, which is `blunt-review` and, on a git range, `blunt-reviewer`, scores `code`, `legacy`, `architecture`, `api` and `docs`. The UX lens scores `clarity`, `aspect` and `accessibility` on the real pages: screenshots in both themes at 375, 768 and 1280 px, measured contrast and targets, the axe result. Each lens re-checks the other's S1 and S2 findings on the evidence before the score stands. The user lens adds findings and never scores. The PM lens of `development-workflow` does not score: it collects the sheets, stops the gate when a lens is below 8, and proposes to the user the fix or a tracked deferral, each with its cost.
+Scores come from an independent review on the evidence, never from whoever did the work. The review lens, which is `blunt-review` and, on a git range, `blunt-reviewer`, scores `code`, `legacy`, `architecture`, `api` and `docs`. The UX lens of `interface-quality` scores `clarity`, `aspect` and `accessibility` on the real pages: screenshots in both themes at 375, 768 and 1280 px, measured contrast and targets, the axe result. Each lens re-checks the other's S1 and S2 findings on the evidence before the score stands. The user lens adds findings and never scores. The PM lens of `development-workflow` does not score: it collects the sheets, stops the gate when a lens is below 8, and proposes to the user the fix or a tracked deferral, each with its cost.
 
 ## The score sheet
 
