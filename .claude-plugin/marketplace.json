@@ -1,0 +1,14 @@
+{
+  "name": "pragmatic-engineering",
+  "description": "Marketplace of the pragmatic-engineering plugin: an engineering method for Claude Code, with superpowers as its one dependency.",
+  "owner": {
+    "name": "Maurizio Mocci"
+  },
+  "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
+  "plugins": [
+    {
+      "name": "pragmatic-engineering",
+      "source": "."
+    }
+  ]
+}

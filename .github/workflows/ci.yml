@@ -1,0 +1,49 @@
+# The repository's own checks, on every push and pull request. Two kinds of test do not run here, on purpose:
+# the end-to-end tests (marked e2e and left out by pytest.ini), which start Claude Code with an account's
+# credentials, and the check of the pinned superpowers names, which skips itself where superpowers is not installed.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04  # pinned, not ubuntu-latest: CPython 3.9 has builds for Ubuntu 22.04 and 24.04 only
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.x"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install "pytest>=7"
+      - run: python -m pytest -q
+
+  complexity:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # the whole history, so that the base of the change can be found
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - run: python -m pip install "ruff==0.12.8"
+      - name: Complexity rules on the changed Python files
+        shell: bash  # bash -eo pipefail: a failure anywhere in the pipe fails the step
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          base="$(git merge-base "origin/$DEFAULT_BRANCH" HEAD)"
+          # On the default branch itself the base is the tip: check the last commit, which a squash merge makes whole.
+          if [ "$base" = "$(git rev-parse HEAD)" ]; then base="$(git rev-parse -q --verify HEAD~1 || git hash-object -t tree /dev/null)"; fi
+          git diff -z --name-only --diff-filter=d "$base" HEAD -- '*.py' | xargs -0 -r ruff check --preview --no-cache --select C901,PLR0912,PLR0915,PLR1702 --config 'lint.pylint.max-nested-blocks = 3'

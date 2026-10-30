@@ -1,0 +1,23 @@
+pragmatic-engineering
+Copyright (c) 2026 Maurizio Mocci
+Licensed under the MIT License; see LICENSE.
+
+This plugin credits the works it builds on. No text is copied from them
+unless stated.
+
+superpowers (https://github.com/obra/superpowers), MIT License, by
+Jesse Vincent. The principle of recording the decisions an unattended run
+takes, instead of stopping to ask, comes from its subagent-driven-development
+skill and is rewritten in our own words in skills/autonomous-execution.
+
+continuity-note (https://github.com/mauriziomocci/continuity-note), MIT
+License, by Maurizio Mocci, derived from the "handoff" skill by Matt Pocock.
+It is included in skills/continuity-note with its own LICENSE file, which
+names both copyright holders.
+
+Diataxis (https://diataxis.fr), by Daniele Procida. The four documentation
+types are named and linked; no text of the framework is included.
+
+Recommended reading, cited and not copied: The Pragmatic Programmer, by David
+Thomas and Andrew Hunt; Fundamentals of Software Engineering, by Carlo Ghezzi,
+Mehdi Jazayeri and Dino Mandrioli.

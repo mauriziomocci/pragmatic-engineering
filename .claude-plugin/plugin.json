@@ -1,0 +1,12 @@
+{
+  "name": "pragmatic-engineering",
+  "version": "0.1.0",
+  "description": "An engineering method for Claude Code, in order: working rules imported by CLAUDE.md, skills for each phase and lane, and a blunt independent reviewer.",
+  "author": {
+    "name": "Maurizio Mocci"
+  },
+  "repository": "https://github.com/mauriziomocci/pragmatic-engineering",
+  "license": "MIT",
+  "keywords": ["engineering", "method", "code-review", "workflow", "tdd", "evidence"],
+  "dependencies": ["superpowers@claude-plugins-official"]
+}
