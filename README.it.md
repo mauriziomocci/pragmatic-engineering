@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+**Stato: pre-rilascio.** La versione 0.1.0 è pubblicata per un primo uso, non ancora per tutti. Provato finora: le prove di unità e di struttura, e un'esecuzione dal vivo della prova da capo a fondo dell'import delle regole (29 ottobre 2026). Non ancora provato: l'installazione su una macchina pulita, gli scenari dal vivo contro le regressioni su una configurazione esistente, l'uso in linguaggi diversi da Python e il lavoro vero di più giorni. La guardia sulle merge request e il coordinatore a più agenti arrivano nelle versioni successive. Leggi «Limiti noti» prima di installare.
+
 pragmatic-engineering è un metodo di ingegneria per Claude Code, messo in ordine. Porta regole di lavoro a ogni agente di una sessione con una sola riga di import nel tuo `CLAUDE.md`, e aggiunge skill che coprono le fasi e le tre corsie del lavoro, più un agente, `blunt-reviewer`, che rivede un intervallo git in modo indipendente e schietto. La versione 0.1.0 è il nucleo del metodo: le regole, le skill, il revisore e un hook `SessionStart` che tiene le regole al loro posto. Questa versione non ha nessun controllo meccanico sulle merge request: la revisione prima di una merge request è una regola per il modello, non un cancello.
 
 Questa pagina segue i quattro tipi di documentazione di Diataxis (<https://diataxis.fr>), una sezione per ciascuno: un tutorial, le guide pratiche, una spiegazione e un riferimento, con i limiti noti fra gli ultimi due. Per ogni parte del metodo la spiegazione dice che cosa la garantisce: un meccanismo, cioè codice che gira qualunque cosa faccia il modello, oppure solo una regola per il modello, cioè un testo che il modello deve seguire e che nessuno controlla.
