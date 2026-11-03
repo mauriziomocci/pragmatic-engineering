@@ -435,8 +435,10 @@ CONTRACTS: Dict[str, Contract] = {
             # every breach has one class and one lens, so the same evidence gives the same score
             "fidelity, on `aspect` when the breach is in how the page looks and on `clarity` otherwise:",
             "any other breach of an iron rule: the class that its meaning gives in the table of classes, on `aspect` "
-            "for rules 5 and 13 to 21 except rules 17 and 19, on `accessibility` for rules 6, 7 and 12 and for a "
-            "component that the keyboard cannot fully use, and on `clarity` for the others.",
+            "for rules 5 and 13 to 21 except rules 17 and 19 and except more than one primary action, which `clarity` "
+            "scores once, on `accessibility` for rules 6, 7 and 12 and for a component that the keyboard cannot fully "
+            "use, and on `clarity` for the others.",
+            "taste and restraint, on `aspect` and counted on the touched pages:",
             # one counting rule, written once (user's go of 03/11 relayed by the coordinator)
             "A breach of an iron rule found in many places is one finding too, with every place listed; when its "
             "cause is a shared component that repeats it across pages, an S3 rises to S2.",
@@ -446,17 +448,17 @@ CONTRACTS: Dict[str, Contract] = {
             "components touching or under 8 px apart (S3) and two components for one need (S3), on `aspect`",
             "a browser test that cannot go red (S2, on `code`)",
             "content or function lost at 320 px (S2)",
-            "a touched page not checked at all the widths (S3)",
+            "a touched page not checked at every width of rule 12 (S3)",
             "red for what neither destroys nor fails, a destructive action without confirmation or undo (S2)",
             "an outcome message that vanishes before it can be read or is not announced (S2)",
             "horizontal page scroll at any width of rule 12 of `interface-quality` (S2)",
             "screenshots in both themes at the widths and the zoom of rule 12 of `interface-quality`",
-            "touch targets under 44 px on a touch device or under 24 px with a mouse (S2 when systematic, S3 when "
-            "isolated)",
+            "touch targets under 44 px on a touch device or under 24 px with a mouse (S3)",
         ),
         absent=(
             "375, 768 or 1280", "375, 768 and 1280", "S3 each", "for each width missing", "at 375 px",
             "more than one primary action in a view",  # one finding, on `clarity` only
+            "S2 when systematic", "counted on each touched page",  # one counting rule only
         ) + PRIVATE_SOURCE,
     ),
     "interface-quality": Contract(
@@ -466,7 +468,8 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         phrases=IRON_RULES + (
             # rule 5 is the one written exception to principle 6
-            "used as they are, except a field fused with its button, which rule 5 separates;",
+            "used as they are, except the spacing and fusion that rule 5 forbids;",
+            "each kind of excess is one finding, with its pages listed",
             "Rules 1 to 12 and 22 are on fidelity, measurement and accessibility, rules 13 to 21 on taste and "
             "restraint.",
             "a breach is a finding, classed by `quality-scoring`: by name where its list of the iron rules has the "

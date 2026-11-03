@@ -23,7 +23,7 @@ The default answer to "one more element on this page?" is no: the person wants t
 3. One name for each thing, the same on every page, in the plain language of the person who uses it.
 4. Progressive disclosure: defaults instead of choices, details on request.
 5. No repeated information on a page, and no text that explains the obvious.
-6. Components come first from the project's interface template, used as they are, except a field fused with its button, which rule 5 separates; a new component only where the template has none, with the reason written. The project's configuration names the template. Principles may come from other design systems, never their components inside the project's template.
+6. Components come first from the project's interface template, used as they are, except the spacing and fusion that rule 5 forbids; a new component only where the template has none, with the reason written. The project's configuration names the template. Principles may come from other design systems, never their components inside the project's template.
 7. Every state of a page (empty, error, loading, read-only, missing permission) says what to do next: no dead ends, and no link to a page where the action is impossible.
 8. The review counts the elements, choices and words of the touched page and names what to remove; a page that grew without removing anything is a finding.
 9. Navigation and menus are ordered by importance or by natural groups, never alphabetically, except an index from A to Z.
@@ -53,7 +53,7 @@ Every proposal, review and score of an interface, dashboards and front ends alik
 18. **Proportionate feedback.** Every action answers at once, and after one second a loading signal appears; outcome messages stay until they can be read (2.2.1) and are announced to screen readers without interrupting; no decorative animation, nothing that moves by itself.
 19. **Cognitive accessibility (WCAG 2.2).** Plain language for people with little confidence in digital tools; help in the same place on every page (3.2.6); no data typed twice (3.3.7); sign-in without puzzles (3.3.8); confirmation or undo for what cannot be undone (3.3.4).
 20. **The dark theme is designed, not inverted.** Lighter surfaces mark elevation instead of shadows; no pure black or pure white; desaturated accents; every state measured on its own.
-21. **Taste is measured.** On each touched page the review counts colours outside the palette, text sizes, spacing values off the scale, primary actions and elements without a task, besides the counts of principle 8; each excess is a finding, so taste is a number and not an opinion.
+21. **Taste is measured.** On each touched page the review counts colours outside the palette, text sizes, spacing values off the scale, primary actions and elements without a task, besides the counts of principle 8; each kind of excess is one finding, with its pages listed, so taste is a number and not an opinion.
 22. **Proof travels with the change.** Screenshots made by a script in both themes at the widths of rule 12, axe with no contrast or label violation, and browser tests that can go red: a test that accepts the theme's always-present default is not a test.
 
 The plugin prescribes axe and does not ship it. Nor does it ship the browser to drive, the script for the screenshots or the browser tests: the project provides them. In a project with a CI, axe runs there on the main pages in both themes and fails the pipeline on contrast and labelling; until it does, it runs locally and its result is reported.
