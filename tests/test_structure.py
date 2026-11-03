@@ -1198,6 +1198,21 @@ GUIDED_SENTENCES = {
          "gli screenshot, axe e i test nel browser vengono dal progetto."),
         ("The skills do not say yet where the before/after record lives when the project names none.",
          "Le skill non dicono ancora dove stia il registro del prima e dopo quando il progetto non ne nomina uno."),
+        # the four questions of the user lens, answered
+        ("The skills say that the project's configuration names its template, in no fixed file, and that the "
+         "project's designer signs the UX study where there is one; otherwise you approve it, and with no template "
+         "each new component carries its reason in writing.",
+         "Le skill dicono che la configurazione del progetto nomina il suo template, senza un file fisso, e che il "
+         "designer del progetto firma lo studio UX dove c'è; altrimenti lo approvi tu, e senza un template ogni "
+         "componente nuovo porta per iscritto la sua ragione."),
+        ("A project with one theme measures the theme it has, and rule 20 on the dark theme applies once it has one.",
+         "Un progetto con un solo tema misura il tema che ha, e la regola 20 sul tema scuro vale da quando ne ha uno."),
+        ("A change of style, such as one colour in one file, is not a trivial text fix: it takes the round of the UX "
+         "and review lenses, the measures on the pages it reaches, a score sheet for each interface lens it touches "
+         "and a UX study, because the skills ask one for every changed page.",
+         "Un cambio di stile, come un colore in un file, non è una correzione banale di testo: prende il giro delle "
+         "lenti UX e di revisione, le misure sulle pagine che raggiunge, un foglio dei voti per ogni lente "
+         "d'interfaccia che tocca e uno studio UX, perché le skill ne chiedono uno per ogni pagina cambiata."),
     ),
     "lenses-together": (
         ("No lens agrees by default: each re-checks the other's claims against the screenshots, the measurements and "
@@ -1332,6 +1347,10 @@ GUIDED_SENTENCES = {
         ("| At the hard stop you gave, or at gate 6 |", "| All'orario di fine che hai dato, oppure al cancello 6 |"),
     ),
     "lenses-score": (
+        ("On a touched page the perimeter is what the change touches and the states it reaches: an old breach elsewhere "
+         "on the page is listed as a note and does not count, as for old code.",
+         "Su una pagina toccata il perimetro è ciò che il cambio tocca e gli stati che raggiunge: una violazione vecchia "
+         "altrove nella pagina si elenca come nota e non conta, come per il codice vecchio."),
         ("which the UX lens scores on the real pages, with screenshots in both themes at the widths and the zoom of the "
          "iron rules, measured contrast and touch targets, and the result of axe.",
          "il cui voto assegna la lente UX sulle pagine reali, con screenshot in entrambi i temi alle larghezze e allo "
@@ -1339,14 +1358,14 @@ GUIDED_SENTENCES = {
         ("`quality-scoring` names the class of the common breaches of the iron rules: for example a primary action "
          "whose text is below WCAG AA is S1, a widget that silently rewrites what the person typed is S2, and two "
          "components less than 8 px apart are S3; axe violations count by the impact axe gives them. Any other breach "
-         "takes the class that its meaning gives, by the definitions above, on one lens fixed for each rule. A breach "
+         "takes the class that its meaning gives, by the definitions above, on the lens that `quality-scoring` assigns to it. A breach "
          "found in many places is one finding with every place listed, and when it comes from a shared component "
          "that repeats it across pages, an S3 rises to S2.",
          "`quality-scoring` nomina la classe delle violazioni più comuni delle regole di ferro: per esempio un'azione "
          "principale il cui testo è sotto WCAG AA è S1, un widget che riscrive in silenzio ciò che la persona ha "
          "digitato è S2, e due componenti a meno di 8 px l'uno dall'altro sono S3; le violazioni di axe contano "
          "secondo l'impatto che axe dà loro. Ogni altra violazione prende la classe che le dà il suo significato, "
-         "secondo le definizioni qui sopra, su una lente fissata per ogni regola. Una violazione trovata in molti "
+         "secondo le definizioni qui sopra, sulla lente che `quality-scoring` le assegna. Una violazione trovata in molti "
          "posti è un solo rilievo con tutti i posti elencati, e quando viene da un componente condiviso che la ripete "
          "su più pagine, un S3 sale a S2."),
         ("Eight things can get a score (`quality-scoring` calls each of them a lens too, besides the four role "

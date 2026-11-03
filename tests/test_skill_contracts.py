@@ -431,17 +431,18 @@ CONTRACTS: Dict[str, Contract] = {
             "nor the autonomy exception",  # a contract changed under the profile is no S1
             SAME_NAME,
             # the classes of the iron rules, and the widths of rule 12 wherever the score names widths
-            "The iron rules of `interface-quality`, each on the lens marked.",
+            "The iron rules of `interface-quality`, each on the lens marked:",
+            # one routing: a breach named anywhere in the thresholds keeps that lens, the rest goes by rule number
+            "When the cause of such a finding is a shared component that repeats it across pages, an S3 rises to S2.",
+            "On a touched page the perimeter is what the change touches and the states it reaches; an old breach "
+            "elsewhere on the page is listed as a note and does not count, as for old code.",
             # every breach has one class and one lens, so the same evidence gives the same score
             "fidelity, on `aspect` when the breach is in how the page looks and on `clarity` otherwise:",
-            "any other breach of an iron rule: the class that its meaning gives in the table of classes, on `aspect` "
-            "for rules 5 and 13 to 21 except rules 17 and 19 and except more than one primary action, which `clarity` "
-            "scores once, on `accessibility` for rules 6, 7 and 12 and for a component that the keyboard cannot fully "
-            "use, and on `clarity` for the others.",
+            "any breach of an iron rule that this section does not name: the class that its meaning gives in the table "
+            "of classes, on `aspect` for rules 5 and 13 to 21 except rules 17 and 19, on `accessibility` for rules 6, 7 "
+            "and 12 and for a component that the keyboard cannot fully use, and on `clarity` for the others.",
             "taste and restraint, on `aspect` and counted on the touched pages:",
-            # one counting rule, written once (user's go of 03/11 relayed by the coordinator)
-            "A breach of an iron rule found in many places is one finding too, with every place listed; when its "
-            "cause is a shared component that repeats it across pages, an S3 rises to S2.",
+
             "a widget that silently rewrites what the person typed (S2)",
             "a highlighted or selected option, a checked box or another state indicator below 3:1 against its "
             "neighbours (S2)",
@@ -453,12 +454,14 @@ CONTRACTS: Dict[str, Contract] = {
             "an outcome message that vanishes before it can be read or is not announced (S2)",
             "horizontal page scroll at any width of rule 12 of `interface-quality` (S2)",
             "screenshots in both themes at the widths and the zoom of rule 12 of `interface-quality`",
-            "touch targets under 44 px on a touch device or under 24 px with a mouse (S3)",
+            "touch targets under 44 px on a touch device (S3); targets under 24 px with a mouse (S2, S1 on a primary "
+            "action)",
         ),
         absent=(
             "375, 768 or 1280", "375, 768 and 1280", "S3 each", "for each width missing", "at 375 px",
             "more than one primary action in a view",  # one finding, on `clarity` only
             "S2 when systematic", "counted on each touched page",  # one counting rule only
+            "which `clarity` scores once", "each on the lens marked.",  # the routing is one table, not exceptions
         ) + PRIVATE_SOURCE,
     ),
     "interface-quality": Contract(
@@ -472,8 +475,9 @@ CONTRACTS: Dict[str, Contract] = {
             "each kind of excess is one finding, with its pages listed",
             "Rules 1 to 12 and 22 are on fidelity, measurement and accessibility, rules 13 to 21 on taste and "
             "restraint.",
-            "a breach is a finding, classed by `quality-scoring`: by name where its list of the iron rules has the "
-            "breach, by the meaning of the three classes otherwise.",
+            "a breach is a finding, classed by `quality-scoring`: by name where its thresholds name the breach, by the "
+            "meaning of the three classes otherwise.",
+            "A project with one theme measures the theme it has, and rule 20 applies once it has a dark one.",
             "measured on every page in both themes at the widths of rule 12",
             "320 px (WCAG 1.4.10 reflow, equal to 1280 px at 400% zoom), 375, 768, 1024, 1280 and 1440 px, and at 200% "
             "zoom (1.4.4)",

@@ -31,11 +31,11 @@ Each lens has a short id, which the score sheet and the final message of `blunt-
 
 ## The perimeter
 
-Write it before reviewing: the lenses in scope, only those the work touches; the files or the git range; the pages and the widths; the API endpoints. Old code is scored only on what the work touches: the touched functions meet the thresholds after the change, and the touched files do not get worse, measured before and after. Untouched old code is out of scope, otherwise its score would never move.
+Write it before reviewing: the lenses in scope, only those the work touches; the files or the git range; the pages and the widths; the API endpoints. Old code is scored only on what the work touches: the touched functions meet the thresholds after the change, and the touched files do not get worse, measured before and after. Untouched old code is out of scope, otherwise its score would never move. On a touched page the perimeter is what the change touches and the states it reaches; an old breach elsewhere on the page is listed as a note and does not count, as for old code.
 
 ## Findings
 
-Every finding carries `file:line`, a measured number or the name of a screenshot, and the concrete action. One finding is one root cause: the same pattern in twelve places is one finding with its places listed, so splitting or merging findings cannot move the score. The breach of a mechanical threshold is a finding too. Notes below S3, such as a preference of style or wording, are listed and do not count.
+Every finding carries `file:line`, a measured number or the name of a screenshot, and the concrete action. One finding is one root cause: the same pattern in twelve places is one finding with its places listed, so splitting or merging findings cannot move the score. When the cause of such a finding is a shared component that repeats it across pages, an S3 rises to S2. The breach of a mechanical threshold is a finding too. Notes below S3, such as a preference of style or wording, are listed and do not count.
 
 ## Classes
 
@@ -56,8 +56,8 @@ Each breach is a finding of the class in brackets. The checks are named for any 
 - `docs`: every claim checked against the code; each false instruction (S2); each drifted number or path (S3); a documentation build that fails in strict mode (S2).
 - `clarity`: for each touched page, the elements, choices and words counted before and after; growth with nothing removed (S3); more than one primary action or job on a page (S2); a dead end in an empty, error or missing-permission state (S2).
 - `aspect`: a component from outside the project's template without a written reason (S3); two names or two styles for one action (S3); an error page outside the frame of the application (S2).
-- `accessibility`: contrast in every state and in both themes (a primary action below AA, S1; any other text or control, S2); touch targets under 44 px on a touch device or under 24 px with a mouse (S3); horizontal page scroll at any width of rule 12 of `interface-quality` (S2); a missing label or a missing visible focus (S2); axe violations by the impact axe gives them (critical S1, serious S2, moderate S3).
-- The iron rules of `interface-quality`, each on the lens marked. A breach of an iron rule found in many places is one finding too, with every place listed; when its cause is a shared component that repeats it across pages, an S3 rises to S2.
+- `accessibility`: contrast in every state and in both themes (a primary action below AA, S1; any other text or control, S2); touch targets under 44 px on a touch device (S3); targets under 24 px with a mouse (S2, S1 on a primary action); horizontal page scroll at any width of rule 12 of `interface-quality` (S2); a missing label or a missing visible focus (S2); axe violations by the impact axe gives them (critical S1, serious S2, moderate S3).
+- The iron rules of `interface-quality`, each on the lens marked:
   - fidelity, on `aspect` when the breach is in how the page looks and on `clarity` otherwise: a deviation from the designer's document or the approved mockups without a written decision (S2); a block closed without an independent fidelity review (S2); real names of organisations or places in previews, mockups or placeholders (S3); a visible change not shown before and after, or missing from the before/after record (S3);
   - behaviour, on `clarity`: a widget that silently rewrites what the person typed (S2); two contradicting statements on one page (S2); a `data-label` different from its column header (S3); an interactive component never tried along real paths (S3, S2 when a defect is later found on such a path);
   - components: components touching or under 8 px apart (S3) and two components for one need (S3), on `aspect`; a hidden duplicate of the real field (S2), duplicate `id`s that detach a label from its field (S2) and other duplicate `id`s (S3), on `accessibility`;
@@ -65,7 +65,7 @@ Each breach is a finding of the class in brackets. The checks are named for any 
   - taste and restraint, on `aspect` and counted on the touched pages: an element without a task, a colour outside the palette, a text size beyond four or a weight beyond two, a spacing value off the scale of 4 or 8 px, a gradient, a decorative shadow or a decorative animation (S3); red for what neither destroys nor fails, a destructive action without confirmation or undo (S2); a dark theme made by inversion (S3);
   - words and help, on `clarity`: a button named "OK" or with a vague verb, words in capitals or exclamation marks (S3); an error that does not say how to fix it, or an empty state without the next step (S2); help in different places across pages, or data asked twice (S3);
   - a browser test that cannot go red (S2, on `code`);
-  - any other breach of an iron rule: the class that its meaning gives in the table of classes, on `aspect` for rules 5 and 13 to 21 except rules 17 and 19 and except more than one primary action, which `clarity` scores once, on `accessibility` for rules 6, 7 and 12 and for a component that the keyboard cannot fully use, and on `clarity` for the others.
+  - any breach of an iron rule that this section does not name: the class that its meaning gives in the table of classes, on `aspect` for rules 5 and 13 to 21 except rules 17 and 19, on `accessibility` for rules 6, 7 and 12 and for a component that the keyboard cannot fully use, and on `clarity` for the others.
 
 ## The score
 
