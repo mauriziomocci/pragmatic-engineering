@@ -23,7 +23,7 @@ The default answer to "one more element on this page?" is no: the person wants t
 3. One name for each thing, the same on every page, in the plain language of the person who uses it.
 4. Progressive disclosure: defaults instead of choices, details on request.
 5. No repeated information on a page, and no text that explains the obvious.
-6. Components come first from the project's interface template, used as they are; a new component only where the template has none, with the reason written. The project's configuration names the template. Principles may come from other design systems, never their components inside the project's template.
+6. Components come first from the project's interface template, used as they are, except a field fused with its button, which rule 5 separates; a new component only where the template has none, with the reason written. The project's configuration names the template. Principles may come from other design systems, never their components inside the project's template.
 7. Every state of a page (empty, error, loading, read-only, missing permission) says what to do next: no dead ends, and no link to a page where the action is impossible.
 8. The review counts the elements, choices and words of the touched page and names what to remove; a page that grew without removing anything is a finding.
 9. Navigation and menus are ordered by importance or by natural groups, never alphabetically, except an index from A to Z.

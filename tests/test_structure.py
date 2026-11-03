@@ -1337,20 +1337,18 @@ GUIDED_SENTENCES = {
          "il cui voto assegna la lente UX sulle pagine reali, con screenshot in entrambi i temi alle larghezze e allo "
          "zoom delle regole di ferro, contrasto e aree di tocco misurati, e il risultato di axe."),
         ("`quality-scoring` names the class of the common breaches of the iron rules: for example a primary action "
-         "whose text is below WCAG AA is S1, a widget that silently rewrites what the person typed is S2, two "
-         "components less than 8 px apart are S3 each, and a page not checked at one of the widths is S3 for each "
-         "width missing; axe violations count by the impact axe gives them. Any other breach takes the class that its "
-         "meaning gives, by the definitions above, on one lens fixed for each rule. `quality-scoring` does not say "
-         "yet how a breach counted for each place, such as S3 each or S3 for each width, agrees with one finding for "
-         "one root cause.",
+         "whose text is below WCAG AA is S1, a widget that silently rewrites what the person typed is S2, and two "
+         "components less than 8 px apart are S3; axe violations count by the impact axe gives them. Any other breach "
+         "takes the class that its meaning gives, by the definitions above, on one lens fixed for each rule. A breach "
+         "found in many places is one finding with every place listed, and when it comes from a shared component "
+         "that repeats it across pages, an S3 rises to S2.",
          "`quality-scoring` nomina la classe delle violazioni più comuni delle regole di ferro: per esempio un'azione "
          "principale il cui testo è sotto WCAG AA è S1, un widget che riscrive in silenzio ciò che la persona ha "
-         "digitato è S2, due componenti a meno di 8 px l'uno dall'altro sono S3 ciascuno, e una pagina non "
-         "controllata a una delle larghezze è S3 per ogni larghezza mancante; le violazioni di axe contano secondo "
-         "l'impatto che axe dà loro. Ogni altra violazione prende la classe che le dà il suo significato, secondo le "
-         "definizioni qui sopra, su una lente fissata per ogni regola. `quality-scoring` non dice ancora come una "
-         "violazione contata per ogni posto, come S3 ciascuno o S3 per ogni larghezza, si accordi con un solo "
-         "rilievo per una sola causa radice."),
+         "digitato è S2, e due componenti a meno di 8 px l'uno dall'altro sono S3; le violazioni di axe contano "
+         "secondo l'impatto che axe dà loro. Ogni altra violazione prende la classe che le dà il suo significato, "
+         "secondo le definizioni qui sopra, su una lente fissata per ogni regola. Una violazione trovata in molti "
+         "posti è un solo rilievo con tutti i posti elencati, e quando viene da un componente condiviso che la ripete "
+         "su più pagine, un S3 sale a S2."),
         ("Eight things can get a score (`quality-scoring` calls each of them a lens too, besides the four role "
          "lenses), each with a short id:",
          "Otto cose possono ricevere un voto (anche `quality-scoring` chiama lente ciascuna di esse, oltre alle "
@@ -1423,6 +1421,12 @@ GUIDED_SENTENCES = {
 def test_readmes_state_the_guided_configuration_in_both_languages(section):
     for text, language in zip(pages(section), (0, 1)):
         assert [pair[language] for pair in GUIDED_SENTENCES[section] if pair[language] not in text] == []
+
+
+def test_readmes_count_a_repeated_breach_once_and_name_wcag_2_2():
+    for path, text in zip((README, README_IT), pages()):
+        stale = ("S3 each", "S3 ciascuno", "WCAG AA measured", "WCAG AA misurato")
+        assert [old for old in stale if old in text] == [], path.name
 
 
 def test_readmes_measure_at_the_widths_of_the_iron_rules_not_at_the_three_old_ones():
