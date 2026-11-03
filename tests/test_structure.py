@@ -1146,6 +1146,58 @@ GUIDED_SENTENCES = {
          'screen".',
          "finché il progetto non ha uno script che li produca, i suoi rilievi portano l'etichetta «from templates, "
          "not seen on screen»."),
+        ("and twenty-two iron rules, added on 3 November 2026, that every proposal, review and score of an interface "
+         "holds, each breach a finding that `quality-scoring` classes.",
+         "e ventidue regole di ferro, aggiunte il 3 novembre 2026, che ogni proposta, revisione e voto di "
+         "un'interfaccia rispetta, dove ogni violazione è un rilievo che `quality-scoring` classifica."),
+        ("Rules 1 to 12 and 22 are on fidelity, measurement and accessibility: the designer's document and the "
+         "approved mockups decide, and each block of work closes with a fidelity review by someone who did not build "
+         "it; where the interface has to be invented, mockups built from the real page come before the real pages are "
+         "built; every visible change is shown to you before and after, in a browser the session drives; demo data is "
+         "invented; components never touch; one shared component serves each need, with no hidden duplicate of a "
+         "field; nothing the person typed is rewritten in silence; each component is also tried step by step, as a "
+         "person would; `id`s are unique and each thing has one name; every state is measured in both themes, light "
+         "and dark, against WCAG 2.2 AA (4.5:1 for text, 3:1 for large text, focus rings and state indicators) and "
+         "never by eye; touch targets are 44 px on touch devices, beyond the 24 px that AA asks, and 24 px with a "
+         "mouse; each touched page is checked at widths of 320, 375, 768, 1024, 1280 and 1440 px and at 200% zoom, "
+         "with the keyboard, axe (an accessibility checker) and a spot check by a screen reader on the main path; and "
+         "the proof travels with the change: screenshots made by a script, the result of axe and browser tests that "
+         "can fail.",
+         "Le regole da 1 a 12 e la 22 riguardano fedeltà, misura e accessibilità: decidono il documento del designer "
+         "e i mockup approvati, e ogni blocco di lavoro si chiude con una revisione di fedeltà fatta da chi non l'ha "
+         "costruito; dove l'interfaccia va inventata, i mockup costruiti dalla pagina reale vengono prima che le "
+         "pagine reali siano costruite; ogni cambio visibile ti viene mostrato prima e dopo, in un browser che la "
+         "sessione guida; i dati dimostrativi sono inventati; i componenti non si toccano mai; un solo componente "
+         "condiviso serve ogni bisogno, senza un duplicato nascosto di un campo; nulla di ciò che la persona ha "
+         "digitato viene riscritto in silenzio; ogni componente si prova anche passo per passo, come farebbe una "
+         "persona; gli `id` sono unici e ogni cosa ha un solo nome; ogni stato si misura in entrambi i temi, chiaro e "
+         "scuro, rispetto a WCAG 2.2 AA (4,5:1 per il testo, 3:1 per il testo grande, gli anelli di focus e gli "
+         "indicatori di stato) e mai a occhio; le aree di tocco sono di 44 px sui dispositivi touch, oltre i 24 px "
+         "che chiede AA, e di 24 px con il mouse; ogni pagina toccata si controlla a larghezze di 320, 375, 768, "
+         "1024, 1280 e 1440 px e allo zoom del 200%, con la tastiera, axe (un verificatore di accessibilità) e una "
+         "prova a campione con un lettore di schermo sul percorso principale; e la prova viaggia con il cambio: "
+         "screenshot generati da uno script, il risultato di axe e test nel browser che possono fallire."),
+        ("Rules 13 to 21 are on taste and restraint: each element earns its place, colour marks only meaning, spacing "
+         "and text sizes follow fixed scales, each view has one primary button and destructive actions stay "
+         "secondary, words say the outcome, every action answers at once and its message stays until it can be read, "
+         "language is plain and help stays in the same place, the dark theme is designed and not inverted, and taste "
+         "is counted on each page instead of judged.",
+         "Le regole da 13 a 21 riguardano gusto e sobrietà: ogni elemento si guadagna il suo posto, il colore segna "
+         "solo un significato, spaziature e dimensioni del testo seguono scale fisse, ogni vista ha un solo pulsante "
+         "principale e le azioni distruttive restano secondarie, le parole dicono l'esito, ogni azione ha un "
+         "riscontro immediato e il suo messaggio resta finché si può leggere, il linguaggio è semplice e l'aiuto "
+         "resta nello stesso posto, il tema scuro è progettato e non invertito, e il gusto si conta su ogni pagina "
+         "invece di giudicarlo."),
+        ("This paragraph names the main point of each rule; the numbered rules, with what each one measures, are in "
+         "`interface-quality`.",
+         "Questo paragrafo nomina il punto principale di ogni regola; le regole numerate, con ciò che ciascuna "
+         "misura, stanno in `interface-quality`."),
+        ("The plugin ships none of the tools these rules use: the browser, the script that makes the screenshots, axe "
+         "and the browser tests come from the project.",
+         "Il plugin non contiene nessuno degli strumenti che queste regole usano: il browser, lo script che produce "
+         "gli screenshot, axe e i test nel browser vengono dal progetto."),
+        ("The skills do not say yet where the before/after record lives when the project names none.",
+         "Le skill non dicono ancora dove stia il registro del prima e dopo quando il progetto non ne nomina uno."),
     ),
     "lenses-together": (
         ("No lens agrees by default: each re-checks the other's claims against the screenshots, the measurements and "
@@ -1280,6 +1332,25 @@ GUIDED_SENTENCES = {
         ("| At the hard stop you gave, or at gate 6 |", "| All'orario di fine che hai dato, oppure al cancello 6 |"),
     ),
     "lenses-score": (
+        ("which the UX lens scores on the real pages, with screenshots in both themes at the widths and the zoom of the "
+         "iron rules, measured contrast and touch targets, and the result of axe.",
+         "il cui voto assegna la lente UX sulle pagine reali, con screenshot in entrambi i temi alle larghezze e allo "
+         "zoom delle regole di ferro, contrasto e aree di tocco misurati, e il risultato di axe."),
+        ("`quality-scoring` names the class of the common breaches of the iron rules: for example a primary action "
+         "whose text is below WCAG AA is S1, a widget that silently rewrites what the person typed is S2, two "
+         "components less than 8 px apart are S3 each, and a page not checked at one of the widths is S3 for each "
+         "width missing; axe violations count by the impact axe gives them. Any other breach takes the class that its "
+         "meaning gives, by the definitions above, on one lens fixed for each rule. `quality-scoring` does not say "
+         "yet how a breach counted for each place, such as S3 each or S3 for each width, agrees with one finding for "
+         "one root cause.",
+         "`quality-scoring` nomina la classe delle violazioni più comuni delle regole di ferro: per esempio un'azione "
+         "principale il cui testo è sotto WCAG AA è S1, un widget che riscrive in silenzio ciò che la persona ha "
+         "digitato è S2, due componenti a meno di 8 px l'uno dall'altro sono S3 ciascuno, e una pagina non "
+         "controllata a una delle larghezze è S3 per ogni larghezza mancante; le violazioni di axe contano secondo "
+         "l'impatto che axe dà loro. Ogni altra violazione prende la classe che le dà il suo significato, secondo le "
+         "definizioni qui sopra, su una lente fissata per ogni regola. `quality-scoring` non dice ancora come una "
+         "violazione contata per ogni posto, come S3 ciascuno o S3 per ogni larghezza, si accordi con un solo "
+         "rilievo per una sola causa radice."),
         ("Eight things can get a score (`quality-scoring` calls each of them a lens too, besides the four role "
          "lenses), each with a short id:",
          "Otto cose possono ricevere un voto (anche `quality-scoring` chiama lente ciascuna di esse, oltre alle "
@@ -1352,6 +1423,11 @@ GUIDED_SENTENCES = {
 def test_readmes_state_the_guided_configuration_in_both_languages(section):
     for text, language in zip(pages(section), (0, 1)):
         assert [pair[language] for pair in GUIDED_SENTENCES[section] if pair[language] not in text] == []
+
+
+def test_readmes_measure_at_the_widths_of_the_iron_rules_not_at_the_three_old_ones():
+    for path, text in zip((README, README_IT), pages()):
+        assert [old for old in ("375, 768 and 1280", "375, 768 e 1280") if old in text] == [], path.name
 
 
 def test_the_italian_readme_names_the_end_time_of_an_autonomy_in_plain_words():
