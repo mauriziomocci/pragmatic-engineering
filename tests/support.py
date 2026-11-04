@@ -94,8 +94,8 @@ SPECKIT_COMMANDS: FrozenSet[str] = frozenset((
     "speckit-specify", "speckit-clarify", "speckit-plan", "speckit-tasks", "speckit-implement",
     "speckit-analyze", "speckit-checklist", "speckit-constitution",
 ))
-# Tools a skill names that are installed apart from this plugin and from superpowers.
-EXTERNAL_NAMES: FrozenSet[str] = frozenset(("mcp-code-review",))
+# Tools a skill names that are installed apart from this plugin and from superpowers, and HTML attributes.
+EXTERNAL_NAMES: FrozenSet[str] = frozenset(("mcp-code-review", "aria-describedby", "data-label"))
 FUTURE_COMPONENTS: Tuple[str, ...] = (
     "team-lead", "memory-hygiene", "pe-guard", "review-start", "review-show",
     "mr-opened", "PE-REVIEW", "PE-REVIEW-RESULT",
