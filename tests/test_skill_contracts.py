@@ -438,7 +438,8 @@ CONTRACTS: Dict[str, Contract] = {
             "elsewhere on the page is listed as a note and does not count, as for old code.",
             # every breach has one class and one lens, so the same evidence gives the same score
             "fidelity, on `aspect` when the breach is in how the page looks and on `clarity` otherwise:",
-            "any breach of an iron rule that this section does not name: the class that its meaning gives in the table "
+            "any breach of an iron rule that no line of these thresholds names: the class that its meaning gives in the "
+            "table "
             "of classes, on `aspect` for rules 5 and 13 to 21 except rules 17 and 19, on `accessibility` for rules 6, 7 "
             "and 12 and for a component that the keyboard cannot fully use, and on `clarity` for the others.",
             "taste and restraint, on `aspect` and counted on the touched pages:",
@@ -454,14 +455,16 @@ CONTRACTS: Dict[str, Contract] = {
             "an outcome message that vanishes before it can be read or is not announced (S2)",
             "horizontal page scroll at any width of rule 12 of `interface-quality` (S2)",
             "screenshots in both themes at the widths and the zoom of rule 12 of `interface-quality`",
-            "touch targets under 44 px on a touch device (S3); targets under 24 px with a mouse (S2, S1 on a primary "
-            "action)",
+            # a breach of AA is never S3, whatever the pointer
+            "targets under 24 px on any device (S2, S1 on a primary action); touch targets from 24 to 43 px on a touch "
+            "device (S3)",
         ),
         absent=(
             "375, 768 or 1280", "375, 768 and 1280", "S3 each", "for each width missing", "at 375 px",
             "more than one primary action in a view",  # one finding, on `clarity` only
             "S2 when systematic", "counted on each touched page",  # one counting rule only
             "which `clarity` scores once", "each on the lens marked.",  # the routing is one table, not exceptions
+            "that this section does not name", "targets under 24 px with a mouse",
         ) + PRIVATE_SOURCE,
     ),
     "interface-quality": Contract(

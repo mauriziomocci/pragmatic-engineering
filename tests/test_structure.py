@@ -1199,20 +1199,18 @@ GUIDED_SENTENCES = {
         ("The skills do not say yet where the before/after record lives when the project names none.",
          "Le skill non dicono ancora dove stia il registro del prima e dopo quando il progetto non ne nomina uno."),
         # the four questions of the user lens, answered
-        ("The skills say that the project's configuration names its template, in no fixed file, and that the "
-         "project's designer signs the UX study where there is one; otherwise you approve it, and with no template "
-         "each new component carries its reason in writing.",
-         "Le skill dicono che la configurazione del progetto nomina il suo template, senza un file fisso, e che il "
-         "designer del progetto firma lo studio UX dove c'è; altrimenti lo approvi tu, e senza un template ogni "
-         "componente nuovo porta per iscritto la sua ragione."),
+        ("The skills say that the project's configuration names its template, in no fixed file, and that with no "
+         "template each new component carries its reason in writing.",
+         "Le skill dicono che la configurazione del progetto nomina il suo template, senza un file fisso, e che senza "
+         "un template ogni componente nuovo porta per iscritto la sua ragione."),
         ("A project with one theme measures the theme it has, and rule 20 on the dark theme applies once it has one.",
          "Un progetto con un solo tema misura il tema che ha, e la regola 20 sul tema scuro vale da quando ne ha uno."),
         ("A change of style, such as one colour in one file, is not a trivial text fix: it takes the round of the UX "
          "and review lenses, the measures on the pages it reaches, a score sheet for each interface lens it touches "
-         "and a UX study, because the skills ask one for every changed page.",
+         "and a UX study.",
          "Un cambio di stile, come un colore in un file, non è una correzione banale di testo: prende il giro delle "
          "lenti UX e di revisione, le misure sulle pagine che raggiunge, un foglio dei voti per ogni lente "
-         "d'interfaccia che tocca e uno studio UX, perché le skill ne chiedono uno per ogni pagina cambiata."),
+         "d'interfaccia che tocca e uno studio UX."),
     ),
     "lenses-together": (
         ("No lens agrees by default: each re-checks the other's claims against the screenshots, the measurements and "
