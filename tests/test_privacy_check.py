@@ -1,7 +1,7 @@
 """Tests for tools/privacy_check.py: terms, generic patterns, pre-push and scan."""
 import os
+import resource
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -32,6 +32,11 @@ def new_branch(tip: str, ref: str = "refs/heads/main"):
 
 def run_pre_push(repo: Path, stdin: str):
     return run_script(SCRIPT, ["pre-push", "origin", "https://example.invalid/r.git"], cwd=repo, stdin=stdin)
+
+
+def children_cpu_seconds() -> float:
+    usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return usage.ru_utime + usage.ru_stime
 
 
 def fast_import(repo: Path, count: int, ref: str) -> None:
@@ -409,9 +414,11 @@ def test_many_commits_complete_in_reasonable_time(tmp_path):
     configure_terms(repo, tmp_path, TERM)
     fast_import(repo, 300, "refs/heads/big")
     tip = git(repo, "rev-parse", "refs/heads/big").strip()
-    started = time.monotonic()
+    # CPU time of the hook and the git processes it waits for: a loaded machine stretches only the wall clock,
+    # and a hook that waits instead of computing is stopped only by the 120 s timeout of run_script
+    started = children_cpu_seconds()
     proc = run_pre_push(repo, push_lines(new_branch(tip, "refs/heads/big")))
-    elapsed = time.monotonic() - started
+    elapsed = children_cpu_seconds() - started
     assert proc.returncode == 0, proc.stderr
     assert elapsed < 60, elapsed
 
