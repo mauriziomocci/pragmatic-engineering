@@ -66,14 +66,16 @@ Every new or changed page has a UX study approved before its code. The UX lens p
 
 On a server the API is the experience of the developer who builds the client. On responses and bodies, the names and the meaning of values, the messages shown to people, the consistency across routes and what the client's developer understands from the documentation, the UX lens has its say before the spec, always inside the rule on delivered contracts of `engineering-principles`: a delivered contract never changes shape. So the UX lens works on texts, descriptions and choices among existing values.
 
-## The UX lens and the review lens
+## The round of the lenses
 
-On every change to an interface or to an API, except a trivial text fix, one round, before the spec:
+A skill of the user's configuration that covers these lenses is loaded first. On every change to an interface or to an API, except a trivial text fix, one round, before the spec:
 
-1. The UX lens proposes from the need of the person who uses the product. It runs as a subagent on Opus, briefed with this skill, the touched pages or routes and the person's task. When the user's configuration names its own agent for this lens, that agent runs it.
-2. The review lens (`blunt-review`) attacks on evidence, cost, the simpler alternative and the impact on code and architecture.
-3. The UX lens answers or changes the proposal.
-4. Then the decision: on the person's need the UX lens prevails, on correctness, evidence and the quality of the code the review lens prevails. A disagreement that survives goes to the user, or to the PM lens under an autonomy that opens `spec` (`development-workflow`), and to the project's designer where there is one, with both positions.
+1. Before proposing, the UX lens measures what the change touches as it is: every touched state and its contrast in both themes, and the widths and the zoom of rule 12; for an API, the routes as they answer today.
+2. The UX lens proposes from the need of the person who uses the product. It runs as a subagent on Opus, briefed with this skill, the touched pages or routes and the person's task. When the user's configuration names its own agent for this lens, that agent runs it.
+3. The review lens (`blunt-review`) attacks on evidence, cost, the simpler alternative and the impact on code and architecture.
+4. The user lens walks the main task of the touched pages, or the client's flow for an API, and its findings reach the UX lens with the attack.
+5. The UX lens answers or changes the proposal.
+6. Then the decision: on the person's need the UX lens prevails, on correctness, evidence and the quality of the code the review lens prevails. A disagreement that survives goes to the user, or to the PM lens under an autonomy that opens `spec` (`development-workflow`), and to the project's designer where there is one, with both positions.
 
 Neither lens agrees by default. Each re-checks the other's claims on the screenshots, the measurements and the code before accepting them, and an agreement without an independent check is a finding. The UX lens scores clarity, aspect and accessibility with `quality-scoring`.
 

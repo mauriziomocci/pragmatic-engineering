@@ -5,7 +5,7 @@ description: Write a self-contained continuity note (a handoff document) so anot
 
 # Continuity Note
 
-When the user's own configuration has a skill with this name, that one applies.
+When the user's own configuration has a skill with this name, load that one and follow it where the two differ; this one holds only where that one is silent.
 
 A continuity note (a handoff document) lets a **fresh context** resume your work. The
 reader has none of this conversation: not the goal, not the decisions, not the

@@ -5,7 +5,7 @@ description: Use for decisions where being wrong is expensive - architecture, sp
 
 # adversarial-review-panel
 
-When the user's own configuration has a skill with this name, that one applies.
+When the user's own configuration has a skill with this name, load that one and follow it where the two differ; this one holds only where that one is silent.
 
 ## What this is for
 

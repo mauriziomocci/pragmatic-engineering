@@ -107,7 +107,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "b5234bc97d0fe51a893ac962872663e8f43ac438df26c3f46dfbe08defc080d4"
+RULES_SHA256 = "d81053a165e09a1aae83625aa716338659b43926ab8a4c82b2e582c18c20ea8f"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -123,7 +123,8 @@ MIGRATION_REQUIREMENTS = {
     "no-bug-left": ("Every agent", "closure statement"),
     "english-identifiers": ("Every agent", "in English"),
     "docs-same-commit": ("Every agent", "same commit"),
-    "heavy-gates": ("Main session", "explicit written approval", "an autonomy opening spec approval"),
+    # the profile exception is no longer pointed at user-away, which ties it to the user's absence
+    "heavy-gates": ("Main session", "explicit written approval", "an autonomy opening spec approval, the first"),
     "no-quiz": (
         "Main session",
         'The answer to "is it clear?" is awaited only at the two heavy gates and architecture choices, never while '
@@ -146,7 +147,8 @@ MIGRATION_REQUIREMENTS = {
     ),
     "scope": ("Every agent", "no emoji anywhere", "no documentation file unless asked"),
     "taste-gates": ("Every agent", "about 40 lines"),
-    "api-contract": ("Every agent", "never changes shape", "or by a profile while unreleased and unused"),
+    # the semicolon right after the exception: no pointer to user-away ties the profile to the user's absence
+    "api-contract": ("Every agent", "never changes shape", "or by a profile while unreleased and unused;"),
     "isolated-sessions": ("Every agent", "stops only what it started"),
     "office-hours": (
         "Every agent", "git config --get pe.officeHours", "explicit authorisation in chat", "and never pushed",
@@ -154,8 +156,8 @@ MIGRATION_REQUIREMENTS = {
     ),
     "lenses": (
         "Main session", "never traded", "known defects", "as a proposal to the user",
-        "a change to an interface or to API responses, other than a trivial text fix, gets one round of the UX and "
-        "review lenses before the spec",
+        "a change to an interface or to API responses, other than a trivial text fix, gets one round of the UX, user "
+        "and review lenses before the spec",
     ),
     "quality-gate": (
         "Main session",
@@ -167,11 +169,11 @@ MIGRATION_REQUIREMENTS = {
         "Main session", "wait for the user", "git config --local --get pe.autonomy",
         "unless the user's words or the profile narrow them", "deletions outside the worktree",
         "in chat with a hard stop", "by profile only, an unreleased contract no client uses",
-        # the openings the user's own rules define count too
+        # the openings the user's own rules define count too, and the autonomy holds with the user present
         "an autonomy the user opens in chat with a hard stop, or the profile `git config --local --get pe.autonomy` "
-        "gives, opens spec approval, data model, design outside the window and any opening the user's own rules "
-        "define, unless the user's words or the profile narrow them, and, by profile only, an unreleased contract no "
-        "client uses",
+        "gives, holds with the user present too, asks nothing it opens, and opens spec approval, data model, design "
+        "outside the window and any opening the user's own rules define, unless the user's words or the profile "
+        "narrow them, and, by profile only, an unreleased contract no client uses",
     ),
     "budget": ("Main session", "15% of the weekly limit"),
 }
@@ -565,12 +567,23 @@ def test_blunt_reviewer_body_states_the_a1_contract():
         "When the write of the report under `.pe/reviews/` is refused, put the whole report in your final message, "
         "before the five lines, and write `REPORT: inline`; `REPORT: none` keeps its one meaning, that nothing "
         "was reviewed.",
+        # the agent has no Skill tool, so the user's rubric reaches the findings only through the main session
+        "The rule in the skills loaded with you about a skill of the same name in the user's configuration is not for "
+        "you: class with the table loaded with you; the main session re-classes.",
+        "Then comes one group for every lens of the perimeter that you score (`code`, `legacy`, `architecture`, "
+        "`api`, `docs`), zeros included, with its counts of S1, S2 and S3: the main session computes the scores from "
+        "this line with `quality-scoring`, without a judgment of its own; when the user's own rubric governs, it "
+        "first re-classes the findings of the report with that rubric.",
     ):
         assert needed in body, needed
     # The sentence that limits Bash must also allow the one redirect that step 3 asks for.
     (bash_rule,) = [line for line in body.splitlines() if line.startswith("Use Bash only")]
     assert "redirect" in bash_rule and ".pe/reviews/" in bash_rule
-    for retired in ("origin/main..HEAD", "the grammar is the whole interface", "cannot change what you read"):
+    for retired in (
+        "origin/main..HEAD", "the grammar is the whole interface", "cannot change what you read",
+        "with `quality-scoring`, without a judgment of its own.",  # the user's rubric now comes first, when it governs
+        "The twin line",  # a term the agent finds defined nowhere it reads
+    ):
         assert retired not in body, retired
     assert unknown_references(body) == []
     assert len(text.splitlines()) < 200
@@ -852,24 +865,46 @@ SCORING_RULES = (  # the steps of the score in quality-scoring, in the order the
 )
 
 
-def rules_out_of_order(skill: str) -> List[str]:
-    """The steps of ``SCORING_RULES`` missing from ``skill``, or all of them when they are there but out of order."""
-    missing = [rule for rule in SCORING_RULES if rule not in skill]
-    places = [skill.find(rule) for rule in SCORING_RULES]
-    return missing or ([] if places == sorted(places) else list(SCORING_RULES))
+# The round of the lenses in interface-quality, in its order: the live runs of 4 November 2026 failed where the UX
+# lens proposed before measuring and the user lens was not heard before the answer.
+ROUND_STEPS = (
+    "1. Before proposing, the UX lens measures what the change touches as it is: every touched state and its "
+    "contrast in both themes, and the widths and the zoom of rule 12; for an API, the routes as they answer today.",
+    "2. The UX lens proposes from the need of the person who uses the product.",
+    "3. The review lens (`blunt-review`) attacks on evidence, cost, the simpler alternative and the impact on code "
+    "and architecture.",
+    "4. The user lens walks the main task of the touched pages, or the client's flow for an API, and its findings "
+    "reach the UX lens with the attack.",
+    "5. The UX lens answers or changes the proposal.",
+    "6. Then the decision: on the person's need the UX lens prevails, on correctness, evidence and the quality of "
+    "the code the review lens prevails.",
+)
+
+
+def steps_out_of_order(steps: Tuple[str, ...], text: str) -> List[str]:
+    """The ``steps`` missing from ``text``, or all of them when they are there but out of order."""
+    missing = [step for step in steps if step not in text]
+    places = [text.find(step) for step in steps]
+    return missing or ([] if places == sorted(places) else list(steps))
 
 
 def test_readmes_give_the_score_formula_that_quality_scoring_defines():
     """The pinned sentences of the READMEs state these figures and their order, so a change of the skill turns this red."""
-    assert rules_out_of_order(skill_text("quality-scoring")) == []
+    assert steps_out_of_order(SCORING_RULES, skill_text("quality-scoring")) == []
 
 
 def test_the_score_formula_check_sees_a_step_removed_or_moved():
     """The example of the READMEs holds only if the cap of the S2 comes before the S3 is taken off."""
     skill = skill_text("quality-scoring")
     s2, s3 = SCORING_RULES[2], SCORING_RULES[3]
-    assert rules_out_of_order(skill.replace(s2, "")) == [s2]
-    assert rules_out_of_order(skill.replace(s2, "@").replace(s3, s2).replace("@", s3)) == list(SCORING_RULES)
+    assert steps_out_of_order(SCORING_RULES, skill.replace(s2, "")) == [s2]
+    moved = skill.replace(s2, "@").replace(s3, s2).replace("@", s3)
+    assert steps_out_of_order(SCORING_RULES, moved) == list(SCORING_RULES)
+
+
+def test_the_round_of_the_lenses_keeps_its_six_steps_in_order():
+    """A step moved, even with its old number kept, or a step missing turns this red."""
+    assert steps_out_of_order(ROUND_STEPS, skill_text("interface-quality")) == []
 
 
 def test_readmes_date_the_lenses_and_call_them_rules():
@@ -899,8 +934,8 @@ def normal_mode_steps(block: str):
     return {int(step.group(1)): step.group(0) for step in steps}
 
 
-def test_readmes_put_the_round_of_the_ux_and_review_lenses_in_phase_2_as_development_workflow_does():
-    assert "one round of the UX lens and the review lens first" in skill_text("development-workflow")
+def test_readmes_put_the_round_of_the_lenses_in_phase_2_as_development_workflow_does():
+    assert "one round of the UX, user and review lenses first" in skill_text("development-workflow")
     for text, phrase in zip(pages("lifecycle"), ("the UX lens proposes where the button goes",
                                                  "la lente UX propone dove va il pulsante")):
         steps = normal_mode_steps(text)
@@ -976,9 +1011,7 @@ def test_readmes_list_the_four_checks_of_the_re_creation_in_the_order_the_script
     spec.loader.exec_module(module)
     assert [name for name, _ in module.CHECKS] == ["tree", "commit count", "messages", "dates"]
     for text, phrases in zip(pages("lifecycle"), RECREATION_STEPS):
-        places = [text.find(phrase) for phrase in phrases]
-        assert -1 not in places, phrases
-        assert places == sorted(places), phrases
+        assert steps_out_of_order(phrases, text) == []
 
 
 OFFICE_HOURS_COMMANDS = (  # the lines of the guide that a reader copies; the placeholder follows the language
@@ -1103,12 +1136,15 @@ GUIDED_SENTENCES = {
         ("The keys the plugin reads, and one that its maintainer tools read:",
          "Le chiavi che legge il plugin, e una che leggono gli strumenti dei manutentori:"),
         ("| The profile opens nothing |", "| Il profilo non apre nulla |"),
+        # an autonomy holds whether or not the user is present, so the profile is not described by absence
+        ("| What the lenses may decide in your place, from `spec`, `schema`, `design` and `contract` |",
+         "| Che cosa le lenti possono decidere al posto tuo, fra `spec`, `schema`, `design` e `contract` |"),
         ("The four global keys tell the model when to keep your work local and which remotes are yours, and the "
-         "autonomy profile tells it which decisions it may take while you are away; in this version both are rules "
-         "for the model, and nothing blocks a push outside the window.",
+         "autonomy profile tells it which decisions it may take in your place; in this version both are rules for "
+         "the model, and nothing blocks a push outside the window.",
          "Le quattro chiavi globali dicono al modello quando tenere il tuo lavoro in locale e quali remoti sono "
-         "tuoi, e il profilo di autonomia gli dice quali decisioni può prendere mentre non ci sei; in questa "
-         "versione sono entrambe regole per il modello, e nulla blocca un push fuori dalla finestra."),
+         "tuoi, e il profilo di autonomia gli dice quali decisioni può prendere al posto tuo; in questa versione "
+         "sono entrambe regole per il modello, e nulla blocca un push fuori dalla finestra."),
         ("To remove a key, run `git config --global --unset-all pe.<key>` for a global one, or "
          "`git config --local --unset pe.autonomy` for the profile.",
          "Per togliere una chiave, esegui `git config --global --unset-all pe.<chiave>` per una globale, oppure "
@@ -1214,14 +1250,36 @@ GUIDED_SENTENCES = {
          "un template ogni componente nuovo porta per iscritto la sua ragione."),
         ("A project with one theme measures the theme it has, and rule 20 on the dark theme applies once it has one.",
          "Un progetto con un solo tema misura il tema che ha, e la regola 20 sul tema scuro vale da quando ne ha uno."),
-        ("A change of style, such as one colour in one file, is not a trivial text fix: it takes the round of the UX "
-         "and review lenses, the measures on the pages it reaches, a score sheet for each interface lens it touches "
-         "and a UX study.",
+        ("A change of style, such as one colour in one file, is not a trivial text fix: it takes the round of the UX, "
+         "user and review lenses, the measures on the pages it reaches, a score sheet for each interface lens it "
+         "touches and a UX study.",
          "Un cambio di stile, come un colore in un file, non è una correzione banale di testo: prende il giro delle "
-         "lenti UX e di revisione, le misure sulle pagine che raggiunge, un foglio dei voti per ogni lente "
+         "lenti UX, utente e di revisione, le misure sulle pagine che raggiunge, un foglio dei voti per ogni lente "
          "d'interfaccia che tocca e uno studio UX."),
+        ("When your configuration names its own agents for these lenses, those agents run them. A skill of your "
+         "configuration that covers these lenses is loaded first.",
+         "Quando la tua configurazione nomina propri agenti per queste lenti, sono quegli agenti a eseguirle. Una "
+         "skill della tua configurazione che copre queste lenti si carica per prima."),
     ),
     "lenses-together": (
+        # the round measures before it proposes, and the user lens is heard before the UX lens answers
+        ("in this order: the PM lens has already framed the work; the UX lens measures what the change touches as it "
+         "is (every touched state and its contrast in both themes, at the widths and the zoom of the iron rules, or, "
+         "for an API, the routes as they answer today) and then proposes; the review lens attacks; the user lens "
+         "walks the main task of the touched pages, or the client's flow for an API, and its findings reach the UX "
+         "lens with the attack; the UX lens answers or changes the proposal; and then comes the decision.",
+         "in quest'ordine: la lente PM ha già inquadrato il lavoro; la lente UX misura ciò che il cambio tocca così "
+         "com'è (ogni stato toccato e il suo contrasto in entrambi i temi, alle larghezze e allo zoom delle regole di "
+         "ferro, oppure, per un'API, le rotte come rispondono oggi) e poi propone; la lente di revisione attacca; la "
+         "lente utente percorre il compito principale delle pagine toccate, o il flusso del client per un'API, e i "
+         "suoi rilievi arrivano alla lente UX insieme all'attacco; la lente UX risponde o cambia la proposta; e poi "
+         "viene la decisione."),
+        ("An autonomy holds with you present too: the lenses decide what it opens, and nothing it opens is asked of "
+         "you.",
+         "Un'autonomia vale anche quando ci sei: le lenti decidono ciò che apre, e nulla di ciò che apre ti viene "
+         "chiesto."),
+        ("in `interface-quality` for the round of the UX, user and review lenses.",
+         "in `interface-quality` per il giro delle lenti UX, utente e di revisione."),
         ("No lens agrees by default: each re-checks the other's claims against the screenshots, the measurements and "
          "the code before accepting them,",
          "Nessuna lente è d'accordo per principio: ciascuna ricontrolla le affermazioni dell'altra su screenshot, "
@@ -1270,6 +1328,10 @@ GUIDED_SENTENCES = {
          "confronta ciò che stampa con gli esempi qui sopra."),
     ),
     "autonomy": (
+        ("An autonomy lets the lenses take the decisions it opens, whether you are there or not; each one is "
+         "provisional, logged and reported to you first.",
+         "Un'autonomia lascia alle lenti le decisioni che apre, che tu ci sia o no; ciascuna è provvisoria, "
+         "registrata e riportata a te per prima."),
         ("say it in chat with a hard stop, the hour at which the work must stop, for example "
          '"go on without me until 18:00, but leave the data model to me": it opens',
          "dillo in chat con un orario di fine, l'ora in cui il lavoro deve fermarsi, per esempio "
@@ -1303,6 +1365,17 @@ GUIDED_SENTENCES = {
          "e sui framework, che dice solo da dove vengono le buone pratiche."),
     ),
     "lifecycle": (
+        ("Because the job changes an interface, the UX lens first measures the report page as it is, its states and "
+         "their contrast in both themes, at the widths and the zoom of the iron rules; then the UX lens proposes "
+         "where the button goes and what its label says, the review lens attacks the proposal on evidence and cost, "
+         "the user lens walks the download as a person would and its findings reach the UX lens with the attack, the "
+         "UX lens answers, and then the decision is taken, before the spec is written (`interface-quality`).",
+         "Poiché il lavoro cambia un'interfaccia, la lente UX misura prima la pagina del rapporto così com'è, i suoi "
+         "stati e il loro contrasto in entrambi i temi, alle larghezze e allo zoom delle regole di ferro; poi la lente "
+         "UX propone dove va il pulsante e che cosa dice la sua etichetta, la lente di revisione attacca la proposta "
+         "su prove e costo, la lente utente percorre lo scaricamento come farebbe una persona e i suoi rilievi "
+         "arrivano alla lente UX insieme all'attacco, la lente UX risponde, e poi la decisione si prende, prima che "
+         "la spec sia scritta (`interface-quality`)."),
         ("Normal mode is the name for work without an autonomy: you supervise it, and you approve the spec at "
          "gate 2 and the final validation at gate 6.",
          "La modalità normale è il nome del lavoro senza un'autonomia: lo segui tu, e approvi tu la spec al "
@@ -1354,6 +1427,9 @@ GUIDED_SENTENCES = {
         ("| At the hard stop you gave, or at gate 6 |", "| All'orario di fine che hai dato, oppure al cancello 6 |"),
     ),
     "lenses-score": (
+        # the user's own scoring skill writes its own log, so the plugin's log is not the only one
+        ("When your configuration has its own `quality-scoring`, its log is the one written instead.",
+         "Quando la tua configurazione ha un suo `quality-scoring`, si scrive invece il suo registro."),
         ("On a touched page the perimeter is what the change touches and the states it reaches: an old breach elsewhere "
          "on the page is listed as a note and does not count, as for old code.",
          "Su una pagina toccata il perimetro è ciò che il cambio tocca e gli stati che raggiunge: una violazione vecchia "
@@ -1411,6 +1487,11 @@ GUIDED_SENTENCES = {
          "lente sotto 8."),
     ),
     "lenses-gate": (
+        ("When your configuration has its own `quality-scoring`, the main session first re-classes the findings of "
+         "the reviewer's report with that rubric, because the reviewer can class only with the table of the plugin.",
+         "Quando la tua configurazione ha un suo `quality-scoring`, la sessione principale riclassifica prima i "
+         "rilievi del rapporto del revisore con quella rubrica, perché il revisore può classificare solo con la "
+         "tabella del plugin."),
         ("`quality-scoring` does not say yet whether a finding that a later round saw fixed still counts in the "
          "score, nor which round's `FINDINGS:` line the gate reads.",
          "`quality-scoring` non dice ancora se un rilievo che un giro successivo ha visto corretto conti ancora nel "
