@@ -704,10 +704,13 @@ LONG_COMMANDS = [
     "xargs-alone", "xargs-then-gh",
 ])
 def test_long_commands_are_read_in_linear_time(repo_with_terms, command, blocked):
-    """A hook that times out lets the tool run: a check that costs a second per 200 KB is too slow."""
-    started = time.perf_counter()
+    """A hook that times out lets the tool run: a check that costs a second per 200 KB is too slow.
+
+    CPU time, not the wall clock: other processes on a loaded machine stretch the wall clock of a linear check.
+    """
+    started = time.process_time()
     reason = dev_guard.decide(bash_payload(repo_with_terms, command))
-    elapsed = time.perf_counter() - started
+    elapsed = time.process_time() - started
     assert (reason is not None) == blocked, reason
     assert elapsed < 1.0
 
