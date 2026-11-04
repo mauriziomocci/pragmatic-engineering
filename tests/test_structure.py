@@ -1178,10 +1178,12 @@ GUIDED_SENTENCES = {
          "l'esecuzione NOT MERGEABLE."),
     ),
     "explain-lenses": (
-        ("The first three, the PM, UX and review lenses, frame, propose and attack. The fourth, the user lens, only "
-         "tries the work as a person would.",
-         "Le prime tre, le lenti PM, UX e di revisione, inquadrano, propongono e attaccano. La quarta, la lente "
-         "utente, si limita a provare il lavoro come lo proverebbe una persona."),
+        # the name the user looks for: the three lenses that frame, propose and attack are the Trinity
+        ("The first three, the PM, UX and review lenses, frame, propose and attack. Together these three are called "
+         "the Trinity. The fourth, the user lens, only tries the work as a person would.",
+         "Le prime tre, le lenti PM, UX e di revisione, inquadrano, propongono e attaccano. Insieme queste tre si "
+         "chiamano la Trinità. La quarta, la lente utente, si limita a provare il lavoro come lo proverebbe una "
+         "persona."),
     ),
     "lenses-roles": (
         ("(the skills do not say where that file lives, what it holds or what happens when the project has none)",
@@ -1262,6 +1264,11 @@ GUIDED_SENTENCES = {
          "skill della tua configurazione che copre queste lenti si carica per prima."),
     ),
     "lenses-together": (
+        # the name the user looks for, as the first sentence of the paragraph on the round
+        ("The round is an adversarial verification: the review lens attacks the proposal on evidence. On a change "
+         "to an interface or to the responses of an API,",
+         "Il giro è una verifica avversariale: la lente di revisione attacca la proposta sulle prove. Su un cambio "
+         "di un'interfaccia o delle risposte di un'API,"),
         # the round measures before it proposes, and the user lens is heard before the UX lens answers
         ("in this order: the PM lens has already framed the work; the UX lens measures what the change touches as it "
          "is (every touched state and its contrast in both themes, at the widths and the zoom of the iron rules, or, "
