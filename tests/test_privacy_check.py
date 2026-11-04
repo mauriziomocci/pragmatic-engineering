@@ -415,7 +415,7 @@ def test_many_commits_complete_in_reasonable_time(tmp_path):
     fast_import(repo, 300, "refs/heads/big")
     tip = git(repo, "rev-parse", "refs/heads/big").strip()
     # CPU time of the hook and the git processes it waits for: a loaded machine stretches only the wall clock,
-    # and run_script already stops a hook that hangs
+    # and a hook that waits instead of computing is stopped only by the 120 s timeout of run_script
     started = children_cpu_seconds()
     proc = run_pre_push(repo, push_lines(new_branch(tip, "refs/heads/big")))
     elapsed = children_cpu_seconds() - started

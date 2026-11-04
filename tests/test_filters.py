@@ -3,7 +3,7 @@ import itertools
 import random
 import re
 import string
-import time
+import time  # the linear-time checks use CPU time: a loaded machine stretches only the wall clock
 
 import pytest
 
@@ -429,17 +429,17 @@ def test_forms_a_textual_filter_cannot_see_stay_open_as_the_module_declares(comm
 ])
 def test_thousands_of_api_calls_in_one_command_are_checked_in_linear_time(command):
     """Each api call is analysed once, on its own text: re-reading the tail for every call would take seconds."""
-    started = time.perf_counter()
+    started = time.process_time()
     assert filters.check_shell_command(command) is None
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
 
 
 def test_a_long_run_of_push_option_prefixes_is_checked_in_linear_time():
     """A hook that times out lets the tool run, so 100 KB of repeated --pu must not take a second."""
     command = "git status " + "--pu" * 25000
-    started = time.perf_counter()
+    started = time.process_time()
     assert filters.check_shell_command(command) is None
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
 
 
 # The whole-text verdict of the first version of the filter (commit e0eac43), copied here so that the oracle does not
@@ -825,9 +825,9 @@ def test_remove_shell_quoting_gives_the_text_the_shell_passes_on(text, expected)
 
 @pytest.mark.parametrize("text", ["'" * 100000, "\"" * 100001, "\\" * 100001, "'a\\''" * 40000, "\"a\\\"\"" * 40000])
 def test_remove_shell_quoting_is_linear(text):
-    started = time.perf_counter()
+    started = time.process_time()
     filters.remove_shell_quoting(text)
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -853,6 +853,6 @@ def test_without_line_continuations_joins_the_lines_as_the_shell_does(text, expe
 ], ids=["gh-runs", "gh-pr-runs", "options-after-pr", "options-after-gh", "options-with-values", "glab-mr-runs", "view-last"])
 def test_long_runs_of_options_are_read_for_a_pr_command_in_linear_time(command):
     """The hook has 15 seconds and a hook that times out lets the tool run: no run of options may cost a second."""
-    started = time.perf_counter()
+    started = time.process_time()
     assert filters.pr_command_kind(command) is None
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
