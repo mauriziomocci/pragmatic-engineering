@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # autonomous-execution
 
-When the user's own configuration has a skill with this name, that one applies.
+When the user's own configuration has a skill with this name, load that one and follow it where the two differ; this one holds only where that one is silent.
 
 This skill executes an approved spec task by task, with nobody present, up to the opening of its merge request. Where a decision would need the user, the skill decides, records the decision and goes on.
 

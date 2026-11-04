@@ -5,7 +5,7 @@ description: Use when the user asks for spec-kit or the project adopted it (a .s
 
 # spec-driven-layout
 
-When the user's own configuration has a skill with this name, that one applies.
+When the user's own configuration has a skill with this name, load that one and follow it where the two differ; this one holds only where that one is silent.
 
 `development-workflow` says when each artifact is produced. This skill says where the artifacts live on disk, and how many of them a piece of work needs.
 

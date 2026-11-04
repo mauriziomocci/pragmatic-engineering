@@ -5,7 +5,7 @@ description: Use at every review that feeds the 8/10 gate of phase 6, before wor
 
 # quality-scoring
 
-When the user's own configuration has a skill with this name, that one applies.
+When the user's own configuration has a skill with this name, load that one and follow it where the two differ; this one holds only where that one is silent.
 
 The gate of phase 6 asks every lens the work touches to score at least 8 out of 10. A gate like that means something only if the score does not depend on who gives it, so here the score is computed from classified findings, never chosen. The same perimeter, the same evidence and the same rubric give the same score within half a point.
 
@@ -43,7 +43,7 @@ Every finding carries `file:line`, a measured number or the name of a screenshot
 |---|---|---|
 | S1, critical | wrong or unsafe for a user, a piece of data or a service | a scenario that fails; an invariant contradicted by the code; a security or privacy problem, such as a write without a permission check; an operation with no way back; data lost or corrupted; a wrong result shown or computed; a crash on a main path; the text or the control of a primary action below WCAG AA |
 | S2, serious | holds today, breaks with normal use or with growth | a missing or tautological test on a behaviour that changed; a document contradicted by the code, such as an instruction that no longer works; a race without a lock or a constraint; a server error on bad input instead of a typed client error; a query that grows with the data; an import cycle or a dependency against the declared direction; a business rule in a view, a template or a serializer; error text leaking to clients; a page that does two jobs |
-| S3, medium | debt, no wrong behaviour | a function over 40 lines or nested deeper than 3 without a written reason; a new catch-all exception handler; a twin of an existing helper; two names for one thing; repeated information on a page; a branch without a test; a drifted count or path in a document whose instructions still work; jargon in text for people |
+| S3, medium | debt, no wrong behaviour | a function over 40 lines or nested deeper than 3 without a written reason; a new catch-all exception handler; a twin of an existing helper; two names for one thing; repeated information on a page; a branch whose behaviour the work did not change, without a test; a drifted count or path in a document whose instructions still work; jargon in text for people |
 
 In doubt between two classes, take the more severe one; the second reviewer lowers it only with evidence. A failure of a WCAG 2.2 success criterion at level A or AA is at least S2, and S1 on a primary action, on whatever lens its line names.
 
@@ -98,7 +98,7 @@ Not verified: <what could not be observed>
 
 ## Calibration
 
-The rubric is calibrated at every use, without being asked. The log is `${CLAUDE_PLUGIN_DATA}/calibration.md`, in the plugin's data folder, which survives updates of the plugin and is deleted when the plugin is uninstalled from the last place it is installed, unless `--keep-data` is passed to the uninstall. Its first line holds the state, `CALIBRATING (k/5)` or `STABLE`, where `k` counts the consecutive applications without a signal. When the file does not exist, create it with the line `CALIBRATING (0/5)`.
+The rubric is calibrated at every use, without being asked. When the user's configuration has its own `quality-scoring`, its calibration log is the one written, and this paragraph does not apply. The log is `${CLAUDE_PLUGIN_DATA}/calibration.md`, in the plugin's data folder, which survives updates of the plugin and is deleted when the plugin is uninstalled from the last place it is installed, unless `--keep-data` is passed to the uninstall. Its first line holds the state, `CALIBRATING (k/5)` or `STABLE`, where `k` counts the consecutive applications without a signal. When the file does not exist, create it with the line `CALIBRATING (0/5)`.
 
 While the state is calibrating, the scorer appends one entry at the end of every scoring (project, date, perimeter, scores and signals) and acts on its signals:
 

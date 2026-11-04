@@ -22,8 +22,14 @@ FORBIDDEN = ("Jira", "HackSoftware", "Two Scoops", "PostgreSQL", "Django", "sele
 # The three files that tell a sub-agent how to open its deliverable file; rules.md is pinned by digest.
 STATUS_LINE_FILES = ("rules.md", "agents/blunt-reviewer.md", "skills/continuity-note/SKILL.md")
 STATUS_LINE = re.compile(r"`(STATUS: IN PROGRESS - done:[^`]*)`")
-# The six skills whose names a user's own skills may carry: the user's copy applies, in the same words everywhere.
-SAME_NAME = "When the user's own configuration has a skill with this name, that one applies."
+# The six skills whose names a user's own skills may carry: the user's copy wins where the two differ, and the
+# plugin's copy keeps what the user's leaves out (the sections other plugin texts cite), in the same words everywhere.
+SAME_NAME = (
+    "When the user's own configuration has a skill with this name, load that one and follow it where the two "
+    "differ; this one holds only where that one is silent."
+)
+# The twin line before D22, which threw away the plugin's whole copy, sections that other texts cite included.
+RETIRED_SAME_NAME = "When the user's own configuration has a skill with this name, that one applies."
 # The 22 iron rules of interface-quality, each with its number: quality-scoring classes their breaches by rule.
 IRON_RULES = (
     "1. **The designer's document decides.**", "2. **Mockups before templates.**",
@@ -127,6 +133,7 @@ CONTRACTS: Dict[str, Contract] = {
         absent=(
             "iterative-requirements-analysis", "financial-reconciliation", "smonta", "combacia", "Origine",
             "rules cycle",  # the section is called "Rule cycle"
+            RETIRED_SAME_NAME,
         ),
     ),
     "blunt-review": Contract(
@@ -184,7 +191,10 @@ CONTRACTS: Dict[str, Contract] = {
             "delete > do nothing > extend what exists > write new", "what breaks if we delete this?",
             SAME_NAME, "The cycle stops as `blunt-review` says.",
         ),
-        absent=("for at most two rounds",),  # the cap lives in blunt-review, with its exceptions
+        absent=(
+            "for at most two rounds",  # the cap lives in blunt-review, with its exceptions
+            RETIRED_SAME_NAME,
+        ),
     ),
     "development-workflow": Contract(
         sections=(
@@ -242,6 +252,17 @@ CONTRACTS: Dict[str, Contract] = {
             "findings go to the decision log, and the partial closure of `autonomous-execution` prevails when that "
             "skill runs.",
             "When the user's configuration names its own agents for these lenses, those agents run them.",
+            # the user's own twin skills are loaded before the plugin's lenses can win in practice
+            "A skill of the user's configuration that covers these lenses is loaded first.",
+            # the autonomy does not lapse when the user shows up: nothing it opens is handed back as a question
+            "An autonomy holds with the user present too: the lenses decide what it opens, and nothing it opens is "
+            "asked.",
+            # the reviewer can only class with the plugin's table, so the main session applies the user's rubric, and
+            # the bare name reaches the user's skill where the plugin's prefixed name would load the plugin's twin
+            "Score each touched lens from the reviewer's `FINDINGS:` line and the sheets of the UX lens, with "
+            "`quality-scoring`: the user's own, invoked by its bare name, when the user's configuration has one, "
+            "otherwise this plugin's.",
+            "Then re-class the findings of the reviewer's report with it.",
             "One entry per decision, in the log the user's or the project's configuration names, otherwise in the "
             "progress note: who decided, the positions, the costs and the state (confirmed, overturned, pending).",
             "When the user asks for spec-kit, or the project adopted it, its whole chain is used instead: "
@@ -272,6 +293,7 @@ CONTRACTS: Dict[str, Contract] = {
             "defer or park",  # the one wording of blunt-review: park the findings or propose a deferral to the user
             "`publish`",  # publishing is not an opening of the plugin, a declared difference from the master
             "nothing else moves", "spec-kit on request",  # the user's own openings and adoption of spec-kit count
+            "Score each touched lens with `quality-scoring`",  # which copy scores is named now
         ),
     ),
     "spec-driven-layout": Contract(
@@ -294,6 +316,7 @@ CONTRACTS: Dict[str, Contract] = {
             "runs without any spec-kit convention",  # a leftover of spec-kit as opt-in
             "Otherwise the artifacts follow",  # specify init always fills .specify/templates/
             "only when the user asks",  # a project that adopted spec-kit uses it too, description included
+            RETIRED_SAME_NAME,
         ),
     ),
     "autonomous-execution": Contract(
@@ -323,6 +346,7 @@ CONTRACTS: Dict[str, Contract] = {
             "git-commit-assistant", "/opt/homebrew", "Autorizzazione", "carve-out", "such as 2.32",
             "the gate of phase 2 has no exception",
             "`gh pr create`",  # a bare name can run an alias
+            RETIRED_SAME_NAME,
         ),
     ),
     "teach": Contract(
@@ -361,6 +385,7 @@ CONTRACTS: Dict[str, Contract] = {
             "handover line and, when no other log is named, the decision log.",
         ),
         extra_files=("LICENSE",),
+        absent=(RETIRED_SAME_NAME,),
     ),
     "safe-operations": Contract(
         sections=(
@@ -437,6 +462,11 @@ CONTRACTS: Dict[str, Contract] = {
             "from the last place it is installed",
             "nor the autonomy exception",  # a contract changed under the profile is no S1
             SAME_NAME,
+            # the S3 line and the S2 line on a missing test on a changed behaviour cannot claim the same finding
+            "a branch whose behaviour the work did not change, without a test",
+            # run A of scenario 3 wrote the plugin's log although the user's own rubric governed
+            "When the user's configuration has its own `quality-scoring`, its calibration log is the one written, and "
+            "this paragraph does not apply.",
             # the classes of the iron rules, and the widths of rule 12 wherever the score names widths
             "The iron rules of `interface-quality`, each on the lens marked:",
             # one routing: a breach named anywhere in the thresholds keeps that lens, the rest goes by rule number
@@ -485,12 +515,14 @@ CONTRACTS: Dict[str, Contract] = {
             "or data asked twice (S3)", "content lost with the text-spacing overrides, states",
             "a failure at level AAA alone is S3",  # every AAA failure as S3 would class 5:1 text, which rule 6 accepts
             "outside its spacing and inline exceptions",
+            "a branch without a test",  # read alone it is also the S2 of a missing test on a changed behaviour
+            RETIRED_SAME_NAME,
         ) + PRIVATE_SOURCE,
     ),
     "interface-quality": Contract(
         sections=(
             "When to use", "Simplicity first", "Iron rules", "The UX study",
-            "APIs are an interface", "The UX lens and the review lens", "The user lens",
+            "APIs are an interface", "The round of the lenses", "The user lens",
         ),
         phrases=IRON_RULES + (
             # rule 5 is the one written exception to principle 6
@@ -530,8 +562,13 @@ CONTRACTS: Dict[str, Contract] = {
             "When the user's configuration names its own agent for this lens, that agent runs it.",
             "When the user's configuration names its own agent for this lens or its own file of personas, those are "
             "used instead.",
+            # the six steps of the round, present and in order, are ROUND_STEPS in test_structure.py
+            "A skill of the user's configuration that covers these lenses is loaded first.",
         ),
-        absent=("375, 768 or 1280", "375, 768 and 1280") + PRIVATE_SOURCE,
+        absent=(
+            "375, 768 or 1280", "375, 768 and 1280",
+            "No mockups in this step",  # not the spec's wording: rule 2 already times the mockups
+        ) + PRIVATE_SOURCE,
     ),
     "documentation-quality": Contract(
         sections=(
