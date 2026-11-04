@@ -10,6 +10,12 @@ Jesse Vincent. The principle of recording the decisions an unattended run
 takes, instead of stopping to ask, comes from its subagent-driven-development
 skill and is rewritten in our own words in skills/autonomous-execution.
 
+knowledge-work-plugins (https://github.com/anthropics/knowledge-work-plugins),
+Apache License 2.0, by Anthropic. Two ideas of its engineering plugin, the
+signal that triggers a rollback and mitigation before diagnosis in an
+incident, are rewritten in our own words in skills/safe-operations and
+skills/development-workflow.
+
 continuity-note (https://github.com/mauriziomocci/continuity-note), MIT
 License, by Maurizio Mocci, derived from the "handoff" skill by Matt Pocock.
 It is included in skills/continuity-note with its own LICENSE file, which
