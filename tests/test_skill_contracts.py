@@ -455,9 +455,13 @@ CONTRACTS: Dict[str, Contract] = {
             "an outcome message that vanishes before it can be read or is not announced (S2)",
             "horizontal page scroll at any width of rule 12 of `interface-quality` (S2)",
             "screenshots in both themes at the widths and the zoom of rule 12 of `interface-quality`",
-            # a breach of AA is never S3, whatever the pointer
-            "targets under 24 px on any device (S2, S1 on a primary action); touch targets from 24 to 43 px on a touch "
-            "device (S3)",
+            # a breach of WCAG A or AA is never S3, on any line and whatever the pointer
+            "A failure of a WCAG 2.2 success criterion at level A or AA is at least S2, and S1 on a primary action, on "
+            "whatever lens its line names; a failure at level AAA alone is S3.",
+            "a target that fails 2.5.8, which asks 24 px outside its spacing and inline exceptions (S2, S1 on a primary "
+            "action); a touch target under 44 px on a touch device that meets 2.5.8 (S3, the AAA criterion 2.5.5)",
+            "content lost with the text-spacing overrides (S2)",
+            "help that moves across pages (3.2.6) or data asked twice in one process (3.3.7) (S2)",
         ),
         absent=(
             "375, 768 or 1280", "375, 768 and 1280", "S3 each", "for each width missing", "at 375 px",
@@ -465,6 +469,8 @@ CONTRACTS: Dict[str, Contract] = {
             "S2 when systematic", "counted on each touched page",  # one counting rule only
             "which `clarity` scores once", "each on the lens marked.",  # the routing is one table, not exceptions
             "that this section does not name", "targets under 24 px with a mouse",
+            "touch targets under 44 px on a touch device (S3)", "touch targets from 24 to 43 px",
+            "or data asked twice (S3)", "content lost with the text-spacing overrides, states",
         ) + PRIVATE_SOURCE,
     ),
     "interface-quality": Contract(
