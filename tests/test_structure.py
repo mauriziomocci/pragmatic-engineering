@@ -1025,10 +1025,10 @@ def test_autonomy_example_opens_no_api_contract():
 # Whole sentences of the guided configuration: English, then Italian, in the section that holds them.
 GUIDED_SENTENCES = {
     "explain-lanes": (
-        ("When users are hurt right now, the first proposal is the mitigation, the way back already written, and "
-         "the diagnosis follows.",
-         "Quando le persone sono colpite adesso, la prima proposta è la mitigazione, cioè la via del ritorno già "
-         "scritta, e la diagnosi viene dopo."),
+        ("When users are hurt right now and the signal of a recent change's way back has fired, the first proposal "
+         "is that way back, and the diagnosis follows.",
+         "Quando le persone sono colpite adesso ed è scattato il segnale della via del ritorno di un cambio recente, "
+         "la prima proposta è quella via del ritorno, e la diagnosi viene dopo."),
         ("the blast radius and the way back, with the signal that triggers it, are said first",
          "si dicono prima il raggio d'azione e la via del ritorno, con il segnale che la fa scattare"),
     ),
