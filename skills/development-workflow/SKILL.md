@@ -12,7 +12,7 @@ How code is written lives in `engineering-principles`. How a review is done live
 The lane comes from the nature of the work. When it is not clear, ask.
 
 - **Feature.** New behaviour or a structural change. The next sections describe this lane.
-- **Support and incidents.** From the ticket to the fix. Primary evidence comes before hypotheses, and your own recent changes are checked before external causes (`evidence-based-investigation`). Phases 1-4 shrink to a short diagnosis and a short proposal, without spec-kit. Two gates remain, in short form: a go on the proposal, and a go before production. The answer to the customer is bound to the evidence, and its form follows the user's writing rules.
+- **Support and incidents.** From the ticket to the fix. Primary evidence comes before hypotheses, and your own recent changes are checked before external causes (`evidence-based-investigation`). Phases 1-4 shrink to a short diagnosis and a short proposal, without spec-kit. Two gates remain, in short form: a go on the proposal, and a go before production. When users are hurt right now, mitigation comes before diagnosis: the first proposal is the way back already written, under `safe-operations` and with its own go, and the cause is searched after. The answer to the customer is bound to the evidence, and its form follows the user's writing rules.
 - **Operations on live systems.** Before a command or a tool that changes an external system, load `safe-operations`.
 
 ## Feature lane: phases and gates

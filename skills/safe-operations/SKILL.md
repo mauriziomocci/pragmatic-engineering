@@ -15,7 +15,7 @@ Load it before running a command or a tool that changes an external system: a de
 
 1. Verify and state the active target: the cluster context, the cloud account or profile, the database, the environment. Verify it with a command that shows it, never from memory and never from what the previous session was doing, and write the result in the message. Name the target inside the command itself whenever the tool allows it.
 2. Use a dry run where one exists (a plan, a preview, a diff against the live state) and read its output before running the real command.
-3. Say the blast radius first: what the command touches beyond the task, and who notices if it fails. Say the way back: the exact steps that undo it. If there is no way back, say so and stop, because that is a decision for the user.
+3. Say the blast radius first: what the command touches beyond the task, and who notices if it fails. Say the way back: the exact steps that undo it, and the signal that triggers them, such as an error rate or a main path that fails once the command has run. If there is no way back, say so and stop, because that is a decision for the user.
 4. Prefer a dedicated resource (a namespace, a release, a controller, a load balancer, a storage class) to changing a shared one, and change a whole cluster only when the change is additive. The values, releases, load balancers, certificates and configurations of a shared component are never touched as a side effect, and each change to them has its own go.
 
 ## Production and shared systems

@@ -829,7 +829,8 @@ def test_readmes_give_the_review_rounds_the_ranges_of_blunt_review():
 
 def test_notice_credits_what_this_version_reuses():
     text = NOTICE.read_text(encoding="utf-8")
-    for needed in ("superpowers", "Jesse Vincent", "MIT", "continuity-note", "Matt Pocock", "diataxis.fr"):
+    for needed in ("superpowers", "Jesse Vincent", "MIT", "continuity-note", "Matt Pocock", "diataxis.fr",
+                   "knowledge-work-plugins", "Apache License 2.0"):
         assert needed in text, needed
 
 
@@ -1023,6 +1024,14 @@ def test_autonomy_example_opens_no_api_contract():
 
 # Whole sentences of the guided configuration: English, then Italian, in the section that holds them.
 GUIDED_SENTENCES = {
+    "explain-lanes": (
+        ("When users are hurt right now, the first proposal is the mitigation, the way back already written, and "
+         "the diagnosis follows.",
+         "Quando le persone sono colpite adesso, la prima proposta è la mitigazione, cioè la via del ritorno già "
+         "scritta, e la diagnosi viene dopo."),
+        ("the blast radius and the way back, with the signal that triggers it, are said first",
+         "si dicono prima il raggio d'azione e la via del ritorno, con il segnale che la fa scattare"),
+    ),
     "tutorial": (
         ("Steps 1 and 3 run in a terminal, and from step 4 you type into the session. Do step 3 yourself: the rules "
          "are not loaded yet, so nothing makes the session back up the file first.",
