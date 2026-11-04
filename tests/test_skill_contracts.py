@@ -457,8 +457,13 @@ CONTRACTS: Dict[str, Contract] = {
             "screenshots in both themes at the widths and the zoom of rule 12 of `interface-quality`",
             # a breach of WCAG A or AA is never S3, on any line and whatever the pointer
             "A failure of a WCAG 2.2 success criterion at level A or AA is at least S2, and S1 on a primary action, on "
-            "whatever lens its line names; a failure at level AAA alone is S3.",
-            "a target that fails 2.5.8, which asks 24 px outside its spacing and inline exceptions (S2, S1 on a primary "
+            "whatever lens its line names.",
+            "Each breach is a finding of the class in brackets, or of the higher class that the WCAG rule under the "
+            "class table gives it.",
+            "two names or two styles for one action (S3; two names for one function across pages fail WCAG 3.2.4)",
+            "axe violations by the impact axe gives them (critical S1, serious S2, moderate S3), and at least S2 when "
+            "the rule is tagged with a WCAG criterion of level A or AA",
+            "a target that fails 2.5.8, which asks 24 px outside the exceptions of that criterion (S2, S1 on a primary "
             "action); a touch target under 44 px on a touch device that meets 2.5.8 (S3, the AAA criterion 2.5.5)",
             "content lost with the text-spacing overrides (S2)",
             "help that moves across pages (3.2.6) or data asked twice in one process (3.3.7) (S2)",
@@ -471,6 +476,8 @@ CONTRACTS: Dict[str, Contract] = {
             "that this section does not name", "targets under 24 px with a mouse",
             "touch targets under 44 px on a touch device (S3)", "touch targets from 24 to 43 px",
             "or data asked twice (S3)", "content lost with the text-spacing overrides, states",
+            "a failure at level AAA alone is S3",  # every AAA failure as S3 would class 5:1 text, which rule 6 accepts
+            "outside its spacing and inline exceptions",
         ) + PRIVATE_SOURCE,
     ),
     "interface-quality": Contract(

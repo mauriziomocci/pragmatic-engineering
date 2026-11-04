@@ -1355,14 +1355,16 @@ GUIDED_SENTENCES = {
          "zoom delle regole di ferro, contrasto e aree di tocco misurati, e il risultato di axe."),
         ("`quality-scoring` names the class of the common breaches of the iron rules: for example a primary action "
          "whose text is below WCAG AA is S1, a widget that silently rewrites what the person typed is S2, and two "
-         "components less than 8 px apart are S3; axe violations count by the impact axe gives them. Any other breach "
+         "components less than 8 px apart are S3; axe violations count by the impact axe gives them, and any failure "
+         "of a WCAG criterion of level A or AA is at least S2. Any other breach "
          "takes the class that its meaning gives, by the definitions above, on the lens that `quality-scoring` assigns to it. A breach "
          "found in many places is one finding with every place listed, and when it comes from a shared component "
          "that repeats it across pages, an S3 rises to S2.",
          "`quality-scoring` nomina la classe delle violazioni più comuni delle regole di ferro: per esempio un'azione "
          "principale il cui testo è sotto WCAG AA è S1, un widget che riscrive in silenzio ciò che la persona ha "
          "digitato è S2, e due componenti a meno di 8 px l'uno dall'altro sono S3; le violazioni di axe contano "
-         "secondo l'impatto che axe dà loro. Ogni altra violazione prende la classe che le dà il suo significato, "
+         "secondo l'impatto che axe dà loro, e ogni criterio WCAG di livello A o AA non rispettato vale almeno S2. "
+         "Ogni altra violazione prende la classe che le dà il suo significato, "
          "secondo le definizioni qui sopra, sulla lente che `quality-scoring` le assegna. Una violazione trovata in molti "
          "posti è un solo rilievo con tutti i posti elencati, e quando viene da un componente condiviso che la ripete "
          "su più pagine, un S3 sale a S2."),
