@@ -178,6 +178,10 @@ CONTRACTS: Dict[str, Contract] = {
             # the superpowers skills of the phases; the others need no word here (their own descriptions say when)
             "superpowers:brainstorming", "superpowers:writing-plans", "superpowers:subagent-driven-development",
             "superpowers:test-driven-development", "superpowers:verification-before-completion",
+            # with users hurt right now, the way back comes before the search for the cause
+            "When users are hurt right now and the signal of a recent change's way back has fired, mitigation comes "
+            "before diagnosis: the first proposal is that way back, under `safe-operations` and with its own go, and "
+            "the cause is searched after.",
             "superpowers:finishing-a-development-branch",
             "speckit-specify", "speckit-clarify", "speckit-plan", "speckit-tasks", "speckit-implement",
             "spec-kit 0.8.9", "docs/superpowers/specs/", "specs/NNN-slug/", "is it clear?",
@@ -346,6 +350,9 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         phrases=(
             "active target", "dry run", "blast radius", "way back", "explicit go", "every level",
+            # the way back is useless if nobody knows when to take it
+            "and the signal that triggers them, stated with its threshold, such as an error rate above a set value or "
+            "a main path that fails once the command has run.",
             "not a responding service", "whoever owns", "development-workflow",
             "dedicated resource", "only when the change is additive", "as a side effect",
             "git config --get pe.officeHours", "pe.weekendFrom", "pe.holidays", "easter+N", "pe.personalRemotes",
