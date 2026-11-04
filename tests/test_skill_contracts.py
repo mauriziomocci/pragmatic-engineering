@@ -24,6 +24,25 @@ STATUS_LINE_FILES = ("rules.md", "agents/blunt-reviewer.md", "skills/continuity-
 STATUS_LINE = re.compile(r"`(STATUS: IN PROGRESS - done:[^`]*)`")
 # The six skills whose names a user's own skills may carry: the user's copy applies, in the same words everywhere.
 SAME_NAME = "When the user's own configuration has a skill with this name, that one applies."
+# The 22 iron rules of interface-quality, each with its number: quality-scoring classes their breaches by rule.
+IRON_RULES = (
+    "1. **The designer's document decides.**", "2. **Mockups before templates.**",
+    "3. **Before and after, shown.**", "4. **Generic demo data.**", "5. **Components never touch.**",
+    "6. **Every state measured, both themes.**", "7. **Touch targets of 44 px on touch devices.**",
+    "8. **One shared component per need.**", "9. **Never rewrite in silence what the person typed.**",
+    "10. **Try it as a person would, not only by script.**", "11. **Unique `id`s and one name for each thing.**",
+    "12. **Accessible at every width and zoom.**", "13. **Every element earns its place.**",
+    "14. **Colour only for meaning.**", "15. **Fixed scales, never values made up on the spot.**",
+    "16. **Clear hierarchy.**", "17. **Words that say the outcome.**", "18. **Proportionate feedback.**",
+    "19. **Cognitive accessibility (WCAG 2.2).**", "20. **The dark theme is designed, not inverted.**",
+    "21. **Taste is measured.**", "22. **Proof travels with the change.**",
+)
+# The user's sources of the iron rules name their own libraries, browser, diary and words: none of it ships.
+# Private names are not listed here, where they would be published: tools/privacy_check.py refuses them at the push.
+PRIVATE_SOURCE = (
+    "flatpickr", "altInput", "input-group", "Ente Demo", "Salva notifica", "built-in browser", "diary",
+    "decisioni.md", "tests lens",
+)
 
 
 @dataclass(frozen=True)
@@ -418,16 +437,85 @@ CONTRACTS: Dict[str, Contract] = {
             "from the last place it is installed",
             "nor the autonomy exception",  # a contract changed under the profile is no S1
             SAME_NAME,
+            # the classes of the iron rules, and the widths of rule 12 wherever the score names widths
+            "The iron rules of `interface-quality`, each on the lens marked:",
+            # one routing: a breach named anywhere in the thresholds keeps that lens, the rest goes by rule number
+            "When the cause of such a finding is a shared component that repeats it across pages, an S3 rises to S2.",
+            "On a touched page the perimeter is what the change touches and the states it reaches; an old breach "
+            "elsewhere on the page is listed as a note and does not count, as for old code.",
+            # every breach has one class and one lens, so the same evidence gives the same score
+            "fidelity, on `aspect` when the breach is in how the page looks and on `clarity` otherwise:",
+            "any breach of an iron rule that no line of these thresholds names: the class that its meaning gives in the "
+            "table "
+            "of classes, on `aspect` for rules 5 and 13 to 21 except rules 17 and 19, on `accessibility` for rules 6, 7 "
+            "and 12 and for a component that the keyboard cannot fully use, and on `clarity` for the others.",
+            "taste and restraint, on `aspect` and counted on the touched pages:",
+
+            "a widget that silently rewrites what the person typed (S2)",
+            "a highlighted or selected option, a checked box or another state indicator below 3:1 against its "
+            "neighbours (S2)",
+            "components touching or under 8 px apart (S3) and two components for one need (S3), on `aspect`",
+            "a browser test that cannot go red (S2, on `code`)",
+            "content or function lost at 320 px (S2)",
+            "a touched page not checked at every width of rule 12 (S3)",
+            "red for what neither destroys nor fails, a destructive action without confirmation or undo (S2)",
+            "an outcome message that vanishes before it can be read or is not announced (S2)",
+            "horizontal page scroll at any width of rule 12 of `interface-quality` (S2)",
+            "screenshots in both themes at the widths and the zoom of rule 12 of `interface-quality`",
+            # a breach of WCAG A or AA is never S3, on any line and whatever the pointer
+            "A failure of a WCAG 2.2 success criterion at level A or AA is at least S2, and S1 on a primary action, on "
+            "whatever lens its line names.",
+            "Each breach is a finding of the class in brackets, or of the higher class that the WCAG rule under the "
+            "class table gives it.",
+            "two names or two styles for one action (S3; two names for one function across pages fail WCAG 3.2.4)",
+            "axe violations by the impact axe gives them (critical S1, serious S2, moderate S3), and at least S2 when "
+            "the rule is tagged with a WCAG criterion of level A or AA",
+            "a target that fails 2.5.8, which asks 24 px outside the exceptions of that criterion (S2, S1 on a primary "
+            "action); a touch target under 44 px on a touch device that meets 2.5.8 (S3, the AAA criterion 2.5.5)",
+            "content lost with the text-spacing overrides (S2)",
+            "help that moves across pages (3.2.6) or data asked twice in one process (3.3.7) (S2)",
         ),
+        absent=(
+            "375, 768 or 1280", "375, 768 and 1280", "S3 each", "for each width missing", "at 375 px",
+            "more than one primary action in a view",  # one finding, on `clarity` only
+            "S2 when systematic", "counted on each touched page",  # one counting rule only
+            "which `clarity` scores once", "each on the lens marked.",  # the routing is one table, not exceptions
+            "that this section does not name", "targets under 24 px with a mouse",
+            "touch targets under 44 px on a touch device (S3)", "touch targets from 24 to 43 px",
+            "or data asked twice (S3)", "content lost with the text-spacing overrides, states",
+            "a failure at level AAA alone is S3",  # every AAA failure as S3 would class 5:1 text, which rule 6 accepts
+            "outside its spacing and inline exceptions",
+        ) + PRIVATE_SOURCE,
     ),
     "interface-quality": Contract(
         sections=(
-            "When to use", "Simplicity first", "Measured before proposing", "The UX study",
+            "When to use", "Simplicity first", "Iron rules", "The UX study",
             "APIs are an interface", "The UX lens and the review lens", "The user lens",
         ),
-        phrases=(
+        phrases=IRON_RULES + (
+            # rule 5 is the one written exception to principle 6
+            "used as they are, except the spacing and fusion that rule 5 forbids;",
+            "each kind of excess is one finding, with its pages listed",
+            "Rules 1 to 12 and 22 are on fidelity, measurement and accessibility, rules 13 to 21 on taste and "
+            "restraint.",
+            "a breach is a finding, classed by `quality-scoring`: by name where its thresholds name the breach, by the "
+            "meaning of the three classes otherwise.",
+            "A project with one theme measures the theme it has, and rule 20 applies once it has a dark one.",
+            "measured on every page in both themes at the widths of rule 12",
+            "320 px (WCAG 1.4.10 reflow, equal to 1280 px at 400% zoom), 375, 768, 1024, 1280 and 1440 px, and at 200% "
+            "zoom (1.4.4)",
+            "1.4.12", "1.3.4", "2.4.11", "1.4.1)", "1.4.11", "2.2.1", "3.2.6", "3.3.7", "3.3.8", "3.3.4",
+            "`@media (pointer: coarse)`", "at least 8 px apart", "never cut mid-word",
+            "a written decision in the spec or the decision log", "by someone who did not build it",
+            "by someone who did not draw them", "a browser the session drives", "the project's before/after record",
+            "the server rejects a value out of range with its message under the field",
+            "each defect found that way gets a test written red first",
+            "a test that accepts the theme's always-present default is not a test",
+            "The plugin prescribes axe and does not ship it.",
+            "Nor does it ship the browser to drive, the script for the screenshots or the browser tests: the project "
+            "provides them.",
             "One page, one job, one primary action", "never alphabetically", "both themes",
-            "375, 768 and 1280 px", "4.5:1", "3:1", "44 px", "2.5.5", "2.5.8", "prefers-reduced-motion", "axe",
+            "4.5:1", "3:1", "44 px", "2.5.5", "2.5.8", "prefers-reduced-motion", "axe",
             "approved before its code", "never replaces it", "a delivered contract never changes shape",
             "one round", "an agreement without an independent check is a finding", "never Haiku",
             "at most three personas", "four questions", "from templates, not seen on screen",
@@ -443,6 +531,7 @@ CONTRACTS: Dict[str, Contract] = {
             "When the user's configuration names its own agent for this lens or its own file of personas, those are "
             "used instead.",
         ),
+        absent=("375, 768 or 1280", "375, 768 and 1280") + PRIVATE_SOURCE,
     ),
     "documentation-quality": Contract(
         sections=(
