@@ -207,6 +207,26 @@ def test_any_other_command_of_the_reviewer_is_denied(command):
     assert "How you read" in hook.decide(reviewer_bash(command))
 
 
+REMERGE = "git show %s --remerge-diff %s" % (FLAGS, FULL_SHA)
+
+
+@pytest.mark.parametrize("path", ["", " -- skills/blunt-review/SKILL.md"])
+def test_the_remerge_read_of_a_merge_is_allowed(path):
+    assert hook.decide(reviewer_bash(REMERGE + path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "git show --remerge-diff %s" % FULL_SHA,  # without the fixed flags
+    "git show --remerge-diff %s %s" % (FLAGS, FULL_SHA),
+    "git show %s --remerge-diff --stat --patch %s" % (FLAGS, FULL_SHA),
+    "git show %s --diff-merges=remerge %s" % (FLAGS, FULL_SHA),  # the same read, spelled another way
+    REMERGE + " | cat",
+    REMERGE + " --output=/tmp/x",
+])
+def test_a_remerge_read_of_another_shape_is_denied(command):
+    assert hook.decide(reviewer_bash(command)) == hook._COMMAND_REASON
+
+
 @pytest.mark.parametrize("tool_input", [{}, {"command": None}, {"command": ["git", "status"]}, "git status"])
 def test_a_reviewer_command_of_an_unknown_shape_is_denied(tool_input):
     assert hook.decide(reviewer_call("Bash", tool_input))

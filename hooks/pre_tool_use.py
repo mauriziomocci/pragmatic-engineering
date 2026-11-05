@@ -50,6 +50,7 @@ _READ_FORMS = re.compile("(?:%s)" % "|".join((
     r"git merge-base --is-ancestor %s %s" % (_REVISION, _REVISION),
     r"git log --no-color --oneline %s" % _RANGE,
     r"git show %s(?: --stat --patch)? %s(?: -- %s)?" % (_PATCH_FLAGS, _REVISION, _PATH),
+    r"git show %s --remerge-diff %s(?: -- %s)?" % (_PATCH_FLAGS, _REVISION, _PATH),
     r"git diff %s %s(?: -- %s)?" % (_PATCH_FLAGS, _RANGE, _PATH),
     r"git show %s %s:%s" % (_PATCH_FLAGS, _REVISION, _PATH),
 )))

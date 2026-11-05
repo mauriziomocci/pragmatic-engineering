@@ -665,6 +665,16 @@ def test_blunt_reviewer_git_commands_carry_the_fixed_flags():
             assert PATCH_FLAGS in command, command
 
 
+REMERGE_READ = "`git show --no-color %s --remerge-diff <sha>`" % PATCH_FLAGS
+
+
+def test_blunt_reviewer_reads_every_merge_with_remerge_diff():
+    """The combined diff of step 2 shows nothing for a merge that keeps one side of a conflict; this read shows it."""
+    _, body = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
+    (step_2,) = [line for line in body.splitlines() if line.startswith("2. ")]
+    assert REMERGE_READ in step_2 and "git 2.36" in step_2
+
+
 def test_prints_a_patch_knows_the_verbs_and_the_patch_option():
     assert prints_a_patch("show", "`git show x`") and prints_a_patch("diff", "`git diff a..b`")
     assert prints_a_patch("log", "`git log -p --stat x`") and prints_a_patch("log", "`git log --patch x`")
@@ -840,6 +850,13 @@ def test_readmes_define_a_blocking_test_finding_as_blunt_review_does():
     for text, phrase in zip(pages("explain-review"), (english, italian)):
         assert phrase in text
     assert "una prova mancante" not in "".join(pages())  # "prova" means evidence; a test is a "test" (class S2)
+
+
+def test_readmes_say_the_reviewer_reads_each_merge_with_remerge_diff():
+    """The read needs git 2.36: the explanation says so, and the limits say what an older git loses."""
+    for explanation, limits in zip(pages("explain-review"), pages("limits")):
+        assert "--remerge-diff" in explanation and "2.36" in explanation
+        assert "--remerge-diff" in limits and "2.36" in limits
 
 
 def test_tutorial_quotes_the_notice_the_hook_prints():
