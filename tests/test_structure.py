@@ -109,7 +109,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "d81053a165e09a1aae83625aa716338659b43926ab8a4c82b2e582c18c20ea8f"
+RULES_SHA256 = "4a89e3c940d0fc1a014f22ec930b900677b4e631666fd5d780687e7baa561258"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -126,7 +126,11 @@ MIGRATION_REQUIREMENTS = {
     "english-identifiers": ("Every agent", "in English"),
     "docs-same-commit": ("Every agent", "same commit"),
     # the profile exception is no longer pointed at user-away, which ties it to the user's absence
-    "heavy-gates": ("Main session", "explicit written approval", "an autonomy opening spec approval, the first"),
+    "heavy-gates": (
+        "Main session",
+        "explicit written approval, never the request that asked for the work",
+        "an autonomy opening spec approval, the first",
+    ),
     "no-quiz": (
         "Main session",
         'The answer to "is it clear?" is awaited only at the two heavy gates and architecture choices, never while '
@@ -921,7 +925,9 @@ SCORING_RULES = (  # the steps of the score in quality-scoring, in the order the
 # lens proposed before measuring and the user lens was not heard before the answer.
 ROUND_STEPS = (
     "1. Before proposing, the UX lens measures what the change touches as it is: every touched state and its "
-    "contrast in both themes, and the widths and the zoom of rule 12; for an API, the routes as they answer today.",
+    "contrast in both themes, and the widths and the zoom of rule 12; for an API, the routes as they answer today. "
+    "The step ends with the `Not verified:` line of `quality-scoring`, naming each width, the 200% zoom or a theme it "
+    "did not measure, with the reason.",
     "2. The UX lens proposes from the need of the person who uses the product.",
     "3. The review lens (`blunt-review`) attacks on evidence, cost, the simpler alternative and the impact on code "
     "and architecture.",
@@ -1220,6 +1226,9 @@ GUIDED_SENTENCES = {
          "mattina, con le loro date vere, mai falsate"),
     ),
     "explain-gates": (
+        ('a bare "ok" to a spec nobody read is not approval, and neither is the request that asked for the work.',
+         'un semplice "ok" a una spec che nessuno ha letto non è un\'approvazione, e non lo è neppure la richiesta '
+         "che ha avviato il lavoro."),
         ("The final gate has one exception, `autonomous-execution`, which only you can start, by naming it:",
          "Il cancello finale ha un'eccezione, `autonomous-execution`, che puoi avviare solo tu, nominandola:"),
         ("Its closure has no step that scores the lenses, and the description of its merge request holds the "
@@ -1439,10 +1448,18 @@ GUIDED_SENTENCES = {
          "gate 2 and the final validation at gate 6.",
          "La modalità normale è il nome del lavoro senza un'autonomia: lo segui tu, e approvi tu la spec al "
          "cancello 2 e la validazione finale al cancello 6."),
+        ('You approve in writing; a bare "ok" to a spec nobody read is not approval, and neither is the request you '
+         "started with.",
+         'Approvi per iscritto; un semplice "ok" a una spec che nessuno ha letto non è un\'approvazione, e non lo è '
+         "neppure la richiesta iniziale."),
         ("Each light gate is a quick coherence check, and after the last one the whole list is read once more with "
          "fresh eyes before any code (`development-workflow`).",
          "Ogni cancello leggero è un rapido controllo di coerenza, e dopo l'ultimo si rilegge l'intero elenco una "
          "volta ancora a mente fresca prima di qualunque codice (`development-workflow`)."),
+        ("and only then is the box ticked; the message of the task's commit names the failure seen before the code "
+         "(`superpowers:test-driven-development`, `engineering-principles`).",
+         "e solo allora si spunta la casella; il messaggio del commit del compito nomina il fallimento visto prima "
+         "del codice (`superpowers:test-driven-development`, `engineering-principles`)."),
         ("Each lens the job touches gets a score from `quality-scoring`: here the new code (`code`), the old report "
          "code it touches (`legacy`), the route of the export with its permission check (`api`) and the three "
          "interface lenses (`clarity`, `aspect`, `accessibility`), measured on the real page in both themes.",
@@ -1606,16 +1623,17 @@ GUIDED_SENTENCES = {
          "passare la chiamata."),
         ("The check covers the plugin-scoped name `pragmatic-engineering:blunt-reviewer`. Three live runs with Claude "
          "Code 2.1.318 showed the launch denial, the reviewer's own reads and writes left alone, and that Claude Code "
-         "does not resolve the bare name `blunt-reviewer` to the plugin agent; a denial inside the reviewer was "
-         "checked on copies of the inputs the third run recorded, with the command or the path changed, not seen "
-         "live. It costs about 30 to 40 ms on every Bash, Write and "
+         "does not resolve the bare name `blunt-reviewer` to the plugin agent; in a later live run the hook denied, "
+         "inside the reviewer, a `git diff --stat` that its definition does not list, and the review went on with "
+         "the forms it lists. It costs about 30 to 40 ms on every Bash, Write and "
          "Agent call, for every user, and about 55 ms on a Write inside the reviewer, which pays one git subprocess, "
          "measured on the maintainer's macOS machine.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
-         "nell'agente del plugin; un rifiuto dentro il revisore è stato controllato su copie degli input registrati "
-         "dalla terza esecuzione, con il comando o il percorso cambiati, non visto dal vivo. Costa circa "
+         "nell'agente del plugin; in un'esecuzione dal vivo successiva l'hook ha rifiutato, dentro il revisore, un "
+         "`git diff --stat` che la sua definizione non elenca, e la revisione è andata avanti con le forme che "
+         "elenca. Costa circa "
          "da 30 a 40 ms a ogni chiamata di Bash, Write e Agent, per ogni utente, e circa 55 ms a un Write dentro il "
          "revisore, che paga un sottoprocesso git, misurati sulla macchina macOS del manutentore."),
         ("(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documents another "
@@ -1657,17 +1675,23 @@ GUIDED_SENTENCES = {
          "tranne in Cowork; un import fuori dal progetto scritto in un file del progetto richiede quella finestra, "
          "e in un'esecuzione senza una persona è stato rifiutato "
          "(<https://code.claude.com/docs/en/memory#import-additional-files>)."),
-        ("In the live runs the main session did not load your own `quality-scoring` at the final validation although "
-         "the rule says to (the outcome of the gate was right, because both rubrics gave the same classes), and the "
-         "measuring step of the round reported contrast and one width, not all six widths and the zoom.",
-         "Nelle esecuzioni dal vivo la sessione principale non ha caricato il tuo `quality-scoring` alla "
+        ("In a live run of 4 November 2026 the main session did not load your own `quality-scoring` at the final validation "
+         "although the rule says to (the outcome of the gate was right, because both rubrics gave the same "
+         "classes); in one of 5 November 2026 it loaded the plugin's first and then yours. The measuring step of the round "
+         "must name each width, the zoom or the theme it did not measure: in a live run of 5 November 2026 it covered the six "
+         "widths and the zoom from the markup and named the rendering it could not see, and said nothing about a "
+         "second theme, which that page does not have.",
+         "In un'esecuzione dal vivo del 4 novembre 2026 la sessione principale non ha caricato il tuo `quality-scoring` alla "
          "validazione finale, benché la regola lo dica (l'esito del cancello era giusto, perché le due rubriche "
-         "davano le stesse classi), e il passo di misura del giro ha riportato il contrasto e una sola larghezza, "
-         "non tutte e sei le larghezze e lo zoom."),
-        ("When the test and the code arrive in one commit, the reviewer cannot check that the test was written "
-         "first.",
-         "Quando la prova e il codice arrivano in un solo commit, il revisore non può verificare che la prova sia "
-         "stata scritta prima."),
+         "davano le stesse classi); in una del 5 novembre 2026 ha caricato prima quello del plugin e poi il tuo. Il passo di "
+         "misura del giro deve nominare ogni larghezza, lo zoom o il tema che non ha misurato: in un'esecuzione dal "
+         "vivo del 5 novembre 2026 ha coperto le sei larghezze e lo zoom dal markup e ha nominato il rendering che non poteva "
+         "vedere, e non ha detto nulla di un secondo tema, che quella pagina non ha."),
+        ("The reviewer checks the failure that the commit message names against the diff, which shows that the "
+         "claim is consistent with the change, not that the test was really seen failing before the code.",
+         "Il revisore controlla sul diff il fallimento che il messaggio del commit nomina, il che mostra che "
+         "l'affermazione è coerente con la modifica, non che la prova sia stata davvero vista fallire prima del "
+         "codice."),
         ("In a run without a person, a refused `git config` read leaves the office hours and the autonomy profile "
          "unset, and nothing says so.",
          "In un'esecuzione senza una persona, una lettura di `git config` rifiutata lascia non impostati l'orario "

@@ -77,6 +77,10 @@ CONTRACTS: Dict[str, Contract] = {
             "A delivered contract never changes shape", "on a separate line at the top of the message",
             "scenario table", "in a single pass", '"contract unchanged"', '"CONTRACT CHANGE"',
             "The spec is written against the table, and the live HTTP checks replay it row by row.",
+            # the red is named in the commit message, so the review can check the claim against the diff
+            "The body of the commit message, in the user's own commit format, names the red seen before the code: the "
+            'test and the failure it quotes, for example `Red first: test_total_rounds_down failed with '
+            '"assert 3 == 2" before the code.`, so the review can check the claim against the diff.',
             "Every question on the contract that the table raises goes to the user in a single pass",
             "the tests of the touched area", "before the push", "proven with the real command it runs",
             "stops only what it started, by name",
@@ -154,6 +158,12 @@ CONTRACTS: Dict[str, Contract] = {
             "When the write under `.pe/reviews/` is refused, the whole report goes in the final message, before those "
             "five lines, with `REPORT: inline`.",
             "C901, PLR0912, PLR0915 and PLR1702", "before a branch is integrated", "# taste-exempt: <reason>",
+            "The review says how it measured each threshold: the tool it ran, or by hand.",
+            # the red named in a commit message is a claim, and the review checks it against the diff; the classes
+            # of a missing red live in quality-scoring only
+            "The review reads the red named in the commit message as a claim against the diff: the test it names is "
+            "in the change, and the failure it quotes fits that test. `quality-scoring` classes a test whose commits "
+            "name no red, and a red seen only after the code.",
             "A linter such as Ruff has no rule for the 40 lines", "S1 or S2 in `quality-scoring`", "Every finding carries its lens and its class",
             "five S3 give 7.5 with the verdict `pass`", "reads the score, not only the verdict",
             "is itself the finding (see `documentation-quality`)",  # the four kinds live in that skill
@@ -211,6 +221,8 @@ CONTRACTS: Dict[str, Contract] = {
             "When users are hurt right now and the signal of a recent change's way back has fired, mitigation comes "
             "before diagnosis: the first proposal is that way back, under `safe-operations` and with its own go, and "
             "the cause is searched after.",
+            # the request that asked for the work is not the approval of the spec
+            "A bare \"ok\" to a spec nobody read is not approval, and neither is the request that asked for the work.",
             "superpowers:finishing-a-development-branch",
             "speckit-specify", "speckit-clarify", "speckit-plan", "speckit-tasks", "speckit-implement",
             "spec-kit 0.8.9", "docs/superpowers/specs/", "specs/NNN-slug/", "is it clear?",
@@ -744,11 +756,16 @@ def classes_blunt_review_gives(blocking: str) -> Dict[str, str]:
     return {clause: found.group(1) for clause in scale.split(";") if (found := CLASS_OF_A_CLAUSE.search(clause))}
 
 
+def class_rows_of_quality_scoring() -> Dict[str, str]:
+    """The rows of the class table of quality-scoring, by class ('S1', 'S2', 'S3')."""
+    classes = sections(parse_frontmatter(skill_text("quality-scoring"))[1])["Classes"]
+    return {row.split("|")[1].strip()[:2]: row for row in classes.splitlines() if row.startswith("| S")}
+
+
 def test_blocking_findings_use_the_one_scale_of_quality_scoring():
     """A phrase has the same class in both skills, and a class given to it as 'not blocking' is no scale at all."""
     blocking = sections(parse_frontmatter(skill_text("blunt-review"))[1])["Blocking findings"]
-    classes = sections(parse_frontmatter(skill_text("quality-scoring"))[1])["Classes"]
-    rows = {row.split("|")[1].strip()[:2]: row for row in classes.splitlines() if row.startswith("| S")}
+    rows = class_rows_of_quality_scoring()
     given = classes_blunt_review_gives(blocking)
     for grade, phrases in ONE_SCALE.items():
         for phrase in phrases:
@@ -757,6 +774,26 @@ def test_blocking_findings_use_the_one_scale_of_quality_scoring():
             assert len(in_review) == 1, ("blunt-review", phrase)
             clause, review_grade = in_review[0]
             assert review_grade == grade and "not blocking" not in clause, ("blunt-review", grade, phrase)
+
+
+# The two ways a test lacks its red, each with the state after the fix, in the row of quality-scoring that classes it.
+RED_CASES = {
+    "S2": "a new or changed test on a changed behaviour whose commits name no red, or name one the diff "
+          "contradicts, closed when the red is seen now and named in the fix commit, which leaves no S3",
+    "S3": "a red that its commit says was seen only after the code, except the red seen now to close the S2 above",
+}
+
+
+def test_the_classes_of_a_missing_red_are_in_the_class_table_of_quality_scoring():
+    rows = class_rows_of_quality_scoring()
+    for grade, phrase in RED_CASES.items():
+        assert [g for g, row in rows.items() if phrase in row] == [grade], ("quality-scoring", grade, phrase)
+
+
+def test_blunt_review_reads_the_red_and_states_no_class_for_it():
+    """One home for the classes: the reading of the red points to quality-scoring and repeats none."""
+    reading = sections(parse_frontmatter(skill_text("blunt-review"))[1], 3)["Unit tests"]
+    assert re.findall(r"\bS[123]\b", reading) == []
 
 
 # The four checks on what a document may claim. blunt-review repeats them for the reviewer agent, which cannot
