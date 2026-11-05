@@ -101,7 +101,7 @@ Each kind of work fails in its own ways. These lenses come on top of the output 
 
 ### Unit tests
 
-- A test you have not seen fail is not a test. Watch it go red before the implementation; for a structural guard, provoke the failure by injecting a fake violation, then revert it. The review reads the red named in the commit message as a claim against the diff: the test it names is in the change, and the failure it quotes fits that test. A new test on a changed behaviour whose commits name no red is S2, fixed by seeing the red now and naming it in the fix commit; a red seen only after the code is S3.
+- A test you have not seen fail is not a test. Watch it go red before the implementation; for a structural guard, provoke the failure by injecting a fake violation, then revert it. The review reads the red named in the commit message as a claim against the diff: the test it names is in the change, and the failure it quotes fits that test. `quality-scoring` classes a test whose commits name no red, and a red seen only after the code.
 - A tautological test checks the mock it set up: if the mock returns X and the assertion checks X, nothing is tested, and false confidence is worse than no test.
 - A mock can hide the boundary that fails in production (validation, serialisation, transport, network). Then green is not evidence: prove that behaviour live at least once, and declare it unproven when you have not.
 - Testing the implementation instead of the behaviour (internal calls, order of invocation) brakes refactoring instead of protecting it.

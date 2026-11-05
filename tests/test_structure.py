@@ -109,7 +109,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "50c452103412a585727d74ca23a5b71d92eecd48663576c820e916f7271a013a"
+RULES_SHA256 = "4a89e3c940d0fc1a014f22ec930b900677b4e631666fd5d780687e7baa561258"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -128,7 +128,7 @@ MIGRATION_REQUIREMENTS = {
     # the profile exception is no longer pointed at user-away, which ties it to the user's absence
     "heavy-gates": (
         "Main session",
-        "explicit written approval, never a request to build or commit",
+        "explicit written approval, never the request that asked for the work",
         "an autonomy opening spec approval, the first",
     ),
     "no-quiz": (
@@ -1226,6 +1226,9 @@ GUIDED_SENTENCES = {
          "mattina, con le loro date vere, mai falsate"),
     ),
     "explain-gates": (
+        ('a bare "ok" to a spec nobody read is not approval, and neither is the request that asked for the work.',
+         'un semplice "ok" a una spec che nessuno ha letto non è un\'approvazione, e non lo è neppure la richiesta '
+         "che ha avviato il lavoro."),
         ("The final gate has one exception, `autonomous-execution`, which only you can start, by naming it:",
          "Il cancello finale ha un'eccezione, `autonomous-execution`, che puoi avviare solo tu, nominandola:"),
         ("Its closure has no step that scores the lenses, and the description of its merge request holds the "
@@ -1445,10 +1448,18 @@ GUIDED_SENTENCES = {
          "gate 2 and the final validation at gate 6.",
          "La modalità normale è il nome del lavoro senza un'autonomia: lo segui tu, e approvi tu la spec al "
          "cancello 2 e la validazione finale al cancello 6."),
+        ('You approve in writing; a bare "ok" to a spec nobody read is not approval, and neither is the request you '
+         "started with.",
+         'Approvi per iscritto; un semplice "ok" a una spec che nessuno ha letto non è un\'approvazione, e non lo è '
+         "neppure la richiesta iniziale."),
         ("Each light gate is a quick coherence check, and after the last one the whole list is read once more with "
          "fresh eyes before any code (`development-workflow`).",
          "Ogni cancello leggero è un rapido controllo di coerenza, e dopo l'ultimo si rilegge l'intero elenco una "
          "volta ancora a mente fresca prima di qualunque codice (`development-workflow`)."),
+        ("and only then is the box ticked; the message of the task's commit names the failure seen before the code "
+         "(`superpowers:test-driven-development`, `engineering-principles`).",
+         "e solo allora si spunta la casella; il messaggio del commit del compito nomina il fallimento visto prima "
+         "del codice (`superpowers:test-driven-development`, `engineering-principles`)."),
         ("Each lens the job touches gets a score from `quality-scoring`: here the new code (`code`), the old report "
          "code it touches (`legacy`), the route of the export with its permission check (`api`) and the three "
          "interface lenses (`clarity`, `aspect`, `accessibility`), measured on the real page in both themes.",
