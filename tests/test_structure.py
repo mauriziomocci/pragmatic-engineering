@@ -1675,17 +1675,17 @@ GUIDED_SENTENCES = {
          "tranne in Cowork; un import fuori dal progetto scritto in un file del progetto richiede quella finestra, "
          "e in un'esecuzione senza una persona è stato rifiutato "
          "(<https://code.claude.com/docs/en/memory#import-additional-files>)."),
-        ("In a live run of 04/11 the main session did not load your own `quality-scoring` at the final validation "
+        ("In a live run of 4 November 2026 the main session did not load your own `quality-scoring` at the final validation "
          "although the rule says to (the outcome of the gate was right, because both rubrics gave the same "
-         "classes); in one of 05/11 it loaded the plugin's first and then yours. The measuring step of the round "
-         "must name each width, the zoom or the theme it did not measure: in a live run of 05/11 it covered the six "
+         "classes); in one of 5 November 2026 it loaded the plugin's first and then yours. The measuring step of the round "
+         "must name each width, the zoom or the theme it did not measure: in a live run of 5 November 2026 it covered the six "
          "widths and the zoom from the markup and named the rendering it could not see, and said nothing about a "
          "second theme, which that page does not have.",
-         "In un'esecuzione dal vivo del 04/11 la sessione principale non ha caricato il tuo `quality-scoring` alla "
+         "In un'esecuzione dal vivo del 4 novembre 2026 la sessione principale non ha caricato il tuo `quality-scoring` alla "
          "validazione finale, benché la regola lo dica (l'esito del cancello era giusto, perché le due rubriche "
-         "davano le stesse classi); in una del 05/11 ha caricato prima quello del plugin e poi il tuo. Il passo di "
+         "davano le stesse classi); in una del 5 novembre 2026 ha caricato prima quello del plugin e poi il tuo. Il passo di "
          "misura del giro deve nominare ogni larghezza, lo zoom o il tema che non ha misurato: in un'esecuzione dal "
-         "vivo del 05/11 ha coperto le sei larghezze e lo zoom dal markup e ha nominato il rendering che non poteva "
+         "vivo del 5 novembre 2026 ha coperto le sei larghezze e lo zoom dal markup e ha nominato il rendering che non poteva "
          "vedere, e non ha detto nulla di un secondo tema, che quella pagina non ha."),
         ("The reviewer checks the failure that the commit message names against the diff, which shows that the "
          "claim is consistent with the change, not that the test was really seen failing before the code.",

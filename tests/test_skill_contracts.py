@@ -778,8 +778,8 @@ def test_blocking_findings_use_the_one_scale_of_quality_scoring():
 
 # The two ways a test lacks its red, each with the state after the fix, in the row of quality-scoring that classes it.
 RED_CASES = {
-    "S2": "a new or changed test on a changed behaviour whose commits name no red, closed when the red is seen now "
-          "and named in the fix commit, which leaves no S3",
+    "S2": "a new or changed test on a changed behaviour whose commits name no red, or name one the diff "
+          "contradicts, closed when the red is seen now and named in the fix commit, which leaves no S3",
     "S3": "a red that its commit says was seen only after the code, except the red seen now to close the S2 above",
 }
 
