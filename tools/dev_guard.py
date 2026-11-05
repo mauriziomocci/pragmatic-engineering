@@ -385,8 +385,10 @@ def decide(payload: Any) -> Optional[str]:
 
 def main() -> int:
     try:
-        payload = json.loads(sys.stdin.read())
-    except (OSError, ValueError, RecursionError):  # not JSON, not readable as text, or nested too deeply to parse
+        # Bytes, so json decodes the UTF-8 that Claude Code sends; text would use the locale's code page (cp1252 on
+        # Windows), which turns some valid input into a decode error.
+        payload = json.loads(sys.stdin.buffer.read())
+    except (OSError, ValueError, RecursionError):  # not JSON, not UTF-8, or nested too deeply to parse
         print("dev_guard: unreadable hook input; blocking to stay safe", file=sys.stderr)
         return 2
     try:
