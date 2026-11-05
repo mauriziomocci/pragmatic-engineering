@@ -30,6 +30,9 @@ from support import REPO_ROOT, installed_superpowers
 pytestmark = pytest.mark.e2e
 TIMEOUT = 600
 MAX_TURNS = "10"
+# Pinned: without --model, claude -p takes the machine's default model, which on some machines is a smaller one
+# whose skill listing drops the descriptions, so the run would test that machine instead of the plugin.
+MODEL = "opus"
 PROBE = "Session probe: "
 PROBE_FILE = "probe.txt"
 DISALLOWED_TOOLS = "Read,Grep,Glob,Bash,Monitor"
@@ -65,7 +68,7 @@ def claude(workdir: Path, prompt: str, with_plugin: bool = True) -> List[Dict[st
         pytest.fail("the claude CLI is not on PATH")
     command = [
         "claude", "-p", prompt, "--setting-sources", "project,local", "--strict-mcp-config",
-        "--no-session-persistence", "--permission-mode", "acceptEdits", "--max-turns", MAX_TURNS,
+        "--no-session-persistence", "--model", MODEL, "--permission-mode", "acceptEdits", "--max-turns", MAX_TURNS,
         "--disallowedTools", DISALLOWED_TOOLS, "--output-format", "stream-json", "--verbose",
     ]
     if with_plugin:

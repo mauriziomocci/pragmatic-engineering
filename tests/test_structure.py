@@ -1,4 +1,5 @@
 """Structure checks on the repository itself."""
+import ast
 import hashlib
 import importlib.util
 import json
@@ -10,6 +11,7 @@ from typing import List, Set, Tuple
 
 import pytest
 
+import pre_tool_use
 import privacy_check
 import session_start
 from support import (
@@ -452,7 +454,7 @@ HOOKS_JSON = REPO_ROOT / "hooks" / "hooks.json"
 def test_hooks_json_runs_the_session_start_script_with_a_short_timeout():
     config = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
     assert list(config) == ["hooks"]
-    assert list(config["hooks"]) == ["SessionStart"]
+    assert list(config["hooks"]) == ["SessionStart", "PreToolUse"]
     entries = config["hooks"]["SessionStart"]
     assert len(entries) == 1 and "matcher" not in entries[0]
     (hook,) = entries[0]["hooks"]
@@ -462,6 +464,19 @@ def test_hooks_json_runs_the_session_start_script_with_a_short_timeout():
         "timeout": 10,
     }
     assert (REPO_ROOT / "hooks" / "session_start.py").is_file()
+
+
+def test_hooks_json_runs_the_reviewer_hook_on_its_three_tools_and_lets_a_failed_hook_through():
+    entries = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+    assert entries == [{"matcher": "Agent|Bash|Write", "hooks": [{
+        "type": "command",
+        "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py"',
+        "timeout": 10,
+        # a crash, a timeout or no python3 must never block a call of any user: the limits fall back to declared
+        "onFailure": "continue",
+    }]}]
+    # The hook's one git call must end before Claude Code gives up on the hook.
+    assert pre_tool_use.GIT_TIMEOUT < entries[0]["hooks"][0]["timeout"]
 
 
 MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
@@ -532,6 +547,38 @@ def test_parse_frontmatter_splits_fields_and_body():
     assert body == "# Title"
 
 
+RUNTIME_FOLDERS = ("hooks", "lib")  # what the plugin ships and runs; tools/ is the maintainer's
+TOOL_MODULES = frozenset(path.stem for path in (REPO_ROOT / "tools").glob("*.py"))
+
+
+def tool_dependencies(source: str) -> List[str]:
+    """The tools/ modules a source imports, and every string literal "tools" (a sys.path entry towards it)."""
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            found += [alias.name for alias in node.names if alias.name.split(".")[0] in TOOL_MODULES]
+        elif isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] in TOOL_MODULES:
+            found.append(node.module)
+        elif isinstance(node, ast.Constant) and node.value == "tools":
+            found.append("the path tools")
+    return found
+
+
+def test_the_shipped_runtime_imports_nothing_from_tools():
+    runtime = [path for folder in RUNTIME_FOLDERS for path in sorted((REPO_ROOT / folder).rglob("*.py"))]
+    assert len(runtime) >= 3 and {"dev_guard", "privacy_check"} <= TOOL_MODULES
+    assert [(path.name, tool_dependencies(path.read_text(encoding="utf-8"))) for path in runtime
+            if tool_dependencies(path.read_text(encoding="utf-8"))] == []
+
+
+@pytest.mark.parametrize("source", [
+    "import privacy_check", "from dev_guard import shell_text", "import os, install_dev_hooks.x",
+    'sys.path.insert(0, str(ROOT / "tools"))',
+])
+def test_the_runtime_import_check_sees_each_way_into_tools(source):
+    assert tool_dependencies(source) != []
+
+
 AGENT = REPO_ROOT / "agents" / "blunt-reviewer.md"
 GRAMMAR = "<base>..<tip> [round=1|2] [full=<path>,...]"
 PLUGIN_PREFIX = "pragmatic-engineering:"
@@ -576,13 +623,18 @@ def test_blunt_reviewer_body_states_the_a1_contract():
         "first re-classes the findings of the report with that rubric.",
     ):
         assert needed in body, needed
-    # The sentence that limits Bash must also allow the one redirect that step 3 asks for.
+    # Bash runs only the read forms that hooks/pre_tool_use.py lets through: no redirect into .pe/reviews/, and a
+    # path whose output is still too long is read in part and reported as partial coverage.
     (bash_rule,) = [line for line in body.splitlines() if line.startswith("Use Bash only")]
-    assert "redirect" in bash_rule and ".pe/reviews/" in bash_rule
+    assert "no pipe, redirect or other shell syntax" in bash_rule and ".pe/reviews/" not in bash_rule
+    (step_3,) = [line for line in body.splitlines() if line.startswith("3. ")]
+    assert "redirect" not in step_3 and "coverage is `partial`" in step_3
+    assert "PreToolUse hook" in sections(body)["What you write"]
     for retired in (
         "origin/main..HEAD", "the grammar is the whole interface", "cannot change what you read",
         "with `quality-scoring`, without a judgment of its own.",  # the user's rubric now comes first, when it governs
         "The twin line",  # a term the agent finds defined nowhere it reads
+        "This is declared, not enforced.",  # hooks/pre_tool_use.py enforces it when it runs
     ):
         assert retired not in body, retired
     assert unknown_references(body) == []
@@ -1509,9 +1561,124 @@ GUIDED_SENTENCES = {
          "durante un'autonomia la lente PM può solo mettere da parte un rilievo bloccante ancora aperto o "
          "proporti un rinvio."),
     ),
+    "maintainers": (
+        ("A second job runs the tests of the parts that run on your machine (the `SessionStart` hook, the "
+         "`PreToolUse` hook and the night re-creation script) on macOS and Windows; the Windows runner has Git Bash, "
+         "so a Windows machine without it is not exercised. A third job runs ruff 0.12.8",
+         "Un secondo job esegue le prove delle parti che girano sulla tua macchina (l'hook `SessionStart`, l'hook "
+         "`PreToolUse` e lo script di ricreazione notturna) su macOS e Windows; il runner Windows ha Git Bash, quindi "
+         "una macchina Windows senza Git Bash non è esercitata. Un terzo job esegue ruff 0.12.8"),
+    ),
+    "explain-review": (
+        ("the `PreToolUse` hook `hooks/pre_tool_use.py` enforces the rest of the interface where it runs: it denies "
+         "any Agent call that launches `pragmatic-engineering:blunt-reviewer` with a prompt outside the grammar, "
+         "quoting the grammar in its reason; only inside the reviewer it denies any Bash command other than the "
+         "exact git read forms of its definition and any Write outside `.pe/` at the repository root, the Write "
+         "path and the repository root compared after resolving symlinks; every other call gets no decision from "
+         "it.",
+         "l'hook `PreToolUse` `hooks/pre_tool_use.py` impone il resto dell'interfaccia dove gira: nega "
+         "ogni chiamata Agent che avvia `pragmatic-engineering:blunt-reviewer` con un prompt fuori dalla grammatica, "
+         "citando la grammatica nel motivo; solo dentro il revisore nega ogni comando Bash diverso dalle forme "
+         "esatte di lettura git della sua definizione e ogni Write fuori da `.pe/` alla radice del repository, con "
+         "il percorso del Write e la radice del repository confrontati dopo aver risolto i collegamenti simbolici; "
+         "ogni altra chiamata non riceve da lui nessuna decisione."),
+        ("A rule for the rest: that a review is made before a merge request is declared, not enforced.",
+         "Una regola per il resto: che una revisione si faccia prima di una merge request è dichiarato, non imposto."),
+    ),
+    "language-neutral": (
+        ("and in a live matrix of ten languages (4 November 2026): in it the plugin imposed no Python habit and "
+         "installed nothing. Real work in other languages over several days has not been tried yet.",
+         "e in una matrice dal vivo di dieci linguaggi (4 novembre 2026): lì il plugin non ha imposto nessuna "
+         "abitudine di Python e non ha installato nulla. Il lavoro vero in altri linguaggi su più giorni non è "
+         "ancora stato provato."),
+    ),
     "limits": (
         ("the autonomy (including the rule that the model sets its profile only when you ask)",
          "l'autonomia (compresa la regola per cui il modello ne imposta il profilo solo quando glielo chiedi)"),
+        ("does not run when `python3` is missing, when it crashes before reading its input or when it passes its "
+         "10-second timeout: the call then goes through, because the hook is registered with "
+         "`\"onFailure\": \"continue\"`, and the reviewer is back to what its definition declares. Claude Code reads "
+         "`onFailure` from version 2.1.295; on earlier versions a failed hook lets the call through anyway.",
+         "non gira quando manca `python3`, quando si interrompe prima di leggere il suo input o quando supera il "
+         "timeout di 10 secondi: la chiamata allora passa, perché l'hook è registrato con "
+         "`\"onFailure\": \"continue\"`, e il revisore torna a ciò che la sua definizione dichiara. Claude Code "
+         "legge `onFailure` dalla versione 2.1.295; nelle versioni precedenti un hook fallito lascia comunque "
+         "passare la chiamata."),
+        ("The check covers the plugin-scoped name `pragmatic-engineering:blunt-reviewer`. Three live runs with Claude "
+         "Code 2.1.318 showed the launch denial, the reviewer's own reads and writes left alone, and that Claude Code "
+         "does not resolve the bare name `blunt-reviewer` to the plugin agent; a denial inside the reviewer was "
+         "checked on copies of the inputs the third run recorded, with the command or the path changed, not seen "
+         "live. It costs about 30 to 40 ms on every Bash, Write and "
+         "Agent call, for every user, and about 55 ms on a Write inside the reviewer, which pays one git subprocess, "
+         "measured on the maintainer's macOS machine.",
+         "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
+         "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
+         "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
+         "nell'agente del plugin; un rifiuto dentro il revisore è stato controllato su copie degli input registrati "
+         "dalla terza esecuzione, con il comando o il percorso cambiati, non visto dal vivo. Costa circa "
+         "da 30 a 40 ms a ogni chiamata di Bash, Write e Agent, per ogni utente, e circa 55 ms a un Write dentro il "
+         "revisore, che paga un sottoprocesso git, misurati sulla macchina macOS del manutentore."),
+        ("(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documents another "
+         "route, a `SubagentStart` hook that adds the rules as context, and the plugin does not take it: it would "
+         "add about 9,500 characters to each of the most frequent subagents.",
+         "(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documenta un'altra "
+         "strada, un hook `SubagentStart` che aggiunge le regole come contesto, e il plugin non la prende: "
+         "aggiungerebbe circa 9.500 caratteri a ciascuno dei sotto-agenti più frequenti."),
+        ("this has not been tried here "
+         "(<https://code.claude.com/docs/en/plugins/loading#hooks-when-two-enabled-plugins-share-a-name>).",
+         "qui non è stato provato "
+         "(<https://code.claude.com/docs/en/plugins/loading#hooks-when-two-enabled-plugins-share-a-name>)."),
+        ("The plugin was tried live on macOS only; the CI runs the whole suite on Linux and the user-machine tests "
+         "on macOS and Windows.",
+         "Il plugin è stato provato dal vivo solo su macOS; la CI esegue tutta la suite su Linux e le prove delle "
+         "parti che girano sulla tua macchina su macOS e Windows."),
+        ("Claude Code gives the skill listing 1% of the model's context window. When a large environment overflows "
+         "it, Claude Code drops descriptions starting with the least-invoked skills, and in a run with 129 skills "
+         "the skills of this plugin were listed without a description. Claude Code documents these levers: "
+         "`skillListingBudgetFraction`, the variable `SLASH_COMMAND_TOOL_CHAR_BUDGET`, "
+         "`disable-model-invocation: true` on skills you rarely need, and `/skill-doctor`; `skillOverrides` does not "
+         "apply to plugin skills (<https://code.claude.com/docs/en/skills#skill-descriptions-are-cut-short>).",
+         "Claude Code assegna all'elenco delle skill l'1% della finestra di contesto del modello. Quando un ambiente "
+         "grande lo supera, Claude Code toglie le descrizioni cominciando dalle skill meno invocate, e in "
+         "un'esecuzione con 129 skill le skill di questo plugin sono state elencate senza descrizione. Le leve che "
+         "Claude Code documenta sono `skillListingBudgetFraction`, la variabile `SLASH_COMMAND_TOOL_CHAR_BUDGET`, "
+         "`disable-model-invocation: true` sulle skill che ti servono di rado e `/skill-doctor`; `skillOverrides` "
+         "non vale per le skill dei plugin "
+         "(<https://code.claude.com/docs/en/skills#skill-descriptions-are-cut-short>)."),
+        ("A run without a person (`claude -p`) should pin `--model`: on some machines its default is a smaller "
+         "model whose skill listing loses the descriptions, and the end-to-end test pins `--model opus`.",
+         "Un'esecuzione senza una persona (`claude -p`) dovrebbe fissare `--model`: su alcune macchine il suo "
+         "modello predefinito è uno più piccolo, il cui elenco delle skill perde le descrizioni, e la prova da "
+         "capo a fondo fissa `--model opus`."),
+        ("Imports in the user-scope `~/.claude/CLAUDE.md` load without the approval dialog, except in Cowork; an "
+         "import outside the project written in a project file needs that dialog, and in a run without a person it "
+         "was refused (<https://code.claude.com/docs/en/memory#import-additional-files>).",
+         "Gli import nel `~/.claude/CLAUDE.md` di ambito utente si caricano senza la finestra di approvazione, "
+         "tranne in Cowork; un import fuori dal progetto scritto in un file del progetto richiede quella finestra, "
+         "e in un'esecuzione senza una persona è stato rifiutato "
+         "(<https://code.claude.com/docs/en/memory#import-additional-files>)."),
+        ("In the live runs the main session did not load your own `quality-scoring` at the final validation although "
+         "the rule says to (the outcome of the gate was right, because both rubrics gave the same classes), and the "
+         "measuring step of the round reported contrast and one width, not all six widths and the zoom.",
+         "Nelle esecuzioni dal vivo la sessione principale non ha caricato il tuo `quality-scoring` alla "
+         "validazione finale, benché la regola lo dica (l'esito del cancello era giusto, perché le due rubriche "
+         "davano le stesse classi), e il passo di misura del giro ha riportato il contrasto e una sola larghezza, "
+         "non tutte e sei le larghezze e lo zoom."),
+        ("When the test and the code arrive in one commit, the reviewer cannot check that the test was written "
+         "first.",
+         "Quando la prova e il codice arrivano in un solo commit, il revisore non può verificare che la prova sia "
+         "stata scritta prima."),
+        ("In a run without a person, a refused `git config` read leaves the office hours and the autonomy profile "
+         "unset, and nothing says so.",
+         "In un'esecuzione senza una persona, una lettura di `git config` rifiutata lascia non impostati l'orario "
+         "d'ufficio e il profilo di autonomia, e nulla lo dice."),
+        ("The `SessionStart` hook checks `~/.claude/CLAUDE.md` even when `CLAUDE_CONFIG_DIR` is set: the "
+         "documentation says that variable moves settings, session history and plugins, and does not say where "
+         "Claude Code then reads `CLAUDE.md` (<https://code.claude.com/docs/en/env-vars>).",
+         "L'hook `SessionStart` controlla `~/.claude/CLAUDE.md` anche quando `CLAUDE_CONFIG_DIR` è impostata: la "
+         "documentazione dice che quella variabile sposta le impostazioni, la cronologia delle sessioni e i "
+         "plugin, e non dice dove Claude Code legga allora `CLAUDE.md` "
+         "(<https://code.claude.com/docs/en/env-vars>)."),
     ),
     "reference": (
         ("There are no commands in this version and, besides the `SessionStart` hook described below, only one script, "
@@ -1537,6 +1704,27 @@ GUIDED_SENTENCES = {
 def test_readmes_state_the_guided_configuration_in_both_languages(section):
     for text, language in zip(pages(section), (0, 1)):
         assert [pair[language] for pair in GUIDED_SENTENCES[section] if pair[language] not in text] == []
+
+
+def test_readmes_date_the_live_regression_runs_and_drop_the_claims_they_made_false():
+    status = ("Proven so far: the unit and structure tests, one live run of the end-to-end test of the rules import "
+              "(29 October 2026), and the live regression runs against an existing setup of 4 November 2026: nine "
+              "scenarios, each with and without the plugin, with a matrix of ten languages. Not proven yet: an "
+              "install on a clean machine and real work over several days.",
+              "Provato finora: le prove di unità e di struttura, un'esecuzione dal vivo della prova da capo a fondo "
+              "dell'import delle regole (29 ottobre 2026) e le esecuzioni dal vivo di regressione contro una "
+              "configurazione esistente del 4 novembre 2026: nove scenari, ciascuno con e senza il plugin, con una "
+              "matrice di dieci linguaggi. Non ancora provato: l'installazione su una macchina pulita e il lavoro "
+              "vero di più giorni.")
+    stale = (
+        "the live regression scenarios against an existing setup", "a run in languages other than Python",
+        "are declared, not enforced", "the runs on other languages are still to come", "tried on macOS only",
+        "gli scenari dal vivo contro le regressioni", "l'uso in linguaggi diversi da Python",
+        "sono dichiarati, non imposti", "le prove su altri linguaggi devono ancora arrivare",
+        "provato solo su macOS", "dichiarati nell'agente, non imposti",
+    )
+    for path, text, claim in zip((README, README_IT), pages(), status):
+        assert claim in text and [old for old in stale if old in text] == [], path.name
 
 
 def test_readmes_count_a_repeated_breach_once_and_name_wcag_2_2():
@@ -1661,11 +1849,31 @@ def test_ci_checks_the_complexity_of_the_changed_python_files():
 
 def test_ci_pins_one_runner_image_and_the_node24_actions_without_a_stored_token():
     text = CI_WORKFLOW.read_text(encoding="utf-8")
-    assert re.findall(r"runs-on: (\S+)", text) == ["ubuntu-24.04", "ubuntu-24.04"]  # CPython 3.9 has no 26.04 build
-    assert re.findall(r"uses: (\S+)", text) == [
-        "actions/checkout@v7", "actions/setup-python@v7", "actions/checkout@v7", "actions/setup-python@v7",
-    ]
-    assert text.count("persist-credentials: false") == 2  # one per checkout; no step pushes
+    # CPython 3.9 has no 26.04 build; the job for macOS and Windows takes its runner from its matrix
+    assert re.findall(r"runs-on: (\S+)", text) == ["ubuntu-24.04", "${{", "ubuntu-24.04"]
+    assert re.findall(r"uses: (\S+)", text) == ["actions/checkout@v7", "actions/setup-python@v7"] * 3
+    assert text.count("persist-credentials: false") == 3  # one per checkout; no step pushes
+
+
+# The tests of what runs on the user's machine: the two hooks of the plugin and the night re-creation script.
+USER_MACHINE_TESTS = "tests/test_session_start.py tests/test_pre_tool_use.py tests/test_recreate_night_commits.py"
+
+
+def ci_job(name: str) -> str:
+    """The lines of one job of the workflow: those indented under its name."""
+    jobs = CI_WORKFLOW.read_text(encoding="utf-8").split("\njobs:\n", 1)[1]
+    match = re.search(r"^  %s:\n((?:    .*\n|\n)*)" % re.escape(name), jobs, re.MULTILINE)
+    assert match, name
+    return match.group(1)
+
+
+def test_ci_runs_the_tests_of_what_runs_on_the_users_machine_on_macos_and_windows():
+    job = ci_job("user-machine")
+    assert "runs-on: ${{ matrix.os }}" in job and "os: [macos-latest, windows-latest]" in job
+    assert "fail-fast: false" in job and 'python-version: "3.x"' in job
+    assert 'python -m pip install "pytest>=7"' in job and "python -m pytest -q %s" % USER_MACHINE_TESTS in job
+    assert "Git Bash" in job  # the comment that says which Windows case is not exercised
+    assert all((REPO_ROOT / name).is_file() for name in USER_MACHINE_TESTS.split())
 
 
 def test_ci_lets_a_red_command_fail_its_job_with_the_rights_it_has_today():

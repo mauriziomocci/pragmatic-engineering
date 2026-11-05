@@ -822,3 +822,18 @@ def test_internal_error_on_a_known_tool_blocks(tmp_path):
     proc = run_hook(payload, tmp_path)
     assert proc.returncode == 2
     assert "check failed" in proc.stderr
+
+
+def test_the_hook_input_is_read_as_utf_8_whatever_the_stdin_code_page(tmp_path):
+    """Claude Code sends UTF-8, and Windows decodes piped stdin with its code page, where 0x9D of U+201D is missing."""
+    repo = init_repo(tmp_path / "repo")
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+
+    def run(data: bytes) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(SCRIPT)], cwd=str(repo), input=data, capture_output=True, env=env,
+                              timeout=120)
+
+    quoted = json.dumps(bash_payload(repo, "echo \u201dok\u201d"), ensure_ascii=False).encode("utf-8")
+    assert run(quoted).returncode == 0
+    unreadable = run(b"\xff\xfe not UTF-8 {")
+    assert unreadable.returncode == 2 and b"unreadable hook input" in unreadable.stderr  # still fails closed

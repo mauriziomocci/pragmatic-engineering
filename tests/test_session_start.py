@@ -24,8 +24,13 @@ def plugin_root(tmp_path: Path, text: str = "PE-RULES v1\nrules\n") -> Path:
     return root
 
 
+def home_env(home: Path) -> dict:
+    """The fake home for the hook on every system: Path.home() reads HOME on POSIX and USERPROFILE on Windows."""
+    return {"HOME": str(home), "USERPROFILE": str(home)}
+
+
 def run_hook(home: Path, data: Path, source: str = "startup", env_extra=None):
-    env = {"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT), "CLAUDE_PLUGIN_DATA": str(data)}
+    env = {**home_env(home), "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT), "CLAUDE_PLUGIN_DATA": str(data)}
     if env_extra:
         env.update(env_extra)
     stdin = json.dumps({"hook_event_name": "SessionStart", "source": source, "cwd": str(home)})
@@ -215,7 +220,7 @@ def test_main_without_the_data_variable_explains_and_does_not_fail(tmp_path, mon
     monkeypatch.delenv("CLAUDE_PLUGIN_DATA", raising=False)  # the suite may run inside a plugin session
     home = tmp_path / "home"
     home.mkdir()
-    env = {"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT)}
+    env = {**home_env(home), "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT)}
     proc = run_script(SCRIPT, [], cwd=home, stdin="{}", env=env)
     assert proc.returncode == 0
     assert "data folder" in proc.stdout
@@ -225,7 +230,7 @@ def test_main_without_the_data_variable_explains_and_does_not_fail(tmp_path, mon
 def test_main_does_the_same_work_whatever_the_input_says(tmp_path, stdin):
     home, data = tmp_path / "home", tmp_path / "data"
     home.mkdir()
-    env = {"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT), "CLAUDE_PLUGIN_DATA": str(data)}
+    env = {**home_env(home), "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT), "CLAUDE_PLUGIN_DATA": str(data)}
     proc = run_script(SCRIPT, [], cwd=home, stdin=stdin, env=env)
     assert proc.returncode == 0, proc.stderr
     assert (data / "rules.md").read_bytes() == (REPO_ROOT / "rules.md").read_bytes()
@@ -266,7 +271,7 @@ def test_main_with_the_rules_file_missing_from_the_plugin_explains_and_does_not_
     home, data, root = tmp_path / "home", tmp_path / "data", tmp_path / "plugin-without-rules"
     home.mkdir()
     root.mkdir()
-    env = {"HOME": str(home), "CLAUDE_PLUGIN_ROOT": str(root), "CLAUDE_PLUGIN_DATA": str(data)}
+    env = {**home_env(home), "CLAUDE_PLUGIN_ROOT": str(root), "CLAUDE_PLUGIN_DATA": str(data)}
     proc = run_script(SCRIPT, [], cwd=home, stdin="{}", env=env)
     assert proc.returncode == 0
     assert "the rules check failed" in proc.stdout
