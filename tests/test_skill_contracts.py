@@ -77,6 +77,10 @@ CONTRACTS: Dict[str, Contract] = {
             "A delivered contract never changes shape", "on a separate line at the top of the message",
             "scenario table", "in a single pass", '"contract unchanged"', '"CONTRACT CHANGE"',
             "The spec is written against the table, and the live HTTP checks replay it row by row.",
+            # the red is named in the commit message, so the review can check the order against the diff
+            "The body of the commit message, in the user's own commit format, names the red seen before the code: the "
+            'test and the line it failed with, for example `Red first: test_total_rounds_down failed with '
+            '"assert 3 == 2" before the code.`, so the review can check the order against the diff.',
             "Every question on the contract that the table raises goes to the user in a single pass",
             "the tests of the touched area", "before the push", "proven with the real command it runs",
             "stops only what it started, by name",
@@ -154,6 +158,12 @@ CONTRACTS: Dict[str, Contract] = {
             "When the write under `.pe/reviews/` is refused, the whole report goes in the final message, before those "
             "five lines, with `REPORT: inline`.",
             "C901, PLR0912, PLR0915 and PLR1702", "before a branch is integrated", "# taste-exempt: <reason>",
+            "The review says how it measured each threshold: the tool it ran, or by hand.",
+            # the red named in a commit message is a claim, and the review checks it against the diff
+            "The review reads the red named in the commit message as a claim against the diff: the test it names is "
+            "in the change, and the failure it quotes fits that test. A new test on a changed behaviour whose commits "
+            "name no red is S2, fixed by seeing the red now and naming it in the fix commit; a red seen only after "
+            "the code is S3.",
             "A linter such as Ruff has no rule for the 40 lines", "S1 or S2 in `quality-scoring`", "Every finding carries its lens and its class",
             "five S3 give 7.5 with the verdict `pass`", "reads the score, not only the verdict",
             "is itself the finding (see `documentation-quality`)",  # the four kinds live in that skill
@@ -211,6 +221,8 @@ CONTRACTS: Dict[str, Contract] = {
             "When users are hurt right now and the signal of a recent change's way back has fired, mitigation comes "
             "before diagnosis: the first proposal is that way back, under `safe-operations` and with its own go, and "
             "the cause is searched after.",
+            # the request that asked for the work is not the approval of the spec
+            "A bare \"ok\" to a spec nobody read is not approval, and neither is the request that asked for the work.",
             "superpowers:finishing-a-development-branch",
             "speckit-specify", "speckit-clarify", "speckit-plan", "speckit-tasks", "speckit-implement",
             "spec-kit 0.8.9", "docs/superpowers/specs/", "specs/NNN-slug/", "is it clear?",

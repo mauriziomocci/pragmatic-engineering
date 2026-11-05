@@ -109,7 +109,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "d81053a165e09a1aae83625aa716338659b43926ab8a4c82b2e582c18c20ea8f"
+RULES_SHA256 = "50c452103412a585727d74ca23a5b71d92eecd48663576c820e916f7271a013a"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -126,7 +126,11 @@ MIGRATION_REQUIREMENTS = {
     "english-identifiers": ("Every agent", "in English"),
     "docs-same-commit": ("Every agent", "same commit"),
     # the profile exception is no longer pointed at user-away, which ties it to the user's absence
-    "heavy-gates": ("Main session", "explicit written approval", "an autonomy opening spec approval, the first"),
+    "heavy-gates": (
+        "Main session",
+        "explicit written approval, never a request to build or commit",
+        "an autonomy opening spec approval, the first",
+    ),
     "no-quiz": (
         "Main session",
         'The answer to "is it clear?" is awaited only at the two heavy gates and architecture choices, never while '
@@ -921,7 +925,9 @@ SCORING_RULES = (  # the steps of the score in quality-scoring, in the order the
 # lens proposed before measuring and the user lens was not heard before the answer.
 ROUND_STEPS = (
     "1. Before proposing, the UX lens measures what the change touches as it is: every touched state and its "
-    "contrast in both themes, and the widths and the zoom of rule 12; for an API, the routes as they answer today.",
+    "contrast in both themes, and the widths and the zoom of rule 12; for an API, the routes as they answer today. "
+    "The step ends with the `Not verified:` line of `quality-scoring`, naming each width, the 200% zoom or a theme it "
+    "did not measure, with the reason.",
     "2. The UX lens proposes from the need of the person who uses the product.",
     "3. The review lens (`blunt-review`) attacks on evidence, cost, the simpler alternative and the impact on code "
     "and architecture.",
@@ -1659,15 +1665,19 @@ GUIDED_SENTENCES = {
          "(<https://code.claude.com/docs/en/memory#import-additional-files>)."),
         ("In the live runs the main session did not load your own `quality-scoring` at the final validation although "
          "the rule says to (the outcome of the gate was right, because both rubrics gave the same classes), and the "
-         "measuring step of the round reported contrast and one width, not all six widths and the zoom.",
+         "measuring step of the round reported contrast and one width, not all six widths and the zoom; the step "
+         "now has to name each width, the zoom or the theme it did not measure, and no live run has yet checked that "
+         "it does.",
          "Nelle esecuzioni dal vivo la sessione principale non ha caricato il tuo `quality-scoring` alla "
          "validazione finale, benché la regola lo dica (l'esito del cancello era giusto, perché le due rubriche "
          "davano le stesse classi), e il passo di misura del giro ha riportato il contrasto e una sola larghezza, "
-         "non tutte e sei le larghezze e lo zoom."),
-        ("When the test and the code arrive in one commit, the reviewer cannot check that the test was written "
-         "first.",
-         "Quando la prova e il codice arrivano in un solo commit, il revisore non può verificare che la prova sia "
-         "stata scritta prima."),
+         "non tutte e sei le larghezze e lo zoom; il passo ora deve nominare ogni larghezza, lo zoom o il tema che "
+         "non ha misurato, e nessuna esecuzione dal vivo ha ancora verificato che lo faccia."),
+        ("The reviewer checks the failure that the commit message names against the diff, which shows that the "
+         "claim is consistent with the change, not that the test was really seen failing before the code.",
+         "Il revisore controlla sul diff il fallimento che il messaggio del commit nomina, il che mostra che "
+         "l'affermazione è coerente con la modifica, non che la prova sia stata davvero vista fallire prima del "
+         "codice."),
         ("In a run without a person, a refused `git config` read leaves the office hours and the autonomy profile "
          "unset, and nothing says so.",
          "In un'esecuzione senza una persona, una lettura di `git config` rifiutata lascia non impostati l'orario "

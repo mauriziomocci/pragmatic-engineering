@@ -30,7 +30,7 @@ A phase starts only when the gate before it is closed. No gate is skipped.
 | 6 Validation | As in Phase 6 and the merge request. | heavy |
 | 7 Closure | `superpowers:finishing-a-development-branch`, only after the gate of phase 6. The rest as in Closure. | none |
 
-A heavy gate is a short synthesis, the question "is it clear?" in the user's language, and the user's written approval. A bare "ok" to a spec nobody read is not approval. A light gate is a quick coherence check: the foundations were validated at the heavy gate. After the light gate of phase 4, read the whole task list once more with fresh eyes before any code. It is the last coherence check, not a second brainstorm.
+A heavy gate is a short synthesis, the question "is it clear?" in the user's language, and the user's written approval. A bare "ok" to a spec nobody read is not approval, and neither is the request that asked for the work. A light gate is a quick coherence check: the foundations were validated at the heavy gate. After the light gate of phase 4, read the whole task list once more with fresh eyes before any code. It is the last coherence check, not a second brainstorm.
 
 Trivial work (fewer than three files, an obvious fix, a configuration value) condenses phases 1-4 into a brief analysis. The two heavy gates stay. Gate 6 has one exception: `autonomous-execution`, invoked by the user by name. Gate 2 has one: an autonomy that opens `spec`.
 
