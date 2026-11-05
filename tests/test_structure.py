@@ -926,8 +926,8 @@ SCORING_RULES = (  # the steps of the score in quality-scoring, in the order the
 ROUND_STEPS = (
     "1. Before proposing, the UX lens measures what the change touches as it is: every touched state and its "
     "contrast in both themes, and the widths and the zoom of rule 12; for an API, the routes as they answer today. "
-    "The step ends with the `Not verified:` line of `quality-scoring`, naming each width, the 200% zoom or a theme it "
-    "did not measure, with the reason.",
+    "The step ends with the `Not verified:` line of `quality-scoring`, naming each touched state, each width, the 200% "
+    "zoom or a theme it did not measure, with the reason, and it says which themes the page has, with the evidence.",
     "2. The UX lens proposes from the need of the person who uses the product.",
     "3. The review lens (`blunt-review`) attacks on evidence, cost, the simpler alternative and the impact on code "
     "and architecture.",
