@@ -1201,7 +1201,7 @@ def test_autonomy_example_opens_no_api_contract():
         assert row.endswith("| `spec,schema` |")
 
 
-# Whole sentences of the guided configuration: English, then Italian, in the section that holds them.
+# Whole sentences the two pages must carry: English, then Italian, in the section that holds them.
 GUIDED_SENTENCES = {
     "explain-lanes": (
         ("When users are hurt right now and the signal of a recent change's way back has fired, the first proposal "
@@ -1679,14 +1679,16 @@ GUIDED_SENTENCES = {
          "any Agent call that launches `pragmatic-engineering:blunt-reviewer` with a prompt outside the grammar, "
          "quoting the grammar in its reason; only inside the reviewer it denies any Bash command other than the "
          "exact git read forms of its definition and any Write outside `.pe/` at the repository root, the Write "
-         "path and the repository root compared after resolving symlinks; every other call gets no decision from "
-         "it.",
+         "path and the repository root compared after resolving symlinks; besides these, it decides only the "
+         "file writes of a worker (Write, Edit and NotebookEdit), which \"Known limits\" describes; every other call "
+         "gets no decision from it.",
          "l'hook `PreToolUse` `hooks/pre_tool_use.py` impone il resto dell'interfaccia dove gira: nega "
          "ogni chiamata Agent che avvia `pragmatic-engineering:blunt-reviewer` con un prompt fuori dalla grammatica, "
          "citando la grammatica nel motivo; solo dentro il revisore nega ogni comando Bash diverso dalle forme "
          "esatte di lettura git della sua definizione e ogni Write fuori da `.pe/` alla radice del repository, con "
          "il percorso del Write e la radice del repository confrontati dopo aver risolto i collegamenti simbolici; "
-         "ogni altra chiamata non riceve da lui nessuna decisione."),
+         "oltre a questi, decide solo le scritture di file di un worker (Write, Edit e NotebookEdit), che «Limiti "
+         "noti» descrive; ogni altra chiamata non riceve da lui nessuna decisione."),
         ("A rule for the rest: that a review is made before a merge request is declared, not enforced.",
          "Una regola per il resto: che una revisione si faccia prima di una merge request è dichiarato, non imposto."),
     ),
@@ -1702,28 +1704,66 @@ GUIDED_SENTENCES = {
          "l'autonomia (compresa la regola per cui il modello ne imposta il profilo solo quando glielo chiedi)"),
         ("does not run when `python3` is missing, when it crashes before reading its input or when it passes its "
          "10-second timeout: the call then goes through, because the hook is registered with "
-         "`\"onFailure\": \"continue\"`, and the reviewer is back to what its definition declares. Claude Code reads "
+         "`\"onFailure\": \"continue\"`, and the reviewer and the worker are back to what their definitions "
+         "declare. Claude Code reads "
          "`onFailure` from version 2.1.295; on earlier versions a failed hook lets the call through anyway.",
          "non gira quando manca `python3`, quando si interrompe prima di leggere il suo input o quando supera il "
          "timeout di 10 secondi: la chiamata allora passa, perché l'hook è registrato con "
-         "`\"onFailure\": \"continue\"`, e il revisore torna a ciò che la sua definizione dichiara. Claude Code "
+         "`\"onFailure\": \"continue\"`, e il revisore e il worker tornano a ciò che le loro definizioni "
+         "dichiarano. Claude Code "
          "legge `onFailure` dalla versione 2.1.295; nelle versioni precedenti un hook fallito lascia comunque "
          "passare la chiamata."),
         ("The check covers the plugin-scoped name `pragmatic-engineering:blunt-reviewer`. Three live runs with Claude "
          "Code 2.1.318 showed the launch denial, the reviewer's own reads and writes left alone, and that Claude Code "
          "does not resolve the bare name `blunt-reviewer` to the plugin agent; in a later live run the hook denied, "
          "inside the reviewer, a `git diff --stat` that its definition does not list, and the review went on with "
-         "the forms it lists. It costs about 30 to 40 ms on every Bash, Write and "
-         "Agent call, for every user, and about 55 ms on a Write inside the reviewer, which pays one git subprocess, "
+         "the forms it lists. It costs about 30 to 40 ms on every Bash and Agent call, for every user, and about 55 "
+         "ms on a Write inside the reviewer, which pays one git subprocess. The hook also starts on every Edit and "
+         "NotebookEdit, and every Write, Edit and NotebookEdit of every session pays one git subprocess, to find the "
+         "root that the worker boundary needs: the median of 50 runs of the hook on a Write of the main session went "
+         "from about 31 to 42 ms before the worker boundary to about 46 to 60 ms after it. All these costs were "
          "measured on the maintainer's macOS machine.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
          "nell'agente del plugin; in un'esecuzione dal vivo successiva l'hook ha rifiutato, dentro il revisore, un "
          "`git diff --stat` che la sua definizione non elenca, e la revisione è andata avanti con le forme che "
-         "elenca. Costa circa "
-         "da 30 a 40 ms a ogni chiamata di Bash, Write e Agent, per ogni utente, e circa 55 ms a un Write dentro il "
-         "revisore, che paga un sottoprocesso git, misurati sulla macchina macOS del manutentore."),
+         "elenca. Costa circa da 30 a 40 ms a ogni chiamata di Bash e Agent, per ogni utente, e circa 55 ms a un "
+         "Write dentro il revisore, che paga un sottoprocesso git. L'hook parte anche a ogni Edit e NotebookEdit, e "
+         "ogni Write, Edit e NotebookEdit di ogni sessione paga un sottoprocesso git, per trovare la radice che serve "
+         "al confine del worker: la mediana di 50 esecuzioni dell'hook su un Write della sessione principale è "
+         "passata da circa 31-42 ms prima del confine del worker a circa 46-60 ms dopo. Tutti questi costi sono "
+         "misurati sulla macchina macOS del manutentore."),
+        # the worker boundary: what it holds, what is not proven, and the hole that Bash leaves
+        ("The worker boundary of the `PreToolUse` hook is not proven live: no live run has exercised it.",
+         "Il confine del worker nell'hook `PreToolUse` non è provato dal vivo: nessuna esecuzione dal vivo lo ha "
+         "esercitato."),
+        ("It denies the agent `pragmatic-engineering:worker` a Write, Edit or NotebookEdit outside the repository root "
+         "of the call's working directory, and does the same to a session whose root carries the signal `.pe/worker`, "
+         "an empty file that the coordinating session writes into the worktree of a worker session; the agents that "
+         "such a session launches in its worktree are held too.",
+         "Nega all'agente `pragmatic-engineering:worker` un Write, un Edit o un NotebookEdit fuori dalla radice del "
+         "repository della cartella di lavoro della chiamata, e fa lo stesso con una sessione la cui radice porta il "
+         "segnale `.pe/worker`, un file vuoto che la sessione che coordina scrive nel worktree di una sessione worker; "
+         "anche gli agenti che una tale sessione lancia nel suo worktree sono vincolati."),
+        ("For a subagent started with `isolation: worktree`, which `cwd` Claude Code puts in the hook's input is not "
+         "verified: if it is the checkout of the session that launched the worker, the hook holds the worker to that "
+         "checkout and not to its own worktree.",
+         "Per un sotto-agente avviato con `isolation: worktree` non è verificato quale `cwd` Claude Code metta "
+         "nell'input dell'hook: se è il checkout della sessione che ha lanciato il worker, l'hook vincola il worker a "
+         "quel checkout e non al suo worktree."),
+        ("When the coordinating session cannot write the signal, for example because the classifier of auto mode "
+         "refuses a write outside its own worktree, that worker session is not held.",
+         "Quando la sessione che coordina non riesce a scrivere il segnale, per esempio perché il classificatore della "
+         "modalità auto rifiuta una scrittura fuori dal suo worktree, quella sessione worker non è vincolata."),
+        ("A failure of the hook denies a call of the worker agent, but lets a call of a worker session through, "
+         "because such a session is known only from its signal.",
+         "Un guasto dell'hook nega una chiamata dell'agente worker, ma lascia passare una chiamata di una sessione "
+         "worker, perché una tale sessione si riconosce solo dal suo segnale."),
+        ("The hook does not read a worker's Bash commands: through Bash a worker can still write or delete outside "
+         "its worktree, and it can delete `.pe/worker` and so turn off the hold of its own session.",
+         "L'hook non legge i comandi Bash di un worker: con Bash un worker può ancora scrivere o cancellare fuori dal "
+         "suo worktree, e può cancellare `.pe/worker` e spegnere così il vincolo della propria sessione."),
         ("(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documents another "
          "route, a `SubagentStart` hook that adds the rules as context, and the plugin does not take it: it would "
          "add about 9,500 characters to each of the most frequent subagents.",
@@ -1800,6 +1840,11 @@ GUIDED_SENTENCES = {
          "(<https://code.claude.com/docs/en/env-vars>)."),
     ),
     "reference": (
+        ("in the worktree of a `worker` also `delivery.md` (its delivery file) and, in that of a worker session, "
+         "`worker` (the signal that holds the session to its worktree, written by the coordinating session), and",
+         "nel worktree di un `worker` anche `delivery.md` (il suo file di consegna) e, in quello di una sessione "
+         "worker, `worker` (il segnale che vincola la sessione al suo worktree, scritto dalla sessione che "
+         "coordina), e"),
         ("There are no commands in this version and, besides the `SessionStart` hook described below, only one script, "
          "`skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells the model to run.",
          "In questa versione non ci sono comandi e, oltre all'hook `SessionStart` descritto sotto, c'è un solo "
