@@ -353,3 +353,118 @@ def test_a_reviewer_write_with_non_ascii_content_is_decided_whatever_the_stdin_c
 def test_a_launch_prompt_with_a_non_ascii_character_is_decided_whatever_the_stdin_code_page(tmp_path):
     proc = run_hook_with_windows_stdin(agent_call(SHA + "..HEAD " + QUOTE), tmp_path)
     assert proc.returncode == 2 and hook.GRAMMAR.encode("ascii") in proc.stderr
+
+
+WORKER = "pragmatic-engineering:worker"
+FILE_TOOLS = ("Write", "Edit", "NotebookEdit")
+HELD = "its own worktree"
+
+
+def file_call(tool_name, path, cwd, agent_type=WORKER):
+    """A Write, Edit or NotebookEdit of ``path``: NotebookEdit names its file notebook_path, the others file_path."""
+    key = "notebook_path" if tool_name == "NotebookEdit" else "file_path"
+    return reviewer_call(tool_name, {key: str(path), "content": "x"}, cwd=str(cwd), agent_type=agent_type)
+
+
+def write_signal(worktree):
+    """The worker signal that the coordinator writes into the worktree of a worker session."""
+    (worktree / ".pe").mkdir(exist_ok=True)
+    (worktree / ".pe" / "worker").write_text("", encoding="utf-8")
+
+
+@pytest.fixture
+def worker_worktree(tmp_path):
+    """A checkout on the integration branch, with two worktrees beside it: the worker's, on w, and a mate's."""
+    main = init_repo(tmp_path / "main")
+    commit(main, {"README.md": "x\n", "docs/a.md": "a\n"}, "init")
+    git(main, "switch", "-q", "-c", "integration")
+    for name in ("w", "mate"):
+        git(main, "worktree", "add", "-q", "-b", name, str(tmp_path / name))
+    return tmp_path / "w"
+
+
+OUTSIDE = {
+    "main checkout": lambda tmp: str(tmp / "main" / "README.md"),
+    "sibling worktree": lambda tmp: str(tmp / "mate" / "README.md"),
+    "sentinel": lambda tmp: str(tmp / "sentinel.txt"),
+    "relative climb": lambda tmp: "../x.md",
+}
+
+
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+@pytest.mark.parametrize("target", list(OUTSIDE))
+def test_a_worker_file_write_outside_its_worktree_is_denied(worker_worktree, tmp_path, tool_name, target):
+    reason = hook.decide(file_call(tool_name, OUTSIDE[target](tmp_path), worker_worktree))
+    assert reason and HELD in reason
+
+
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_a_worker_write_through_a_symlink_of_its_worktree_that_leads_out_is_denied(worker_worktree, tmp_path, tool_name):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        os.symlink(str(outside), str(worker_worktree / "link"), target_is_directory=True)
+    except OSError as exc:  # Windows without the symlink privilege
+        pytest.skip("cannot create a symlink here: %s" % exc)
+    commit(worker_worktree, {}, "add the link")
+    reason = hook.decide(file_call(tool_name, worker_worktree / "link" / "x.md", worker_worktree))
+    assert reason and HELD in reason
+
+
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+@pytest.mark.parametrize("relative", ["README.md", "docs/new.md", ".pe/delivery.md"])
+def test_a_worker_file_write_inside_its_worktree_gets_no_decision(worker_worktree, tool_name, relative):
+    assert hook.decide(file_call(tool_name, worker_worktree / relative, worker_worktree)) is None
+    assert hook.decide(file_call(tool_name, worker_worktree / relative, worker_worktree / "docs")) is None
+    assert hook.decide(file_call(tool_name, relative, worker_worktree)) is None  # a relative path is read from the cwd
+
+
+def test_a_worker_write_outside_a_repository_or_of_an_unknown_shape_is_denied(worker_worktree, tmp_path):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert hook.decide(file_call("Write", plain / "x.md", plain))
+    assert hook.decide(reviewer_call("Write", {"content": "x"}, cwd=str(worker_worktree), agent_type=WORKER))
+    assert hook.decide(reviewer_call("Write", {"file_path": ""}, cwd=str(worker_worktree), agent_type=WORKER))
+    assert hook.decide(reviewer_call("Edit", {"file_path": str(worker_worktree / "a")}, cwd=None, agent_type=WORKER))
+    assert hook.decide(reviewer_call("Write", "not an object", cwd=str(worker_worktree), agent_type=WORKER))
+    # a stray file_path inside the worktree cannot cover the notebook_path that NotebookEdit writes
+    stray = {"notebook_path": str(tmp_path / "sentinel.txt"), "file_path": str(worker_worktree / "x.md")}
+    assert hook.decide(reviewer_call("NotebookEdit", stray, cwd=str(worker_worktree), agent_type=WORKER))
+
+
+# The session itself has no agent_type; an agent it launches in its worktree writes on its behalf.
+@pytest.mark.parametrize("agent_type", [None, "general-purpose"])
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_a_session_with_the_worker_signal_is_held_to_its_worktree(worker_worktree, tmp_path, tool_name, agent_type):
+    write_signal(worker_worktree)
+    reason = hook.decide(file_call(tool_name, tmp_path / "main" / "README.md", worker_worktree, agent_type))
+    assert reason and HELD in reason
+    assert hook.decide(file_call(tool_name, worker_worktree / "README.md", worker_worktree / "docs", agent_type)) is None
+
+
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_a_session_without_the_signal_gets_no_decision(worker_worktree, tmp_path, tool_name):
+    assert hook.decide(file_call(tool_name, tmp_path / "main" / "README.md", worker_worktree, None)) is None
+
+
+@pytest.mark.parametrize("agent_type", [None, "general-purpose", "pragmatic-engineering:other-agent"])
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_other_agents_keep_no_decision_on_file_tools(worker_worktree, tmp_path, tool_name, agent_type):
+    """The coordinator writes the signal from its own checkout, which carries none: nothing holds it there."""
+    write_signal(worker_worktree)
+    main = tmp_path / "main"
+    assert hook.decide(file_call(tool_name, worker_worktree / ".pe" / "worker", main, agent_type)) is None
+    assert hook.decide(file_call(tool_name, tmp_path / "sentinel.txt", main, agent_type)) is None
+
+
+def test_a_crash_on_a_worker_call_denies(monkeypatch, capsys):
+    monkeypatch.setattr(hook, "decide", crash)
+    assert run_main(monkeypatch, file_call("Edit", "/srv/work/README.md", "/srv/work")) == 2
+    assert "RuntimeError: boom" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_a_crash_on_any_other_file_call_is_no_decision(monkeypatch, capsys, tool_name):
+    monkeypatch.setattr(hook, "decide", crash)
+    assert run_main(monkeypatch, file_call(tool_name, "/etc/hosts", "/srv/work", agent_type=None)) == 0
+    assert capsys.readouterr() == ("", "")

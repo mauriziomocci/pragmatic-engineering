@@ -470,9 +470,9 @@ def test_hooks_json_runs_the_session_start_script_with_a_short_timeout():
     assert (REPO_ROOT / "hooks" / "session_start.py").is_file()
 
 
-def test_hooks_json_runs_the_reviewer_hook_on_its_three_tools_and_lets_a_failed_hook_through():
+def test_hooks_json_runs_the_hook_on_its_five_tools_and_lets_a_failed_hook_through():
     entries = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
-    assert entries == [{"matcher": "Agent|Bash|Write", "hooks": [{
+    assert entries == [{"matcher": "Agent|Bash|Write|Edit|NotebookEdit", "hooks": [{
         "type": "command",
         "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py"',
         "timeout": 10,

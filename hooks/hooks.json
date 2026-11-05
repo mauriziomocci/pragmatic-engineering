@@ -13,7 +13,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Agent|Bash|Write",
+        "matcher": "Agent|Bash|Write|Edit|NotebookEdit",
         "hooks": [
           {
             "type": "command",

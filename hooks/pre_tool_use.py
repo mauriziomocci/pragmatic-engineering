@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook of the pragmatic-engineering plugin: the closed interface of blunt-reviewer, enforced.
+"""PreToolUse hook of the pragmatic-engineering plugin: blunt-reviewer's closed interface and the worker's worktree.
 
 1. It denies an Agent call to pragmatic-engineering:blunt-reviewer whose
    prompt is not exactly one line of the agent's closed grammar
@@ -12,19 +12,29 @@
    os.path.realpath so that a committed .pe symlink cannot lead out.
    --remerge-diff redoes each merge, so a merge driver defined in a git
    configuration (merge.<name>.driver) runs during that read.
+3. It denies a Write, Edit or NotebookEdit of pragmatic-engineering:worker
+   (agent_type) whose path lies outside <toplevel> of the call's cwd, the
+   worker's own worktree, both paths compared after os.path.realpath; with
+   no <toplevel> it denies them all. The same file calls of any other session
+   or agent are held the same way when that <toplevel> carries the signal
+   .pe/worker, which the coordinator writes into the worktree of a worker
+   session, so the agents such a session launches there are held too.
+   Finding <toplevel> costs one git subprocess on every Write, Edit and
+   NotebookEdit of every session.
 
-Both checks match closed shapes only: anything a pattern does not describe is
-denied, so a gap in a pattern can only make the reviewer stricter. Every other
-call, of the main session or of any other agent, gets no decision and goes
-through the normal permission flow.
+The reviewer's checks match closed shapes only: anything a pattern does not
+describe is denied, so a gap in a pattern can only make the reviewer stricter.
+Every other call, of the main session or of any other agent, gets no decision
+and goes through the normal permission flow.
 
 Exit 2 denies, with the reason on stderr, as tools/dev_guard.py does; exit 0
 with no output is no decision. A malformed input is no decision. A failure
-after the input is read denies when the call concerns the reviewer and is no
-decision otherwise, so a bug here can never block another tool. The hook is
-registered with "onFailure": "continue": a hook that cannot start or times out
-lets the call through, and the reviewer's limits are then declared only, as
-they were before this hook.
+after the input is read denies when the call concerns the reviewer or comes
+from the worker agent, and is no decision otherwise, so a bug here can never
+block another tool; a worker session is known only from its signal, so a
+failure on its call is no decision. The hook is registered with "onFailure":
+"continue": a hook that cannot start or times out lets the call through, and
+the limits of the reviewer and of the worker are then declared only.
 """
 import json
 import os
@@ -35,6 +45,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 REVIEWER = "pragmatic-engineering:blunt-reviewer"
+WORKER = "pragmatic-engineering:worker"
+WORKER_SIGNAL = ".pe/worker"
 GRAMMAR = "<base>..<tip> [round=1|2] [full=<path>,...]"
 # A sha, HEAD, HEAD~n or a branch name: it starts with a letter or digit, so git never reads it as an option,
 # and a dot is always followed by a name character, so ".." and "..." cannot hide inside it.
@@ -66,6 +78,12 @@ _COMMAND_REASON = (
     "read\"), written exactly as there, one per call, with no pipe, redirect or other shell syntax"
 )
 _WRITE_REASON = "blunt-reviewer writes only under .pe/ at the repository root (git rev-parse --show-toplevel)"
+_WORKER_WRITE_REASON = (
+    "a worker writes files only inside its own worktree, the repository root of its working directory (git "
+    "rev-parse --show-toplevel); a file outside it is not the worker's: name it in the delivery file instead"
+)
+# Write and Edit name their file file_path, NotebookEdit notebook_path; every one of them present is checked.
+_FILE_PATH_KEYS = ("file_path", "notebook_path")
 GIT_TIMEOUT = 5.0  # seconds; the hook's own timeout in hooks/hooks.json is longer
 
 
@@ -86,6 +104,10 @@ def _runs_in_reviewer(payload: Any) -> bool:
     return isinstance(payload, dict) and payload.get("agent_type") == REVIEWER
 
 
+def _runs_in_worker(payload: Any) -> bool:
+    return isinstance(payload, dict) and payload.get("agent_type") == WORKER
+
+
 def _command_problem(tool_input: Dict[str, Any], cwd: Any) -> Optional[str]:
     command = tool_input.get("command")
     if isinstance(command, str) and _READ_FORMS.fullmatch(command):
@@ -93,7 +115,10 @@ def _command_problem(tool_input: Dict[str, Any], cwd: Any) -> Optional[str]:
     return _COMMAND_REASON
 
 
-def _toplevel(cwd: str) -> Optional[str]:
+def _toplevel(cwd: Any) -> Optional[str]:
+    """The repository root of ``cwd`` with every symlink resolved, or None when git finds none."""
+    if not (isinstance(cwd, str) and cwd):
+        return None
     try:
         proc = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
@@ -101,17 +126,25 @@ def _toplevel(cwd: str) -> Optional[str]:
         )
     except (OSError, subprocess.SubprocessError):  # no git, or git hangs
         return None
-    return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else None
+    top = proc.stdout.strip()
+    return os.path.realpath(top) if proc.returncode == 0 and top else None
+
+
+def _inside(root: str, cwd: str, path: str) -> bool:
+    """Whether ``path``, read from ``cwd`` with every symlink resolved, lies below ``root``, taken as it is.
+
+    ``root`` is not resolved here: the reviewer's ``.pe`` must stay unresolved, or a committed ``.pe`` symlink
+    would carry the allowed folder out of the repository together with the path.
+    """
+    return Path(root) in Path(os.path.realpath(os.path.join(cwd, path))).parents
 
 
 def _write_problem(tool_input: Dict[str, Any], cwd: Any) -> Optional[str]:
     path = tool_input.get("file_path")
-    top = _toplevel(cwd) if isinstance(cwd, str) and cwd else None
-    if not (isinstance(path, str) and path and top):
-        return _WRITE_REASON
-    allowed = Path(os.path.realpath(top)) / ".pe"
-    target = Path(os.path.realpath(os.path.join(cwd, path)))
-    return None if allowed in target.parents else _WRITE_REASON
+    top = _toplevel(cwd)
+    if isinstance(path, str) and path and top and _inside(os.path.join(top, ".pe"), cwd, path):
+        return None
+    return _WRITE_REASON
 
 
 # The reviewer's tools that the hook is registered for; its others (Read, Grep, Glob) only read.
@@ -121,15 +154,50 @@ _REVIEWER_TOOL_CHECKS: Dict[str, Callable[[Dict[str, Any], Any], Optional[str]]]
 }
 
 
+def _worker_root(payload: Dict[str, Any]) -> Optional[str]:
+    """The root a call is held to: its repository's for the worker agent, else only a root with the worker signal.
+
+    None means the call is not held, or, for the worker agent, that git finds no repository from its cwd.
+    """
+    top = _toplevel(payload.get("cwd"))
+    if _runs_in_worker(payload) or (top and os.path.exists(os.path.join(top, WORKER_SIGNAL))):
+        return top
+    return None
+
+
+def _worker_file_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional[str]) -> Optional[str]:
+    paths = [tool_input[key] for key in _FILE_PATH_KEYS if key in tool_input]
+    if root and paths and all(isinstance(path, str) and path and _inside(root, cwd, path) for path in paths):
+        return None
+    return _WORKER_WRITE_REASON
+
+
+# The tools a worker changes files with; its Bash commands are not checked.
+_WORKER_TOOL_CHECKS: Dict[str, Callable[[Dict[str, Any], Any, Optional[str]], Optional[str]]] = {
+    "Write": _worker_file_problem,
+    "Edit": _worker_file_problem,
+    "NotebookEdit": _worker_file_problem,
+}
+
+
 def decide(payload: Any) -> Optional[str]:
     """Return why the tool call must be denied, or None for no decision."""
+    if not isinstance(payload, dict):
+        return None
     if _launches_reviewer(payload):
         return _prompt_problem(payload["tool_input"].get("prompt"))
-    check = _REVIEWER_TOOL_CHECKS.get(payload.get("tool_name")) if _runs_in_reviewer(payload) else None
-    if check is None:
-        return None
     tool_input = payload.get("tool_input")
-    return check(tool_input if isinstance(tool_input, dict) else {}, payload.get("cwd"))
+    tool_input = tool_input if isinstance(tool_input, dict) else {}
+    if _runs_in_reviewer(payload):
+        check = _REVIEWER_TOOL_CHECKS.get(payload.get("tool_name"))
+        return check(tool_input, payload.get("cwd")) if check else None
+    worker_check = _WORKER_TOOL_CHECKS.get(payload.get("tool_name"))
+    if worker_check is None:
+        return None
+    root = _worker_root(payload)
+    if root is None and not _runs_in_worker(payload):  # not held; a worker agent with no root fails closed instead
+        return None
+    return worker_check(tool_input, payload.get("cwd"), root)
 
 
 def main() -> int:
@@ -141,9 +209,9 @@ def main() -> int:
         return 0
     try:
         reason = decide(payload)
-    except Exception as exc:  # taste-exempt: a crash must deny the reviewer's call and leave every other one alone
-        concerns_reviewer = _launches_reviewer(payload) or _runs_in_reviewer(payload)
-        reason = "check failed (%s: %s)" % (exc.__class__.__name__, exc) if concerns_reviewer else None
+    except Exception as exc:  # taste-exempt: a crash must deny the reviewer's and the worker's calls, and no other
+        concerned = _launches_reviewer(payload) or _runs_in_reviewer(payload) or _runs_in_worker(payload)
+        reason = "check failed (%s: %s)" % (exc.__class__.__name__, exc) if concerned else None
     if reason:
         print("pragmatic-engineering: " + reason, file=sys.stderr)
         return 2
