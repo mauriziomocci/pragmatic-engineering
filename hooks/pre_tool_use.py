@@ -9,10 +9,9 @@
 2. Inside that agent (agent_type), it denies every Bash command that is not
    one of the git read forms of "How you read", written exactly as there,
    and every Write outside <toplevel>/.pe/, both paths compared after
-   os.path.realpath so that a committed .pe symlink cannot lead out. The
-   forms only read, with one exception: --remerge-diff redoes each merge, so
-   a merge driver defined in a git configuration (merge.<name>.driver) runs
-   during that read.
+   os.path.realpath so that a committed .pe symlink cannot lead out.
+   --remerge-diff redoes each merge, so a merge driver defined in a git
+   configuration (merge.<name>.driver) runs during that read.
 
 Both checks match closed shapes only: anything a pattern does not describe is
 denied, so a gap in a pattern can only make the reviewer stricter. Every other
