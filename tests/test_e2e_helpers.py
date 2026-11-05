@@ -1,4 +1,6 @@
 """Offline tests of the end-to-end helpers: what makes the import check inconclusive, what counts as a refusal."""
+import subprocess
+
 import pytest
 
 import e2e.test_rules_import as checks
@@ -43,3 +45,20 @@ def test_harmless_sentences_are_not_a_refusal(text):
 def test_refusals_are_caught(text):
     with pytest.raises(AssertionError, match=r"\(b\)"):
         checks.assert_not_treated_as_injection(text)
+
+
+@pytest.mark.parametrize("with_plugin", [True, False])
+def test_every_session_pins_the_model(monkeypatch, tmp_path, with_plugin):
+    """Without --model, claude -p takes the machine's default, which on some machines lists skills without text."""
+    commands = []
+
+    def fake_run(command, **_):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(checks.shutil, "which", lambda _: "/usr/local/bin/claude")
+    monkeypatch.setattr(checks, "installed_superpowers", lambda: tmp_path)
+    monkeypatch.setattr(checks.subprocess, "run", fake_run)
+    checks.claude(tmp_path, "probe", with_plugin=with_plugin)
+    (command,) = commands
+    assert command.count("--model") == 1 and command[command.index("--model") + 1] == checks.MODEL == "opus"
