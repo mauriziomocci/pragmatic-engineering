@@ -1675,18 +1675,25 @@ GUIDED_SENTENCES = {
          "tranne in Cowork; un import fuori dal progetto scritto in un file del progetto richiede quella finestra, "
          "e in un'esecuzione senza una persona è stato rifiutato "
          "(<https://code.claude.com/docs/en/memory#import-additional-files>)."),
-        ("In a live run of 4 November 2026 the main session did not load your own `quality-scoring` at the final validation "
-         "although the rule says to (the outcome of the gate was right, because both rubrics gave the same "
-         "classes); in one of 5 November 2026 it loaded the plugin's first and then yours. The measuring step of the round "
-         "must name each width, the zoom or the theme it did not measure: in a live run of 5 November 2026 it covered the six "
-         "widths and the zoom from the markup and named the rendering it could not see, and said nothing about a "
-         "second theme, which that page does not have.",
-         "In un'esecuzione dal vivo del 4 novembre 2026 la sessione principale non ha caricato il tuo `quality-scoring` alla "
-         "validazione finale, benché la regola lo dica (l'esito del cancello era giusto, perché le due rubriche "
-         "davano le stesse classi); in una del 5 novembre 2026 ha caricato prima quello del plugin e poi il tuo. Il passo di "
-         "misura del giro deve nominare ogni larghezza, lo zoom o il tema che non ha misurato: in un'esecuzione dal "
-         "vivo del 5 novembre 2026 ha coperto le sei larghezze e lo zoom dal markup e ha nominato il rendering che non poteva "
-         "vedere, e non ha detto nulla di un secondo tema, che quella pagina non ha."),
+        ("In a live run of 4 November 2026 the main session did not load your own `quality-scoring` at the final "
+         "validation although the rule says to (the outcome of the gate was right, because both rubrics gave the same "
+         "classes); in one of 5 November 2026 it loaded the plugin's first and then yours. The measuring step of the "
+         "round (`interface-quality`, step 1) runs only when the main session loads `interface-quality`: on 5 November "
+         "2026 it did in one live run of three, with the step's earlier text, and covered the six widths and the zoom "
+         "from the markup, named the rendering it could not see, and said nothing about a second theme, which that "
+         "page does not have; in the other two the UX lens checked 320 px and the contrast at rest from the markup and "
+         "the single theme was named, with no other width, no zoom, no other state and no `Not verified:` line. The "
+         "current text has not been tried live.",
+         "In un'esecuzione dal vivo del 4 novembre 2026 la sessione principale non ha caricato il tuo "
+         "`quality-scoring` alla validazione finale, benché la regola lo dica (l'esito del cancello era giusto, perché "
+         "le due rubriche davano le stesse classi); in una del 5 novembre 2026 ha caricato prima quello del plugin e "
+         "poi il tuo. Il passo di misura del giro (`interface-quality`, passo 1) gira solo quando la sessione "
+         "principale carica `interface-quality`: il 5 novembre 2026 è successo in un'esecuzione dal vivo su tre, con "
+         "il testo precedente, e il passo ha coperto le sei larghezze e lo zoom dal markup, ha nominato il rendering "
+         "che non poteva vedere, e non ha detto nulla di un secondo tema, che quella pagina non ha; nelle altre due la "
+         "lente UX ha controllato 320 px e il contrasto a riposo dal markup e l'unico tema è stato nominato, senza "
+         "altre larghezze, senza zoom, senza altri stati e senza la riga `Not verified:`. Il testo attuale non è "
+         "ancora stato provato dal vivo."),
         ("The reviewer checks the failure that the commit message names against the diff, which shows that the "
          "claim is consistent with the change, not that the test was really seen failing before the code.",
          "Il revisore controlla sul diff il fallimento che il messaggio del commit nomina, il che mostra che "
