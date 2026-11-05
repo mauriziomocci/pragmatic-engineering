@@ -142,7 +142,7 @@ MIGRATION_REQUIREMENTS = {
         "adopted it",
     ),
     "suite-before-commit": ("Every agent", "zero failures"),
-    "evidence": ("Every agent", "never taken as evidence"),
+    "evidence": ("Every agent", "a claim of another agent or lens is re-checked, never taken as evidence"),
     "reuse": ("Every agent", "the reuse statement"),
     "production-go": ("Every agent", "its own explicit go", "the blast radius and the way back"),
     "candour": (
