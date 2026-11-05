@@ -1675,16 +1675,18 @@ GUIDED_SENTENCES = {
          "tranne in Cowork; un import fuori dal progetto scritto in un file del progetto richiede quella finestra, "
          "e in un'esecuzione senza una persona è stato rifiutato "
          "(<https://code.claude.com/docs/en/memory#import-additional-files>)."),
-        ("In the live runs the main session did not load your own `quality-scoring` at the final validation although "
-         "the rule says to (the outcome of the gate was right, because both rubrics gave the same classes), and the "
-         "measuring step of the round reported contrast and one width, not all six widths and the zoom; the step "
-         "now has to name each width, the zoom or the theme it did not measure, and no live run has yet checked that "
-         "it does.",
-         "Nelle esecuzioni dal vivo la sessione principale non ha caricato il tuo `quality-scoring` alla "
+        ("In a live run of 04/11 the main session did not load your own `quality-scoring` at the final validation "
+         "although the rule says to (the outcome of the gate was right, because both rubrics gave the same "
+         "classes); in one of 05/11 it loaded the plugin's first and then yours. The measuring step of the round "
+         "must name each width, the zoom or the theme it did not measure: in a live run of 05/11 it covered the six "
+         "widths and the zoom from the markup and named the rendering it could not see, and said nothing about a "
+         "second theme, which that page does not have.",
+         "In un'esecuzione dal vivo del 04/11 la sessione principale non ha caricato il tuo `quality-scoring` alla "
          "validazione finale, benché la regola lo dica (l'esito del cancello era giusto, perché le due rubriche "
-         "davano le stesse classi), e il passo di misura del giro ha riportato il contrasto e una sola larghezza, "
-         "non tutte e sei le larghezze e lo zoom; il passo ora deve nominare ogni larghezza, lo zoom o il tema che "
-         "non ha misurato, e nessuna esecuzione dal vivo ha ancora verificato che lo faccia."),
+         "davano le stesse classi); in una del 05/11 ha caricato prima quello del plugin e poi il tuo. Il passo di "
+         "misura del giro deve nominare ogni larghezza, lo zoom o il tema che non ha misurato: in un'esecuzione dal "
+         "vivo del 05/11 ha coperto le sei larghezze e lo zoom dal markup e ha nominato il rendering che non poteva "
+         "vedere, e non ha detto nulla di un secondo tema, che quella pagina non ha."),
         ("The reviewer checks the failure that the commit message names against the diff, which shows that the "
          "claim is consistent with the change, not that the test was really seen failing before the code.",
          "Il revisore controlla sul diff il fallimento che il messaggio del commit nomina, il che mostra che "
