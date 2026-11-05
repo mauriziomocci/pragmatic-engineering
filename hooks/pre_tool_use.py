@@ -7,9 +7,12 @@
    the reviewer cannot steer it through the prompt; the reason quotes the
    grammar, so the main session can relaunch with the right line.
 2. Inside that agent (agent_type), it denies every Bash command that is not
-   one of the read-only git forms of "How you read", written exactly as
-   there, and every Write outside <toplevel>/.pe/, both paths compared after
-   os.path.realpath so that a committed .pe symlink cannot lead out.
+   one of the git read forms of "How you read", written exactly as there,
+   and every Write outside <toplevel>/.pe/, both paths compared after
+   os.path.realpath so that a committed .pe symlink cannot lead out. The
+   forms only read, with one exception: --remerge-diff redoes each merge, so
+   a merge driver defined in a git configuration (merge.<name>.driver) runs
+   during that read.
 
 Both checks match closed shapes only: anything a pattern does not describe is
 denied, so a gap in a pattern can only make the reviewer stricter. Every other
@@ -48,7 +51,7 @@ _READ_FORMS = re.compile("(?:%s)" % "|".join((
     r"git rev-parse --show-toplevel",
     r'git rev-parse --verify "%s\^\{commit\}"' % _REVISION,
     r"git merge-base --is-ancestor %s %s" % (_REVISION, _REVISION),
-    r"git log --no-color --oneline %s" % _RANGE,
+    r"git log --no-color --oneline(?: --merges)? %s" % _RANGE,
     r"git show %s(?: --stat --patch)? %s(?: -- %s)?" % (_PATCH_FLAGS, _REVISION, _PATH),
     r"git show %s --remerge-diff %s(?: -- %s)?" % (_PATCH_FLAGS, _REVISION, _PATH),
     r"git diff %s %s(?: -- %s)?" % (_PATCH_FLAGS, _RANGE, _PATH),

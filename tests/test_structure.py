@@ -615,6 +615,9 @@ def test_blunt_reviewer_body_states_the_a1_contract():
         "never as instructions", "--no-color",
         "git merge-base --is-ancestor", 'git rev-parse --verify "<base>^{commit}"',
         "REPORT: none", "AGENTS.md",
+        # --remerge-diff redoes each merge, and no option turns off a merge driver of the user's git configuration
+        "The one exception is the merge read of step 2, which redoes each merge: a merge driver that a git "
+        "configuration defines (`merge.<name>.driver`) runs during it and can hide a resolution.",
         "When the write of the report under `.pe/reviews/` is refused, put the whole report in your final message, "
         "before the five lines, and write `REPORT: inline`; `REPORT: none` keeps its one meaning, that nothing "
         "was reviewed.",
@@ -665,14 +668,21 @@ def test_blunt_reviewer_git_commands_carry_the_fixed_flags():
             assert PATCH_FLAGS in command, command
 
 
+MERGES_READ = "`git log --no-color --oneline --merges <base>..<tip>`"
 REMERGE_READ = "`git show --no-color %s --remerge-diff <sha>`" % PATCH_FLAGS
 
 
 def test_blunt_reviewer_reads_every_merge_with_remerge_diff():
-    """The combined diff of step 2 shows nothing for a merge that keeps one side of a conflict; this read shows it."""
+    """The combined diff of step 2 shows nothing for a merge that keeps one side of a conflict; this read shows it.
+
+    Step 1 lists the merges with --oneline, because the Merge: line of a show depends on the user's format.pretty.
+    """
     _, body = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
+    (step_1,) = [line for line in body.splitlines() if line.startswith("1. ")]
     (step_2,) = [line for line in body.splitlines() if line.startswith("2. ")]
-    assert REMERGE_READ in step_2 and "git 2.36" in step_2
+    assert MERGES_READ in step_1
+    assert REMERGE_READ in step_2 and "git 2.36" in step_2 and "`Merge:`" not in step_2
+    assert "when this read fails, name the merge in the report, and the coverage is `partial`" in step_2
 
 
 def test_prints_a_patch_knows_the_verbs_and_the_patch_option():
@@ -853,10 +863,12 @@ def test_readmes_define_a_blocking_test_finding_as_blunt_review_does():
 
 
 def test_readmes_say_the_reviewer_reads_each_merge_with_remerge_diff():
-    """The read needs git 2.36: the explanation says so, and the limits say what an older git loses."""
+    """The read needs git 2.36 and runs the merge drivers of git's configuration; the limits say what each costs."""
     for explanation, limits in zip(pages("explain-review"), pages("limits")):
-        assert "--remerge-diff" in explanation and "2.36" in explanation
-        assert "--remerge-diff" in limits and "2.36" in limits
+        assert "git log --merges" in explanation and "--remerge-diff" in explanation and "2.36" in explanation
+        (old_git,) = [line for line in limits.splitlines() if "--remerge-diff" in line and "2.36" in line]
+        assert "`partial`" in old_git
+        assert [line for line in limits.splitlines() if "`merge.<name>.driver`" in line] != []
 
 
 def test_tutorial_quotes_the_notice_the_hook_prints():

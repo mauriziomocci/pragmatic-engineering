@@ -11,7 +11,7 @@ import sys
 import pytest
 
 import pre_tool_use as hook
-from support import REPO_ROOT, commit, init_repo, parse_frontmatter, run_script, sections
+from support import REPO_ROOT, commit, git, init_repo, parse_frontmatter, run_script, sections
 
 SCRIPT = REPO_ROOT / "hooks" / "pre_tool_use.py"
 REVIEWER = "pragmatic-engineering:blunt-reviewer"
@@ -171,6 +171,7 @@ def test_every_git_command_of_the_agent_definition_is_allowed():
     'git rev-parse --verify "HEAD~2^{commit}"',
     "git merge-base --is-ancestor %s HEAD" % FULL_SHA,
     "git log --no-color --oneline %s..HEAD" % SHA,
+    "git log --no-color --oneline --merges %s..HEAD" % SHA,
     "git show %s --stat --patch %s" % (FLAGS, SHA),
     "git show %s --stat --patch %s -- lib/pe_guard/filters.py" % (FLAGS, SHA),
     "git show %s %s -- .github/workflows/ci.yml" % (FLAGS, SHA),
@@ -224,7 +225,7 @@ def test_the_remerge_read_of_a_merge_is_allowed(path):
     REMERGE + " --output=/tmp/x",
 ])
 def test_a_remerge_read_of_another_shape_is_denied(command):
-    assert hook.decide(reviewer_bash(command)) == hook._COMMAND_REASON
+    assert "How you read" in hook.decide(reviewer_bash(command))
 
 
 @pytest.mark.parametrize("tool_input", [{}, {"command": None}, {"command": ["git", "status"]}, "git status"])
@@ -249,6 +250,39 @@ def repo(tmp_path):
     top = init_repo(tmp_path / "repo")
     commit(top, {"README.md": "x\n", "docs/a.md": "a\n"}, "init")
     return top
+
+
+@pytest.fixture
+def merges(repo):
+    """Two merges on main after its first commit: a conflict resolved by keeping main's side, then a clean one."""
+    base = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "switch", "-q", "-c", "mate")
+    commit(repo, {"README.md": "mate line\n"}, "mate")
+    git(repo, "switch", "-q", "main")
+    commit(repo, {"README.md": "worker line\n"}, "worker")
+    git(repo, "merge", "-q", "--no-edit", "-X", "ours", "mate")  # the conflict resolved by dropping the mate's line
+    one_sided = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "switch", "-q", "-c", "side")
+    commit(repo, {"docs/a.md": "side\n"}, "side")
+    git(repo, "switch", "-q", "main")
+    commit(repo, {"README.md": "worker line\nmore\n"}, "more")
+    git(repo, "merge", "-q", "--no-edit", "side")
+    return repo, base, one_sided, git(repo, "rev-parse", "HEAD").strip()
+
+
+def test_the_merges_read_lists_every_merge_whatever_the_pretty_format(merges):
+    repo, base, one_sided, clean = merges
+    listed = git(repo, "-c", "format.pretty=format:%s", "log", "--no-color", "--oneline", "--merges", base + "..HEAD")
+    shas = [git(repo, "rev-parse", "--short", sha).strip() for sha in (clean, one_sided)]
+    assert [line.split()[0] for line in listed.splitlines()] == shas
+
+
+def test_only_the_remerge_read_shows_a_resolution_that_keeps_one_side(merges):
+    repo, _, one_sided, clean = merges
+    assert "diff --" not in git(repo, "show", *FLAGS.split(), "--stat", "--patch", one_sided)
+    remerge = git(repo, "show", *FLAGS.split(), "--remerge-diff", one_sided).splitlines()
+    assert "-mate line" in remerge and [line for line in remerge if line.startswith("-<<<<<<<")] != []
+    assert "diff --" not in git(repo, "show", *FLAGS.split(), "--remerge-diff", clean)
 
 
 def reviewer_write(path, cwd):
