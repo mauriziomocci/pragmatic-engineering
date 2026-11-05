@@ -1623,16 +1623,17 @@ GUIDED_SENTENCES = {
          "passare la chiamata."),
         ("The check covers the plugin-scoped name `pragmatic-engineering:blunt-reviewer`. Three live runs with Claude "
          "Code 2.1.318 showed the launch denial, the reviewer's own reads and writes left alone, and that Claude Code "
-         "does not resolve the bare name `blunt-reviewer` to the plugin agent; a denial inside the reviewer was "
-         "checked on copies of the inputs the third run recorded, with the command or the path changed, not seen "
-         "live. It costs about 30 to 40 ms on every Bash, Write and "
+         "does not resolve the bare name `blunt-reviewer` to the plugin agent; in a later live run the hook denied, "
+         "inside the reviewer, a `git diff --stat` that its definition does not list, and the review went on with "
+         "the forms it lists. It costs about 30 to 40 ms on every Bash, Write and "
          "Agent call, for every user, and about 55 ms on a Write inside the reviewer, which pays one git subprocess, "
          "measured on the maintainer's macOS machine.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
-         "nell'agente del plugin; un rifiuto dentro il revisore è stato controllato su copie degli input registrati "
-         "dalla terza esecuzione, con il comando o il percorso cambiati, non visto dal vivo. Costa circa "
+         "nell'agente del plugin; in un'esecuzione dal vivo successiva l'hook ha rifiutato, dentro il revisore, un "
+         "`git diff --stat` che la sua definizione non elenca, e la revisione è andata avanti con le forme che "
+         "elenca. Costa circa "
          "da 30 a 40 ms a ogni chiamata di Bash, Write e Agent, per ogni utente, e circa 55 ms a un Write dentro il "
          "revisore, che paga un sottoprocesso git, misurati sulla macchina macOS del manutentore."),
         ("(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documents another "

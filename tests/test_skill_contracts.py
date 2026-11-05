@@ -778,8 +778,8 @@ def test_blocking_findings_use_the_one_scale_of_quality_scoring():
 
 # The two ways a test lacks its red, each with the state after the fix, in the row of quality-scoring that classes it.
 RED_CASES = {
-    "S2": "a new test on a changed behaviour whose commits name no red seen before the code, closed when the red is "
-          "seen now and named in the fix commit, which leaves no S3",
+    "S2": "a new or changed test on a changed behaviour whose commits name no red, closed when the red is seen now "
+          "and named in the fix commit, which leaves no S3",
     "S3": "a red that its commit says was seen only after the code, except the red seen now to close the S2 above",
 }
 
@@ -793,7 +793,7 @@ def test_the_classes_of_a_missing_red_are_in_the_class_table_of_quality_scoring(
 def test_blunt_review_reads_the_red_and_states_no_class_for_it():
     """One home for the classes: the reading of the red points to quality-scoring and repeats none."""
     reading = sections(parse_frontmatter(skill_text("blunt-review"))[1], 3)["Unit tests"]
-    assert CLASS_OF_A_CLAUSE.findall(reading) == []
+    assert re.findall(r"\bS[123]\b", reading) == []
 
 
 # The four checks on what a document may claim. blunt-review repeats them for the reviewer agent, which cannot
