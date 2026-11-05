@@ -437,7 +437,7 @@ def test_a_worker_write_outside_a_repository_or_of_an_unknown_shape_is_denied(wo
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)
 def test_a_session_with_the_worker_signal_is_held_to_its_worktree(worker_worktree, tmp_path, tool_name, agent_type):
     write_signal(worker_worktree)
-    reason = hook.decide(file_call(tool_name, tmp_path / "main" / "README.md", worker_worktree, agent_type))
+    reason = hook.decide(file_call(tool_name, tmp_path / "main" / "README.md", worker_worktree / "docs", agent_type))
     assert reason and HELD in reason
     assert hook.decide(file_call(tool_name, worker_worktree / "README.md", worker_worktree / "docs", agent_type)) is None
 
@@ -445,6 +445,43 @@ def test_a_session_with_the_worker_signal_is_held_to_its_worktree(worker_worktre
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)
 def test_a_session_without_the_signal_gets_no_decision(worker_worktree, tmp_path, tool_name):
     assert hook.decide(file_call(tool_name, tmp_path / "main" / "README.md", worker_worktree, None)) is None
+
+
+def record_git(monkeypatch):
+    """Record every subprocess the hook starts, still running it, so a test can count the git calls."""
+    calls = []
+    real_run = subprocess.run
+
+    def recording_run(args, **kwargs):
+        calls.append(args)
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr(hook.subprocess, "run", recording_run)
+    return calls
+
+
+@pytest.mark.parametrize("agent_type", [None, "general-purpose"])
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_a_file_call_with_no_signal_above_its_cwd_starts_no_git(worker_worktree, tmp_path, monkeypatch, tool_name,
+                                                                agent_type):
+    """Most sessions never use a worker: their file calls must not pay a git subprocess for the boundary."""
+    calls = record_git(monkeypatch)
+    assert hook.decide(file_call(tool_name, tmp_path / "sentinel.txt", worker_worktree / "docs", agent_type)) is None
+    assert hook.decide(file_call(tool_name, tmp_path / "sentinel.txt", tmp_path / "main", agent_type)) is None
+    assert calls == []
+
+
+def test_the_worker_agent_still_asks_git_for_its_root(worker_worktree, monkeypatch):
+    calls = record_git(monkeypatch)
+    assert hook.decide(file_call("Write", worker_worktree / "README.md", worker_worktree)) is None
+    assert [args[:2] for args in calls] == [["git", "-C"]]
+
+
+def test_a_signal_above_the_repository_root_holds_nothing(worker_worktree, tmp_path):
+    """A repository nested in a signalled worktree has its own root, which carries no signal."""
+    write_signal(worker_worktree)
+    nested = init_repo(worker_worktree / "vendor" / "lib")
+    assert hook.decide(file_call("Write", tmp_path / "sentinel.txt", nested, None)) is None
 
 
 @pytest.mark.parametrize("agent_type", [None, "general-purpose", "pragmatic-engineering:other-agent"])

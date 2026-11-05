@@ -1718,22 +1718,26 @@ GUIDED_SENTENCES = {
          "does not resolve the bare name `blunt-reviewer` to the plugin agent; in a later live run the hook denied, "
          "inside the reviewer, a `git diff --stat` that its definition does not list, and the review went on with "
          "the forms it lists. It costs about 30 to 40 ms on every Bash and Agent call, for every user, and about 55 "
-         "ms on a Write inside the reviewer, which pays one git subprocess. The hook also starts on every Edit and "
-         "NotebookEdit, and every Write, Edit and NotebookEdit of every session pays one git subprocess, to find the "
-         "root that the worker boundary needs: the median of 50 runs of the hook on a Write of the main session went "
-         "from about 31 to 42 ms before the worker boundary to about 46 to 60 ms after it. All these costs were "
-         "measured on the maintainer's macOS machine.",
+         "ms on a Write inside the reviewer, which pays one git subprocess. Since the worker boundary the hook also "
+         "starts on every Edit and NotebookEdit of every user, and these calls pay that start, about as much as a "
+         "Write: the median of 50 runs of the hook on a Write of the main session was about 31 to 32 ms before the "
+         "worker boundary and about 32 to 33 ms with it, because a session without workers asks git nothing. Only "
+         "the worker agent and a call that finds `.pe/worker` in its working directory or in a folder above it pay "
+         "one git subprocess more, to find the root: a Write that pays it measured about 44 to 50 ms. All these "
+         "costs were measured on the maintainer's macOS machine.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
          "nell'agente del plugin; in un'esecuzione dal vivo successiva l'hook ha rifiutato, dentro il revisore, un "
          "`git diff --stat` che la sua definizione non elenca, e la revisione è andata avanti con le forme che "
          "elenca. Costa circa da 30 a 40 ms a ogni chiamata di Bash e Agent, per ogni utente, e circa 55 ms a un "
-         "Write dentro il revisore, che paga un sottoprocesso git. L'hook parte anche a ogni Edit e NotebookEdit, e "
-         "ogni Write, Edit e NotebookEdit di ogni sessione paga un sottoprocesso git, per trovare la radice che serve "
-         "al confine del worker: la mediana di 50 esecuzioni dell'hook su un Write della sessione principale è "
-         "passata da circa 31-42 ms prima del confine del worker a circa 46-60 ms dopo. Tutti questi costi sono "
-         "misurati sulla macchina macOS del manutentore."),
+         "Write dentro il revisore, che paga un sottoprocesso git. Dal confine del worker l'hook parte anche a ogni "
+         "Edit e NotebookEdit di ogni utente, e queste chiamate pagano quella partenza, circa quanto un Write: la "
+         "mediana di 50 esecuzioni dell'hook su un Write della sessione principale era di circa 31-32 ms prima del "
+         "confine del worker ed è di circa 32-33 ms con esso, perché una sessione senza worker non chiede nulla a "
+         "git. Solo l'agente worker e una chiamata che trova `.pe/worker` nella sua cartella di lavoro o in una "
+         "cartella sopra di essa pagano un sottoprocesso git in più, per trovare la radice: un Write che lo paga ha "
+         "misurato circa 44-50 ms. Tutti questi costi sono misurati sulla macchina macOS del manutentore."),
         # the worker boundary: what it holds, what is not proven, and the hole that Bash leaves
         ("The worker boundary of the `PreToolUse` hook is not proven live: no live run has exercised it.",
          "Il confine del worker nell'hook `PreToolUse` non è provato dal vivo: nessuna esecuzione dal vivo lo ha "
@@ -1756,6 +1760,12 @@ GUIDED_SENTENCES = {
          "refuses a write outside its own worktree, that worker session is not held.",
          "Quando la sessione che coordina non riesce a scrivere il segnale, per esempio perché il classificatore della "
          "modalità auto rifiuta una scrittura fuori dal suo worktree, quella sessione worker non è vincolata."),
+        ("A session whose repository root is neither its working directory nor a folder above it, as with "
+         "`core.worktree` or `GIT_WORK_TREE`, is never held, even with the signal, because the hook looks for "
+         "`.pe/worker` only in those folders before it asks git.",
+         "Una sessione la cui radice del repository non è né la sua cartella di lavoro né una cartella sopra di essa, "
+         "come con `core.worktree` o `GIT_WORK_TREE`, non è mai vincolata, nemmeno con il segnale, perché l'hook "
+         "cerca `.pe/worker` solo in quelle cartelle prima di chiedere a git."),
         ("A failure of the hook denies a call of the worker agent, but lets a call of a worker session through, "
          "because such a session is known only from its signal.",
          "Un guasto dell'hook nega una chiamata dell'agente worker, ma lascia passare una chiamata di una sessione "

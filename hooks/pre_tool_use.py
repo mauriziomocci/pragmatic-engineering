@@ -19,8 +19,11 @@
    or agent are held the same way when that <toplevel> carries the signal
    .pe/worker, which the coordinator writes into the worktree of a worker
    session, so the agents such a session launches there are held too.
-   Finding <toplevel> costs one git subprocess on every Write, Edit and
-   NotebookEdit of every session.
+   Finding <toplevel> costs one git subprocess, paid by the worker agent and
+   by a call that finds .pe/worker in its cwd or a folder above it; any other
+   file call looks only for that file, without git, so a setup whose
+   <toplevel> is not one of those folders (core.worktree, GIT_WORK_TREE) is
+   never held.
 
 The reviewer's checks match closed shapes only: anything a pattern does not
 describe is denied, so a gap in a pattern can only make the reviewer stricter.
@@ -154,15 +157,25 @@ _REVIEWER_TOOL_CHECKS: Dict[str, Callable[[Dict[str, Any], Any], Optional[str]]]
 }
 
 
+def _signal_above(cwd: Any) -> bool:
+    """Whether ``cwd`` or a folder above it, symlinks resolved, holds the worker signal; found without git."""
+    if not (isinstance(cwd, str) and cwd):
+        return False
+    folder = Path(os.path.realpath(cwd))
+    return any((parent / WORKER_SIGNAL).exists() for parent in (folder, *folder.parents))
+
+
 def _worker_root(payload: Dict[str, Any]) -> Optional[str]:
     """The root a call is held to: its repository's for the worker agent, else only a root with the worker signal.
 
-    None means the call is not held, or, for the worker agent, that git finds no repository from its cwd.
+    None means the call is not held, or, for the worker agent, that git finds no repository from its cwd. Any
+    other call asks git only when the signal lies at or above its cwd, so a session without workers pays no git.
     """
-    top = _toplevel(payload.get("cwd"))
-    if _runs_in_worker(payload) or (top and os.path.exists(os.path.join(top, WORKER_SIGNAL))):
-        return top
-    return None
+    cwd = payload.get("cwd")
+    if _runs_in_worker(payload):
+        return _toplevel(cwd)
+    top = _toplevel(cwd) if _signal_above(cwd) else None
+    return top if top and os.path.exists(os.path.join(top, WORKER_SIGNAL)) else None
 
 
 def _worker_file_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional[str]) -> Optional[str]:
