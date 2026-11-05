@@ -109,7 +109,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "4a89e3c940d0fc1a014f22ec930b900677b4e631666fd5d780687e7baa561258"
+RULES_SHA256 = "ce217d8c11fcf999d349459384af39fd56c2ec92d1e82b2d526e2a444089950a"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -142,7 +142,7 @@ MIGRATION_REQUIREMENTS = {
         "adopted it",
     ),
     "suite-before-commit": ("Every agent", "zero failures"),
-    "evidence": ("Every agent", "never taken as evidence"),
+    "evidence": ("Every agent", "a claim of another agent or lens is re-checked, never taken as evidence"),
     "reuse": ("Every agent", "the reuse statement"),
     "production-go": ("Every agent", "its own explicit go", "the blast radius and the way back"),
     "candour": (
@@ -163,7 +163,7 @@ MIGRATION_REQUIREMENTS = {
     "lenses": (
         "Main session", "never traded", "known defects", "as a proposal to the user",
         "a change to an interface or to API responses, other than a trivial text fix, gets one round of the UX, user "
-        "and review lenses before the spec",
+        "and review lenses before the spec, a round that first measures what the change touches, naming gaps",
     ),
     "quality-gate": (
         "Main session",
