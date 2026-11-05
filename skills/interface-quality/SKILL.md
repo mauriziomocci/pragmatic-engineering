@@ -70,7 +70,7 @@ On a server the API is the experience of the developer who builds the client. On
 
 A skill of the user's configuration that covers these lenses is loaded first. On every change to an interface or to an API, except a trivial text fix, one round, before the spec:
 
-1. Before proposing, the UX lens measures what the change touches as it is: every touched state and its contrast in both themes, and the widths and the zoom of rule 12; for an API, the routes as they answer today. The step ends with the `Not verified:` line of `quality-scoring`, naming each width, the 200% zoom or a theme it did not measure, with the reason.
+1. Before proposing, the UX lens measures what the change touches as it is: every touched state and its contrast in both themes, and the widths and the zoom of rule 12; for an API, the routes as they answer today. The step ends with the `Not verified:` line of `quality-scoring`, naming each touched state, each width, the 200% zoom or a theme it did not measure, with the reason, and it says which themes the page has, with the evidence.
 2. The UX lens proposes from the need of the person who uses the product. It runs as a subagent on Opus, briefed with this skill, the touched pages or routes and the person's task. When the user's configuration names its own agent for this lens, that agent runs it.
 3. The review lens (`blunt-review`) attacks on evidence, cost, the simpler alternative and the impact on code and architecture.
 4. The user lens walks the main task of the touched pages, or the client's flow for an API, and its findings reach the UX lens with the attack.
