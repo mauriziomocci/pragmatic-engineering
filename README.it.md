@@ -4,7 +4,7 @@
 
 **Stato: pre-rilascio.** La versione 0.1.0 è pubblicata per un primo uso, non ancora per tutti. Provato finora: le prove di unità e di struttura, un'esecuzione dal vivo della prova da capo a fondo dell'import delle regole (29 ottobre 2026) e le esecuzioni dal vivo di regressione contro una configurazione esistente del 4 novembre 2026: nove scenari, ciascuno con e senza il plugin, con una matrice di dieci linguaggi. Non ancora provato: l'installazione su una macchina pulita e il lavoro vero di più giorni. La guardia sulle merge request e il coordinatore a più agenti arrivano nelle versioni successive. Leggi «Limiti noti» prima di installare.
 
-pragmatic-engineering è un metodo di ingegneria per Claude Code, messo in ordine. Porta regole di lavoro a ogni agente di una sessione con una sola riga di import nel tuo `CLAUDE.md`, e aggiunge skill che coprono le fasi e le tre corsie del lavoro, più un agente, `blunt-reviewer`, che rivede un intervallo git in modo indipendente e schietto. La versione 0.1.0 è il nucleo del metodo: le regole, le skill, il revisore e un hook `SessionStart` che tiene le regole al loro posto. Questa versione non ha nessun controllo meccanico sulle merge request: la revisione prima di una merge request è una regola per il modello, non un cancello.
+pragmatic-engineering è un metodo di ingegneria per Claude Code, messo in ordine. Porta regole di lavoro a ogni agente di una sessione con una sola riga di import nel tuo `CLAUDE.md`, e aggiunge skill che coprono le fasi e le tre corsie del lavoro, più due agenti: `blunt-reviewer`, che rivede un intervallo git in modo indipendente e schietto, e `worker`, che esegue un pacchetto di un lavoro in parallelo nel proprio worktree. La versione 0.1.0 è il nucleo del metodo: le regole, le skill, il revisore e un hook `SessionStart` che tiene le regole al loro posto. Questa versione non ha nessun controllo meccanico sulle merge request: la revisione prima di una merge request è una regola per il modello, non un cancello.
 
 Questa pagina segue i quattro tipi di documentazione di Diataxis (<https://diataxis.fr>), una sezione per ciascuno: un tutorial, le guide pratiche, una spiegazione e un riferimento, con i limiti noti fra gli ultimi due. Per ogni parte del metodo la spiegazione dice che cosa la garantisce: un meccanismo, cioè codice che gira qualunque cosa faccia il modello, oppure solo una regola per il modello, cioè un testo che il modello deve seguire e che nessuno controlla.
 
@@ -44,7 +44,7 @@ Questa pagina è scritta per una persona che installa il plugin sulla propria ma
 - [Limiti noti](#limiti-noti)
 - [Riferimento](#riferimento)
   - [Skill](#skill)
-  - [Agente](#agente)
+  - [Agenti](#agenti)
   - [Hook](#hook)
   - [File](#file)
 - [Licenza](#licenza)
@@ -492,9 +492,11 @@ Claude Code carica una skill quando il compito corrisponde alla sua descrizione,
 | `documentation-quality` | I quattro tipi di documentazione e le due domande che li distinguono, la pagina d'ingresso, documenti che descrivono solo ciò che esiste e ne dicono i limiti, il manuale di un'interfaccia di amministrazione. | Scrivere, dividere, riorganizzare o rivedere documentazione; non per docstring, commenti o messaggi a persone. |
 | `configure` | Mostra i valori attuali delle chiavi `pe.*`, fa una domanda alla volta su quelle che scegli, controlla il formato di ogni risposta ed esegue ogni comando `git config` solo dopo il tuo sì, profilo di autonomia compreso. | Quando chiedi come configurare o impostare il plugin, il suo orario d'ufficio, i fine settimana, i giorni festivi, i remoti personali o l'autonomia; non per le impostazioni di un altro strumento. |
 
-### Agente
+### Agenti
 
 `blunt-reviewer`: modello Opus; strumenti Read, Grep, Glob, Bash e Write; precarica `pragmatic-engineering:blunt-review` e `pragmatic-engineering:quality-scoring`. Accetta una riga, `<base>..<tip> [round=1|2] [full=<path>,...]`, scrive `.pe/reviews/<base7>..<tip7>-round<k>.md` e chiude con `VERDICT: pass | changes`, `FINDINGS: <n> (<b> blocking; <lens> S1=<a> S2=<c> S3=<d>; ...)`, `COVERAGE: full | partial`, `REPORT: <path> | inline | none` e `THE THING: <...>`. La sessione principale lo lancia prima di una merge request, per un intervallo consegnato e per ogni giro del ciclo di revisione.
+
+`worker`: nessun modello suo, perché la sessione che coordina ne passa uno a ogni lancio; strumenti Read, Grep, Glob, Bash, Edit, Write e Skill; precarica `pragmatic-engineering:engineering-principles`; gira nel proprio git worktree (`isolation: worktree`). Riceve un brief fisso con le righe `OWNED:` e `TESTS:`, fa partire il suo ramo dalla punta d'integrazione, porta quella punta nel suo ramo con `git merge` e risolve da sé ogni conflitto, scrive `.pe/delivery.md` a blocchi con una riga di stato, e chiude con `BRANCH: <branch>`, `TIP: <sha>`, `REPORT: .pe/delivery.md` e `OPEN: <...>`. Non lancia nessun revisore, non fa mai push e non unisce mai il suo ramo in un altro. Una sessione che coordina ne lancia uno per ogni pacchetto di un piano che va in parallelo.
 
 ### Hook
 
@@ -502,7 +504,7 @@ Claude Code carica una skill quando il compito corrisponde alla sua descrizione,
 
 ### File
 
-`rules.md` è il file delle regole di lavoro, che comincia con il marcatore `PE-RULES v1`. La cartella `.pe/`, alla radice di un progetto, contiene `reviews/` (i rapporti di `blunt-reviewer`) e `progress.md` (la nota di avanzamento), e non entra mai in git grazie al proprio `.gitignore` con `*`. Nella cartella dei dati del plugin, accanto alla copia di `rules.md`, `quality-scoring` tiene `calibration.md`, il suo registro di taratura. `skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori da esso e mai pubblicati, e lascia nel repository un tag `night-backup-<YYYYMMDD-HHMMSS>`. Per eseguirlo a mano: `python3 <la cartella di safe-operations>/recreate_night_commits.py <base>`, da una cartella qualsiasi del repository. Il `<base>` è l'ultimo commit già pubblicato oppure il punto di diramazione di un ramo mai pubblicato.
+`rules.md` è il file delle regole di lavoro, che comincia con il marcatore `PE-RULES v1`. La cartella `.pe/`, alla radice di un progetto, contiene `reviews/` (i rapporti di `blunt-reviewer`) e `progress.md` (la nota di avanzamento), nel worktree di un `worker` anche `delivery.md` (il suo file di consegna), e non entra mai in git grazie al proprio `.gitignore` con `*`. Nella cartella dei dati del plugin, accanto alla copia di `rules.md`, `quality-scoring` tiene `calibration.md`, il suo registro di taratura. `skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori da esso e mai pubblicati, e lascia nel repository un tag `night-backup-<YYYYMMDD-HHMMSS>`. Per eseguirlo a mano: `python3 <la cartella di safe-operations>/recreate_night_commits.py <base>`, da una cartella qualsiasi del repository. Il `<base>` è l'ultimo commit già pubblicato oppure il punto di diramazione di un ramo mai pubblicato.
 
 <!-- section: license -->
 ## Licenza

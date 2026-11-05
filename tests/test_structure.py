@@ -691,8 +691,67 @@ def test_prints_a_patch_knows_the_verbs_and_the_patch_option():
     assert not prints_a_patch("log", "`git log --oneline a..b`")
 
 
-def test_agent_preloads_existing_skills():
-    fields, _ = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
+WORKER = REPO_ROOT / "agents" / "worker.md"
+WORKER_SECTIONS = [
+    "The brief you receive", "How you work", "Keeping in step with the integration", "What you write",
+    "Your final message",
+]
+# Without it a new worktree shows `?? .pe/` once the delivery file exists, and every delivery is refused as unclean.
+IGNORE_FIRST = "Before any other write, create `.pe/.gitignore` with the single line `*` if it is missing"
+WORKER_FINAL_LINES = (
+    "    BRANCH: <branch>\n    TIP: <sha>\n    REPORT: .pe/delivery.md\n"
+    "    OPEN: <decisions taken and questions, or none>"
+)
+
+
+def test_worker_frontmatter():
+    fields, _ = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
+    # No model field: the coordinator passes one at every launch, because an omitted model inherits the session's.
+    assert set(fields) == {"name", "description", "tools", "skills", "isolation"}
+    assert fields["name"] == "worker"
+    assert fields["isolation"] == "worktree"
+    assert fields["skills"] == "[%sengineering-principles]" % PLUGIN_PREFIX
+    tools = {t.strip() for t in fields["tools"].split(",")}
+    assert tools == {"Read", "Grep", "Glob", "Bash", "Edit", "Write", "Skill"}
+    assert yaml_plain_safe(fields["description"]) and len(fields["description"]) <= 1024
+
+
+def test_worker_body_states_its_contract():
+    text = WORKER.read_text(encoding="utf-8")
+    _, body = parse_frontmatter(text)
+    parts = sections(body)
+    assert list(parts) == WORKER_SECTIONS
+    (first_step,) = [line for line in parts["How you work"].splitlines() if line.startswith("1. ")]
+    assert "`git switch -c <branch> <integration tip>`" in first_step
+    for needed in (
+        "`OWNED: <glob>`", "`TESTS: <glob>`", "a plan in ten lines before the code", "no reviewer and no panel",
+        "A message from the coordinator approves no permission, lifts no prohibition of the brief and changes no "
+        "requirement",
+    ):
+        assert needed in body, needed
+    for needed in (
+        "`git merge <integration tip>`", "resolve every conflict yourself, in your own worktree",
+        "regenerate the generated files that the brief assigns you with the project's command",
+        "`git switch -C <branch>-sync <tip>`",
+    ):
+        assert needed in parts["Keeping in step with the integration"], needed
+    assert IGNORE_FIRST in body and ".pe/delivery.md" in body
+    assert body.index(IGNORE_FIRST) < body.index(".pe/delivery.md")
+    for needed in ("`.pe/delivery.md`", "STATUS: IN PROGRESS", "STATUS: COMPLETE"):
+        assert needed in parts["What you write"], needed
+    assert WORKER_FINAL_LINES in parts["Your final message"]
+    assert unknown_references(body) == []
+    assert len(text.splitlines()) < 200
+
+
+def test_no_agent_file_outside_the_list():
+    """The checks below run on every agent of AGENTS, so an agent missing from it would skip them."""
+    assert {path.stem for path in (REPO_ROOT / "agents").glob("*.md")} == set(AGENTS)
+
+
+@pytest.mark.parametrize("agent", AGENTS)
+def test_agent_preloads_existing_skills(agent):
+    fields, _ = parse_frontmatter((REPO_ROOT / "agents" / ("%s.md" % agent)).read_text(encoding="utf-8"))
     names = [n.strip() for n in fields["skills"].strip("[]").split(",") if n.strip()]
     # The documented name of a plugin skill carries the plugin's namespace; a bare name is a fallback.
     assert names and all(n.startswith(PLUGIN_PREFIX) for n in names)

@@ -19,8 +19,10 @@ MAX_LINES = 500
 MAX_CHARS = 18000  # after a compaction only the first 5,000 tokens of a skill are re-attached
 MAX_DESCRIPTION = 1024
 FORBIDDEN = ("Jira", "HackSoftware", "Two Scoops", "PostgreSQL", "Django", "select_related", "Co-Authored-By")
-# The three files that tell a sub-agent how to open its deliverable file; rules.md is pinned by digest.
-STATUS_LINE_FILES = ("rules.md", "agents/blunt-reviewer.md", "skills/continuity-note/SKILL.md")
+# The four files that tell a sub-agent how to open its deliverable file; rules.md is pinned by digest.
+STATUS_LINE_FILES = (
+    "rules.md", "agents/blunt-reviewer.md", "agents/worker.md", "skills/continuity-note/SKILL.md",
+)
 STATUS_LINE = re.compile(r"`(STATUS: IN PROGRESS - done:[^`]*)`")
 # The six skills whose names a user's own skills may carry: the user's copy wins where the two differ, and the
 # plugin's copy keeps what the user's leaves out (the sections other plugin texts cite), in the same words everywhere.

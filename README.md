@@ -4,7 +4,7 @@
 
 **Status: pre-release.** Version 0.1.0 is published for early use, not yet for everyone. Proven so far: the unit and structure tests, one live run of the end-to-end test of the rules import (29 October 2026), and the live regression runs against an existing setup of 4 November 2026: nine scenarios, each with and without the plugin, with a matrix of ten languages. Not proven yet: an install on a clean machine and real work over several days. The merge-request guard and the multi-agent coordinator come in later versions. Read "Known limits" before you install.
 
-pragmatic-engineering is an engineering method for Claude Code, put in order. It brings working rules to every agent of a session through one import line in your `CLAUDE.md`, and it adds skills that cover the phases and the three lanes of the work, plus one agent, `blunt-reviewer`, that reviews a git range independently and bluntly. Version 0.1.0 is the core of the method: the rules, the skills, the reviewer and a `SessionStart` hook that keeps the rules in place. This version has no mechanical check on merge requests: the review before a merge request is a rule for the model, not a gate.
+pragmatic-engineering is an engineering method for Claude Code, put in order. It brings working rules to every agent of a session through one import line in your `CLAUDE.md`, and it adds skills that cover the phases and the three lanes of the work, plus two agents: `blunt-reviewer`, that reviews a git range independently and bluntly, and `worker`, that carries out one package of a parallel piece of work in its own worktree. Version 0.1.0 is the core of the method: the rules, the skills, the reviewer and a `SessionStart` hook that keeps the rules in place. This version has no mechanical check on merge requests: the review before a merge request is a rule for the model, not a gate.
 
 This page follows the four kinds of documentation of Diataxis (<https://diataxis.fr>), one section for each: a tutorial, how-to guides, an explanation and a reference, with the known limits between the last two. For every part of the method the explanation says what guarantees it: a mechanism, meaning code that runs whatever the model does, or only a rule for the model, meaning text the model is asked to follow and nothing checks.
 
@@ -44,7 +44,7 @@ This page is written for one person who installs the plugin on their own machine
 - [Known limits](#known-limits)
 - [Reference](#reference)
   - [Skills](#skills)
-  - [Agent](#agent)
+  - [Agents](#agents)
   - [Hook](#hook)
   - [Files](#files)
 - [License](#license)
@@ -492,9 +492,11 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 | `documentation-quality` | The four kinds of documentation and the two questions that tell them apart, the entry page, documents that describe only what exists and say their limits, the manual of an administration interface. | Writing, splitting, reorganising or reviewing documentation; not for docstrings, comments or messages to people. |
 | `configure` | Shows the current values of the `pe.*` keys, asks one question at a time about the ones you choose, checks the format of each answer and runs each `git config` command only after your yes, the autonomy profile included. | When you ask how to configure or set up the plugin, its office hours, weekends, holidays, personal remotes or autonomy; not for the settings of another tool. |
 
-### Agent
+### Agents
 
 `blunt-reviewer`: model Opus; tools Read, Grep, Glob, Bash and Write; preloads `pragmatic-engineering:blunt-review` and `pragmatic-engineering:quality-scoring`. It accepts one line, `<base>..<tip> [round=1|2] [full=<path>,...]`, writes `.pe/reviews/<base7>..<tip7>-round<k>.md` and ends with `VERDICT: pass | changes`, `FINDINGS: <n> (<b> blocking; <lens> S1=<a> S2=<c> S3=<d>; ...)`, `COVERAGE: full | partial`, `REPORT: <path> | inline | none` and `THE THING: <...>`. The main session launches it before a merge request, for a delivered range, and for each round of the review cycle.
+
+`worker`: no model of its own, because the coordinating session passes one at every launch; tools Read, Grep, Glob, Bash, Edit, Write and Skill; preloads `pragmatic-engineering:engineering-principles`; runs in its own git worktree (`isolation: worktree`). It receives a fixed brief with `OWNED:` and `TESTS:` lines, starts its branch from the integration tip, brings that tip into its branch with `git merge` and resolves any conflict itself, writes `.pe/delivery.md` in blocks with a status line, and ends with `BRANCH: <branch>`, `TIP: <sha>`, `REPORT: .pe/delivery.md` and `OPEN: <...>`. It launches no reviewer, never pushes and never merges its branch into another one. A coordinating session launches one for each package of a plan that runs in parallel.
 
 ### Hook
 
@@ -502,7 +504,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 
 ### Files
 
-`rules.md` is the working rules file, starting with the marker `PE-RULES v1`. The `.pe/` folder, at the root of a project, holds `reviews/` (the reports of `blunt-reviewer`) and `progress.md` (the progress note), and it never enters git because of its own `.gitignore` with `*`. In the plugin's data folder, next to the copy of `rules.md`, `quality-scoring` keeps `calibration.md`, its calibration log. `skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository. To run it by hand: `python3 <the folder of safe-operations>/recreate_night_commits.py <base>`, from any directory of the repository. The `<base>` is the last commit already pushed or the branch point of a branch never pushed.
+`rules.md` is the working rules file, starting with the marker `PE-RULES v1`. The `.pe/` folder, at the root of a project, holds `reviews/` (the reports of `blunt-reviewer`) and `progress.md` (the progress note), in the worktree of a `worker` also `delivery.md` (its delivery file), and it never enters git because of its own `.gitignore` with `*`. In the plugin's data folder, next to the copy of `rules.md`, `quality-scoring` keeps `calibration.md`, its calibration log. `skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository. To run it by hand: `python3 <the folder of safe-operations>/recreate_night_commits.py <base>`, from any directory of the repository. The `<base>` is the last commit already pushed or the branch point of a branch never pushed.
 
 <!-- section: license -->
 ## License
