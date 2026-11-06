@@ -830,7 +830,7 @@ def test_read_statements_reads_the_command_word_through_wrappers_and_redirection
     "1>x rm", "3<x rm", "rm 12>x", "rm 1>>x", "A+=x rm", "=rm x", "''=rm x", "\"\"=rm x", "rm =python3", "noglob rm",
     "nocorrect rm", "- rm", "repeat 1 rm", "foreach", "integer A", "float A", "~/bin/rm", ":",
     "shopt -s x", "setopt x", "unsetopt x", "set -e", "emulate sh", "disable cd", "zmodload x", "SET -e", "2>&10 rm",
-    "rm 2>&1x",
+    "rm 2>&1x", "eval rm x", "eval 'cd ..; rm x'", "builtin eval rm x", "trap 'rm x' EXIT",
 ])
 def test_read_statements_refuses_what_it_cannot_read_for_sure(text):
     with pytest.raises(filters.UnreadableCommand):

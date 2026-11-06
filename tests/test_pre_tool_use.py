@@ -614,6 +614,7 @@ def test_a_worker_git_command_aimed_outside_its_worktree_is_denied(worker_worktr
     ("find -L . -name x -delete", False),  # from a subfolder its start lies below the root
     ("find -name x -delete", False),  # no start path: the working directory
     ("find -f -d/../../../x -name x -delete", True),  # BSD find, macOS's, starts from the path after -f, even -d/..
+    ("find -files0-from list.txt -delete", True),  # GNU find reads its start paths from that file
 ])
 def test_find_delete_is_read_from_its_start_paths(worker_worktree, tmp_path, command, denied):
     reason = hook.decide(bash_call(command % {"outside": outside(tmp_path)}, worker_worktree / "docs"))
@@ -634,12 +635,34 @@ def nested_worktree(worker_worktree, tmp_path):
     ("", "cd -- -"), ("", "pushd -- -"), ("", "cd -- -1"), ("", "cd +1"),  # $OLDPWD even after --, zsh's dir stack
     ("", "cd - docs"),  # a lone - is an operand: bash 3.2, macOS's, goes to $OLDPWD and drops docs
     ("", "cd docs -/../../x"),  # zsh reads two words as a substitution in the path, a second one led by - too
+    ("", "chdir ../.."), ("docs", "chdir ../.."),  # zsh's chdir is cd
+    ("", "popd +1"), ("", "popd -1"), ("", "popd -n"), ("", "popd docs"),  # popd takes no word
 ])
 def test_a_worker_cd_out_of_its_worktree_is_denied_on_its_own(nested_worktree, tmp_path, folder, command):
     reason = hook.decide(bash_call(command % {"main": (tmp_path / "main").as_posix()}, nested_worktree / folder))
-    assert reason and "cd and pushd" in reason
+    assert reason and CD_RULE in reason
 
 
+@pytest.fixture
+def worktree_with_nested_roots(worker_worktree, tmp_path):
+    """The worker's worktree with a repository inside it, as a submodule or a vendored copy, and a worktree added
+    inside it: each has a root of its own, where the hold of a worker session finds no signal."""
+    init_repo(worker_worktree / "vendor" / "lib")
+    git(tmp_path / "main", "worktree", "add", "-q", "-b", "inner", str(worker_worktree / "inner"))
+    return worker_worktree
+
+
+@pytest.mark.parametrize("folder,command,denied", [
+    ("", "cd vendor/lib", True), ("vendor", "cd lib", True), ("", "pushd inner", True), ("", "chdir inner", True),
+    ("docs", "cd ../inner", True), ("", "cd vendor", False), ("vendor", "cd ..", False),
+])
+def test_a_worker_cd_into_another_repository_inside_its_worktree_is_denied(worktree_with_nested_roots, folder,
+                                                                           command, denied):
+    reason = hook.decide(bash_call(command, worktree_with_nested_roots / folder))
+    assert (bool(reason) and CD_RULE in reason) == denied
+
+
+CD_RULE = "cd, chdir and pushd"
 CD_ALONE = "a call of its own"
 
 
@@ -649,6 +672,8 @@ CD_ALONE = "a call of its own"
     ("docs", "cd .. && rm -rf ../x"), ("docs", "cd .. && cd .."), ("docs", "cd .. && git -C ../mate checkout -- ."),
     ("docs", "pushd .. && rm -rf ../x"), ("docs", "cd ..; ls"), ("docs", "cd ..\nls"), ("docs", "cd .. || ls"),
     ("docs", "ls | cd .."), ("docs", "ls && cd sub"),
+    ("docs", "chdir .. && rm -rf ../x"), ("", "chdir .. && rm -rf x"), ("docs", "popd && rm -rf ../x"),
+    ("docs", "pushd .. && popd"),
     ("", "cd docs && ls"), ("", "cd sub && rm x"), ("", "cd docs && cd %(root)s"), ("", "cd docs; cd .."),
 ])
 def test_a_worker_cd_or_pushd_with_another_statement_is_denied(worker_worktree, folder, command):
@@ -662,6 +687,14 @@ def test_a_worker_cd_or_pushd_with_another_statement_is_denied(worker_worktree, 
 ])
 def test_a_worker_cd_or_pushd_alone_inside_its_worktree_gets_no_decision(worker_worktree, folder, command):
     assert hook.decide(bash_call(command, worker_worktree / folder)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "eval cd .. && rm -rf ../x", "eval 'cd ..; rm -rf ../x'", "builtin eval cd ..", "trap 'cd ..; rm -rf ../x' EXIT",
+])
+def test_a_worker_command_that_runs_its_words_as_shell_text_is_denied(worker_worktree, command):
+    reason = hook.decide(bash_call(command, worker_worktree / "docs"))
+    assert reason and UNREADABLE in reason and "as shell text" in reason
 
 
 @pytest.mark.parametrize("command", [
@@ -691,7 +724,7 @@ OUTSIDE_THE_GRAMMAR = [
     ("sudo -iu bob rm -rf ../main", UNREADABLE),
     ("rm -rf .?/main", "deletes only"),  # a glob: bash before 5.2 counts .. among the matches of .?
     ("rm -rf build/*", "deletes only"),
-    ("cd l*", "cd and pushd"),
+    ("cd l*", CD_RULE),
     ("r\\\nm -rf ../main", UNREADABLE),  # a backslash-newline joins the two halves of the command word
     ("echo \\'; rm -rf ../main; echo \\'", UNREADABLE),  # an escaped quote opens no quoted text
     ("cat <(rm -rf ../main)", UNREADABLE),  # a process substitution runs a command of its own
@@ -779,7 +812,7 @@ OUTSIDE_THE_GRAMMAR = [
     ("ENV rm -rf ../main", "deletes only"),
     ("NOHUP rm -rf ../main", "deletes only"),
     ("UNLINK ../main/x", "deletes only"),
-    ("CD ../main", "cd and pushd"),
+    ("CD ../main", CD_RULE),
     ("GIT push origin HEAD:main", "all the worktrees share"),
     ("SETOPT extendedglob", UNREADABLE),
     # 2>&1 followed by a digit is the duplicate of another descriptor, not 2>&1 and a word
@@ -816,6 +849,7 @@ def test_a_worker_git_command_with_its_own_configuration_is_denied(worker_worktr
 @pytest.mark.parametrize("command", [
     "git tag -d v1", "git tag -f v1", "git tag --delete v1", "git tag -fa v1 -m x",
     "git fetch . HEAD:integration", "git fetch origin main:main", "git pull . w:integration",
+    "git fetch origin --refmap=a:b", "git fetch --refmap=x:y origin main", "git pull --refmap=x:y origin main",
     "git push", "git push . HEAD:integration", "git push origin w",
     "git update-ref refs/heads/integration HEAD",
     "git config core.worktree ../main", "git config --unset user.name", "git config set user.name x",

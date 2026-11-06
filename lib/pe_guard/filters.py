@@ -529,8 +529,9 @@ _WRAPPER_HINT = (
     "command without the wrapper"
 )
 # The command words the reader refuses, in groups, each with what its words do: the reserved words of bash and zsh,
-# the commands that define what later ones read, the builtins that set how the shell reads later words, and zsh's
-# precommand modifiers (zsh's - is no plain name, see _PLAIN_COMMAND_WORD). The hint of a word names its whole group.
+# the commands that define what later ones read, the builtins that set how the shell reads later words, zsh's
+# precommand modifiers (zsh's - is no plain name, see _PLAIN_COMMAND_WORD), and the builtins that run their words, now
+# or at the end of the call, as shell text. The hint of a word names its whole group.
 _REFUSED_WORD_GROUPS: Tuple[Tuple[Tuple[str, ...], str], ...] = (
     (("if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac", "select", "function",
       "time", "coproc", "repeat", "foreach", "end"),
@@ -541,6 +542,9 @@ _REFUSED_WORD_GROUPS: Tuple[Tuple[Tuple[str, ...], str], ...] = (
      "change how the shell reads the words after them, as a cd that reads a variable or a ^ that globs; run the "
      "commands without them, chained with && where set -e would stop on an error"),
     (("noglob", "nocorrect"), "change how the command after them is read; run the command without them"),
+    (("eval", "trap"),
+     "run their words as shell text, which the hook does not read, as sh -c does; write the commands themselves as "
+     "statements of their own"),
 )
 
 
