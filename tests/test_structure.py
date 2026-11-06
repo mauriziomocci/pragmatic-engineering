@@ -753,10 +753,15 @@ def test_no_agent_file_outside_the_list():
     assert {path.stem for path in (REPO_ROOT / "agents").glob("*.md")} == set(AGENTS)
 
 
+def preloaded_skills(agent: str) -> List[str]:
+    """The names in the `skills` field of an agent, as written there."""
+    fields, _ = parse_frontmatter((REPO_ROOT / "agents" / ("%s.md" % agent)).read_text(encoding="utf-8"))
+    return [n.strip() for n in fields["skills"].strip("[]").split(",") if n.strip()]
+
+
 @pytest.mark.parametrize("agent", AGENTS)
 def test_agent_preloads_existing_skills(agent):
-    fields, _ = parse_frontmatter((REPO_ROOT / "agents" / ("%s.md" % agent)).read_text(encoding="utf-8"))
-    names = [n.strip() for n in fields["skills"].strip("[]").split(",") if n.strip()]
+    names = preloaded_skills(agent)
     # The documented name of a plugin skill carries the plugin's namespace; a bare name is a fallback.
     assert names and all(n.startswith(PLUGIN_PREFIX) for n in names)
     assert all((REPO_ROOT / "skills" / n[len(PLUGIN_PREFIX):] / "SKILL.md").is_file() for n in names)
@@ -920,15 +925,40 @@ def test_hook_registration_is_described_with_on_failure_everywhere():
         assert [claim for claim in stale if claim in text] == [], name
 
 
-def test_readmes_list_disable_model_invocation_as_a_fourth_mechanism():
+def test_readmes_list_disable_model_invocation_as_a_mechanism():
     """Claude Code, not the model's discipline, keeps the model from starting autonomous-execution."""
     fields, _ = parse_frontmatter(skill_text("autonomous-execution"))
     assert fields["disable-model-invocation"] == "true"
     field = "`disable-model-invocation`"
-    counts = ("four things are mechanical", "quattro cose sono meccaniche")
-    for intro, gates, count, label in zip(pages("explanation"), pages("explain-gates"), counts, GUARANTEE_LABELS):
-        assert count in intro and field in intro
+    for intro, gates, label in zip(pages("explanation"), pages("explain-gates"), GUARANTEE_LABELS):
+        assert field in intro
         assert field in guarantee_line(gates, label)
+
+
+# The sentence of the explanation that counts the mechanisms, and the number words it may use: English, then Italian.
+MECHANISM_SENTENCES = (
+    re.compile(r"In this version (\w+) things are mechanical: (.*?)\. Everything else is a rule for the model\."),
+    re.compile(r"In questa versione (\w+) cose sono meccaniche: (.*?)\. Tutto il resto è una regola per il modello\."),
+)
+NUMBER_WORDS = (
+    {4: "four", 5: "five", 6: "six", 7: "seven"}, {4: "quattro", 5: "cinque", 6: "sei", 7: "sette"},
+)
+# The mechanisms that are not a hook: Claude Code's import, the agents' skills field and the field of a skill.
+OTHER_MECHANISMS = ("`@`", "`skills`", "`disable-model-invocation`")
+
+
+def test_readmes_count_every_mechanism_of_the_plugin():
+    """A hook event added to hooks/hooks.json, or a skill preloaded by an agent, turns this red until the sentence
+    that counts the mechanisms names it with the right count."""
+    events = list(json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"])
+    named = ["`%s`" % event for event in events] + list(OTHER_MECHANISMS)
+    preloaded = ["`%s`" % name[len(PLUGIN_PREFIX):] for agent in AGENTS for name in preloaded_skills(agent)]
+    for intro, pattern, words in zip(pages("explanation"), MECHANISM_SENTENCES, NUMBER_WORDS):
+        found = pattern.search(intro)
+        assert found, pattern.pattern
+        count, listed = found.groups()
+        assert count == words[len(named)]
+        assert [name for name in named + preloaded if name not in listed] == []
 
 
 def test_readmes_define_a_blocking_test_finding_as_blunt_review_does():
@@ -1736,30 +1766,31 @@ GUIDED_SENTENCES = {
          "Code 2.1.318 showed the launch denial, the reviewer's own reads and writes left alone, and that Claude Code "
          "does not resolve the bare name `blunt-reviewer` to the plugin agent; in a later live run the hook denied, "
          "inside the reviewer, a `git diff --stat` that its definition does not list, and the review went on with "
-         "the forms it lists. It costs about 30 to 40 ms on every Bash and Agent call, for every user, and about 55 "
-         "ms on a Write inside the reviewer, which pays one git subprocess. Since the worker boundary the hook also "
-         "starts on every Edit and NotebookEdit of every user, and these calls pay that start, about as much as a "
-         "Write: the median of 50 runs of the hook on a Write of the main session was about 27 ms before the worker "
-         "boundary and about 27 to 28 ms with it, because a session without workers asks git nothing. The worker "
-         "agent pays one git subprocess more, to find its root, and a Write of it measured about 38 to 40 ms; a call "
-         "that finds `.pe/worker` in its working directory or in a folder above it pays two, the root and whether "
-         "git tracks the signal, and a Write of a worker session measured about 49 to 51 ms. All these costs were "
-         "measured on the maintainer's macOS machine.",
+         "the forms it lists. It costs about 26 to 32 ms on every Bash and Agent call, for every user, and about 37 "
+         "to 41 ms on a Write inside the reviewer, which pays one git subprocess. Since the worker boundary the hook "
+         "also starts on every Edit and NotebookEdit of every user, and these calls pay that start, about as much as "
+         "a Write: the median of 50 runs of the hook on a Write of the main session was about 27 to 31 ms before the "
+         "worker boundary and about 27 to 30 ms with it, because a session without workers asks git nothing. The "
+         "worker agent pays one git subprocess more, to find its root, and a Write of it measured about 38 to 44 ms; "
+         "a call that finds `.pe/worker` in its working directory or in a folder above it pays two, the root and "
+         "whether git tracks anything under `.pe`, and a Write of a worker session measured about 49 to 55 ms. All "
+         "these costs come from one measurement session, three rounds of 50 runs each, on the maintainer's macOS "
+         "machine.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
          "nell'agente del plugin; in un'esecuzione dal vivo successiva l'hook ha rifiutato, dentro il revisore, un "
          "`git diff --stat` che la sua definizione non elenca, e la revisione è andata avanti con le forme che "
-         "elenca. Costa circa da 30 a 40 ms a ogni chiamata di Bash e Agent, per ogni utente, e circa 55 ms a un "
-         "Write dentro il revisore, che paga un sottoprocesso git. Dal confine del worker l'hook parte anche a ogni "
-         "Edit e NotebookEdit di ogni utente, e queste chiamate pagano quella partenza, circa quanto un Write: la "
-         "mediana di 50 esecuzioni dell'hook su un Write della sessione principale era di circa 27 ms prima del "
-         "confine del worker ed è di circa 27-28 ms con esso, perché una sessione senza worker non chiede nulla a "
-         "git. L'agente worker paga un sottoprocesso git in più, per trovare la sua radice, e un suo Write ha "
-         "misurato circa 38-40 ms; una chiamata che trova `.pe/worker` nella sua cartella di lavoro o in una "
-         "cartella sopra di essa ne paga due, la radice e se git traccia il segnale, e un Write di una sessione "
-         "worker ha misurato circa 49-51 ms. Tutti questi costi sono misurati sulla macchina macOS del "
-         "manutentore."),
+         "elenca. Costa circa da 26 a 32 ms a ogni chiamata di Bash e Agent, per ogni utente, e circa da 37 a 41 ms "
+         "a un Write dentro il revisore, che paga un sottoprocesso git. Dal confine del worker l'hook parte anche a "
+         "ogni Edit e NotebookEdit di ogni utente, e queste chiamate pagano quella partenza, circa quanto un Write: "
+         "la mediana di 50 esecuzioni dell'hook su un Write della sessione principale era di circa 27-31 ms prima "
+         "del confine del worker ed è di circa 27-30 ms con esso, perché una sessione senza worker non chiede nulla "
+         "a git. L'agente worker paga un sottoprocesso git in più, per trovare la sua radice, e un suo Write ha "
+         "misurato circa 38-44 ms; una chiamata che trova `.pe/worker` nella sua cartella di lavoro o in una "
+         "cartella sopra di essa ne paga due, la radice e se git traccia qualcosa sotto `.pe`, e un Write di una "
+         "sessione worker ha misurato circa 49-55 ms. Tutti questi costi vengono da una sola sessione di misura, tre "
+         "giri da 50 esecuzioni ciascuno, sulla macchina macOS del manutentore."),
         # the worker boundary: what it holds, what is not proven, and the hole that Bash leaves
         ("The worker boundary of the `PreToolUse` hook is not proven live: no live run has exercised it.",
          "Il confine del worker nell'hook `PreToolUse` non è provato dal vivo: nessuna esecuzione dal vivo lo ha "
@@ -1772,12 +1803,15 @@ GUIDED_SENTENCES = {
          "repository della cartella di lavoro della chiamata, e fa lo stesso con una sessione la cui radice porta il "
          "segnale `.pe/worker`, un file vuoto che la sessione che coordina scrive nel worktree di una sessione worker; "
          "anche gli agenti che una tale sessione lancia nel suo worktree sono vincolati."),
-        ("A `.pe/worker` that git tracks holds nothing, so a repository cannot turn the hold on by committing the "
-         "file; an untracked one that something else writes holds the sessions opened in that repository just the "
-         "same.",
-         "Un `.pe/worker` che git traccia non vincola nulla, quindi un repository non può accendere il vincolo "
-         "facendo il commit del file; uno non tracciato scritto da qualcos'altro vincola allo stesso modo le "
-         "sessioni aperte in quel repository."),
+        ("The signal holds only when `.pe` is a real folder, not a symlink, and git tracks nothing under `.pe` in "
+         "any letter case, so a repository that commits any file there, or a `.pe` symlink, never holds a session; "
+         "an untracked `.pe/worker` that something else writes holds the sessions opened in that repository just "
+         "the same.",
+         "Il segnale vincola solo quando `.pe` è una cartella vera, non un collegamento simbolico, e git non traccia "
+         "nulla sotto `.pe` in nessuna combinazione di maiuscole e minuscole, quindi un repository che fa il commit "
+         "di un file qualsiasi lì dentro, o di un collegamento simbolico `.pe`, non vincola mai una sessione; un "
+         "`.pe/worker` non tracciato scritto da qualcos'altro vincola allo stesso modo le sessioni aperte in quel "
+         "repository."),
         ("For a subagent started with `isolation: worktree`, which `cwd` Claude Code puts in the hook's input is not "
          "verified: if it is the checkout of the session that launched the worker, the hook holds the worker to that "
          "checkout and not to its own worktree.",

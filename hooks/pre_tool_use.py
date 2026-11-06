@@ -17,14 +17,16 @@
    worker's own worktree, both paths compared after os.path.realpath; with
    no <toplevel> it denies them all. The same file calls of any other session
    or agent are held the same way when that <toplevel> carries the signal
-   .pe/worker and git does not track it: the coordinator writes it into the
-   worktree of a worker session, so the agents such a session launches there
-   are held too, while a repository that commits the file holds nothing.
+   .pe/worker, its .pe is a real folder and not a symlink, and git tracks
+   nothing under .pe in any letter case: the coordinator writes the signal
+   into the worktree of a worker session, so the agents such a session
+   launches there are held too, while a repository that tracks any file
+   under .pe, or a .pe symlink, never holds a session.
    The worker agent pays one git subprocess to find <toplevel>, and a call
    that finds .pe/worker in its cwd or a folder above it pays two, the root
-   and whether git tracks the signal; any other file call looks only for
-   that file, without git, so a setup whose <toplevel> is not one of those
-   folders (core.worktree, GIT_WORK_TREE) is never held.
+   and whether git tracks anything under .pe; any other file call looks only
+   for that file, without git, so a setup whose <toplevel> is not one of
+   those folders (core.worktree, GIT_WORK_TREE) is never held.
 
 The reviewer's checks match closed shapes only: anything a pattern does not
 describe is denied, so a gap in a pattern can only make the reviewer stricter.
@@ -50,7 +52,8 @@ from typing import Any, Callable, Dict, Optional
 
 REVIEWER = "pragmatic-engineering:blunt-reviewer"
 WORKER = "pragmatic-engineering:worker"
-WORKER_SIGNAL = ".pe/worker"
+PE_FOLDER = ".pe"
+WORKER_SIGNAL = PE_FOLDER + "/worker"
 GRAMMAR = "<base>..<tip> [round=1|2] [full=<path>,...]"
 # A sha, HEAD, HEAD~n or a branch name: it starts with a letter or digit, so git never reads it as an option,
 # and a dot is always followed by a name character, so ".." and "..." cannot hide inside it.
@@ -146,7 +149,7 @@ def _inside(root: str, cwd: str, path: str) -> bool:
 def _write_problem(tool_input: Dict[str, Any], cwd: Any) -> Optional[str]:
     path = tool_input.get("file_path")
     top = _toplevel(cwd)
-    if isinstance(path, str) and path and top and _inside(os.path.join(top, ".pe"), cwd, path):
+    if isinstance(path, str) and path and top and _inside(os.path.join(top, PE_FOLDER), cwd, path):
         return None
     return _WRITE_REASON
 
@@ -167,16 +170,20 @@ def _signal_above(cwd: Any) -> bool:
 
 
 def _signalled_root(cwd: Any) -> Optional[str]:
-    """The root of a worker session: the repository root of ``cwd`` when it holds a signal git does not track.
+    """The root of a worker session: the repository root of ``cwd`` when it holds a signal no commit can make.
 
-    Git is asked only after the signal is found at or above ``cwd``, so a session without workers starts none. A
-    tracked signal holds nothing: committed, it would hold every session opened in that repository. When git
-    gives no clear "not tracked" (exit 1 of --error-unmatch), the session is not held, as one without a signal.
+    Git is asked only after the signal is found at or above ``cwd``, so a session without workers starts none.
+    Committed content must hold nothing, or it would hold every session opened in that repository, and the
+    filesystem can find .pe/worker where the index has no such path: through a .pe symlink, or as .pe/Worker on a
+    filesystem that ignores case. So a .pe symlink holds nothing, and git is asked about .pe itself, in any letter
+    case. When git gives no clear "nothing tracked" (exit 1 of --error-unmatch), the session is not held, as one
+    without a signal.
     """
     top = _toplevel(cwd) if _signal_above(cwd) else None
-    if not (top and os.path.exists(os.path.join(top, WORKER_SIGNAL))):
+    folder = os.path.join(top, PE_FOLDER) if top else ""
+    if not folder or os.path.islink(folder) or not os.path.exists(os.path.join(top, WORKER_SIGNAL)):
         return None
-    proc = _git(top, "ls-files", "--error-unmatch", "--", WORKER_SIGNAL)
+    proc = _git(top, "ls-files", "--error-unmatch", "--", ":(icase)" + PE_FOLDER)
     return top if proc and proc.returncode == 1 else None
 
 

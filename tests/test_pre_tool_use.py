@@ -495,6 +495,49 @@ def test_a_worker_signal_that_git_tracks_holds_nothing(worker_worktree, tmp_path
     assert hook.decide(file_call("Write", tmp_path / "sentinel.txt", worker_worktree, agent_type)) is None
 
 
+@pytest.mark.parametrize("record", ["commit", "leave untracked"])
+def test_a_pe_symlink_to_a_folder_with_a_worker_file_holds_nothing(worker_worktree, tmp_path, record):
+    """Through the link .pe/worker exists, while git tracks no path spelled .pe/worker."""
+    target = worker_worktree / "pe-files" if record == "commit" else tmp_path / "elsewhere"
+    target.mkdir()
+    (target / "worker").write_text("", encoding="utf-8")
+    try:
+        os.symlink(str(target), str(worker_worktree / ".pe"), target_is_directory=True)
+    except OSError as exc:  # Windows without the symlink privilege
+        pytest.skip("cannot create a symlink here: %s" % exc)
+    if record == "commit":
+        commit(worker_worktree, {}, "commit a .pe link to a folder with a worker file")
+    assert (worker_worktree / ".pe" / "worker").exists()
+    assert hook.decide(file_call("Write", tmp_path / "sentinel.txt", worker_worktree, None)) is None
+
+
+@pytest.mark.parametrize("committed", [".pe/Worker", ".PE/worker"])
+def test_a_committed_pe_worker_in_another_letter_case_holds_nothing(worker_worktree, tmp_path, committed):
+    commit(worker_worktree, {committed: ""}, "commit " + committed)
+    if not (worker_worktree / ".pe" / "worker").exists():
+        pytest.skip("this filesystem tells Worker from worker, so the committed file is no signal here")
+    assert hook.decide(file_call("Write", tmp_path / "sentinel.txt", worker_worktree, None)) is None
+
+
+@pytest.mark.parametrize("answer", [None, 128], ids=["git cannot start", "git fails"])
+def test_a_signalled_session_is_not_held_when_git_gives_no_clear_answer_on_the_signal(
+    worker_worktree, tmp_path, monkeypatch, answer
+):
+    """The hold needs git to say that nothing under .pe is tracked; no answer is not that."""
+    real_git, asked = hook._git, []
+
+    def git_failing_on_ls_files(cwd, *args):
+        asked.append(args[0])
+        if args[0] != "ls-files":
+            return real_git(cwd, *args)
+        return None if answer is None else subprocess.CompletedProcess(["git", *args], answer)
+
+    monkeypatch.setattr(hook, "_git", git_failing_on_ls_files)
+    write_signal(worker_worktree)
+    assert hook.decide(file_call("Write", tmp_path / "sentinel.txt", worker_worktree, None)) is None
+    assert asked == ["rev-parse", "ls-files"]
+
+
 @pytest.mark.parametrize("agent_type", [None, "general-purpose", "pragmatic-engineering:other-agent"])
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)
 def test_other_agents_keep_no_decision_on_file_tools(worker_worktree, tmp_path, tool_name, agent_type):
