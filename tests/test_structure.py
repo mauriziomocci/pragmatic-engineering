@@ -1729,15 +1729,15 @@ GUIDED_SENTENCES = {
          "quoting the grammar in its reason; only inside the reviewer it denies any Bash command other than the "
          "exact git read forms of its definition and any Write outside `.pe/` at the repository root, the Write "
          "path and the repository root compared after resolving symlinks; besides these, it decides only the "
-         "file writes of a worker (Write, Edit and NotebookEdit), which \"Known limits\" describes; every other call "
-         "gets no decision from it.",
+         "file writes (Write, Edit and NotebookEdit) and the Bash commands of a worker, which \"Known limits\" "
+         "describes; every other call gets no decision from it.",
          "l'hook `PreToolUse` `hooks/pre_tool_use.py` impone il resto dell'interfaccia dove gira: nega "
          "ogni chiamata Agent che avvia `pragmatic-engineering:blunt-reviewer` con un prompt fuori dalla grammatica, "
          "citando la grammatica nel motivo; solo dentro il revisore nega ogni comando Bash diverso dalle forme "
          "esatte di lettura git della sua definizione e ogni Write fuori da `.pe/` alla radice del repository, con "
          "il percorso del Write e la radice del repository confrontati dopo aver risolto i collegamenti simbolici; "
-         "oltre a questi, decide solo le scritture di file di un worker (Write, Edit e NotebookEdit), che «Limiti "
-         "noti» descrive; ogni altra chiamata non riceve da lui nessuna decisione."),
+         "oltre a questi, decide solo le scritture di file (Write, Edit e NotebookEdit) e i comandi Bash di un "
+         "worker, che «Limiti noti» descrive; ogni altra chiamata non riceve da lui nessuna decisione."),
         ("A rule for the rest: that a review is made before a merge request is declared, not enforced.",
          "Una regola per il resto: che una revisione si faccia prima di una merge request è dichiarato, non imposto."),
     ),
@@ -1766,32 +1766,39 @@ GUIDED_SENTENCES = {
          "Code 2.1.318 showed the launch denial, the reviewer's own reads and writes left alone, and that Claude Code "
          "does not resolve the bare name `blunt-reviewer` to the plugin agent; in a later live run the hook denied, "
          "inside the reviewer, a `git diff --stat` that its definition does not list, and the review went on with "
-         "the forms it lists. It costs about 26 to 32 ms on every Bash and Agent call, for every user, and about 37 "
-         "to 41 ms on a Write inside the reviewer, which pays one git subprocess. Since the worker boundary the hook "
-         "also starts on every Edit and NotebookEdit of every user, and these calls pay that start, about as much as "
-         "a Write: the median of 50 runs of the hook on a Write of the main session was about 27 to 31 ms before the "
-         "worker boundary and about 27 to 30 ms with it, because a session without workers asks git nothing. The "
-         "worker agent pays one git subprocess more, to find its root, and a Write of it measured about 38 to 44 ms; "
-         "a call that finds `.pe/worker` in its working directory or in a folder above it pays two, the root and "
-         "whether git tracks anything under `.pe`, and a Write of a worker session measured about 49 to 55 ms. All "
-         "these costs come from one measurement session, three rounds of 50 runs each, on the maintainer's macOS "
-         "machine.",
+         "the forms it lists. It costs about 30 to 33 ms on every Agent call, for every user, and about 45 to 46 ms "
+         "on a Write inside the reviewer, which pays one git subprocess. Since the worker boundary the hook also "
+         "starts on every Edit and NotebookEdit of every user, and these calls pay that start, about as much as a "
+         "Write: the median of 50 runs of the hook on a Write of the main session was about 29 to 31 ms before the "
+         "worker boundary and is about 31 to 34 ms with it, and on a Bash call of the main session it was about 30 "
+         "to 31 ms before the hook read a worker's commands and is about 29 to 34 ms after, because a session "
+         "without workers asks git nothing. The worker agent pays one git subprocess more, to find its root: a "
+         "Write of it measured about 45 to 48 ms, and a Bash call about 45 to 48 ms, which includes loading the "
+         "shell reader of `lib/pe_guard`; a call that finds `.pe/worker` in its working directory or in a folder "
+         "above it pays two, the root and whether git tracks anything under `.pe`, and in a worker session a Write "
+         "measured about 57 to 65 ms and a Bash call about 56 to 58 ms. All these costs come from one measurement "
+         "session, three rounds of 50 runs each with the versions interleaved, on the maintainer's macOS machine "
+         "with a load average of about 7 to 8 from other work.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
          "nell'agente del plugin; in un'esecuzione dal vivo successiva l'hook ha rifiutato, dentro il revisore, un "
          "`git diff --stat` che la sua definizione non elenca, e la revisione è andata avanti con le forme che "
-         "elenca. Costa circa da 26 a 32 ms a ogni chiamata di Bash e Agent, per ogni utente, e circa da 37 a 41 ms "
-         "a un Write dentro il revisore, che paga un sottoprocesso git. Dal confine del worker l'hook parte anche a "
-         "ogni Edit e NotebookEdit di ogni utente, e queste chiamate pagano quella partenza, circa quanto un Write: "
-         "la mediana di 50 esecuzioni dell'hook su un Write della sessione principale era di circa 27-31 ms prima "
-         "del confine del worker ed è di circa 27-30 ms con esso, perché una sessione senza worker non chiede nulla "
-         "a git. L'agente worker paga un sottoprocesso git in più, per trovare la sua radice, e un suo Write ha "
-         "misurato circa 38-44 ms; una chiamata che trova `.pe/worker` nella sua cartella di lavoro o in una "
-         "cartella sopra di essa ne paga due, la radice e se git traccia qualcosa sotto `.pe`, e un Write di una "
-         "sessione worker ha misurato circa 49-55 ms. Tutti questi costi vengono da una sola sessione di misura, tre "
-         "giri da 50 esecuzioni ciascuno, sulla macchina macOS del manutentore."),
-        # the worker boundary: what it holds, what is not proven, and the hole that Bash leaves
+         "elenca. Costa circa da 30 a 33 ms a ogni chiamata Agent, per ogni utente, e circa da 45 a 46 ms a un Write "
+         "dentro il revisore, che paga un sottoprocesso git. Dal confine del worker l'hook parte anche a ogni Edit e "
+         "NotebookEdit di ogni utente, e queste chiamate pagano quella partenza, circa quanto un Write: la mediana "
+         "di 50 esecuzioni dell'hook su un Write della sessione principale era di circa 29-31 ms prima del confine "
+         "del worker ed è di circa 31-34 ms con esso, e su una chiamata Bash della sessione principale era di circa "
+         "30-31 ms prima che l'hook leggesse i comandi di un worker ed è di circa 29-34 ms dopo, perché una "
+         "sessione senza worker non chiede nulla a git. L'agente worker paga un sottoprocesso git in più, per "
+         "trovare la sua radice: un suo Write ha misurato circa 45-48 ms, e una sua chiamata Bash circa 45-48 ms, "
+         "compreso il caricamento del lettore della shell di `lib/pe_guard`; una chiamata che trova `.pe/worker` "
+         "nella sua cartella di lavoro o in una cartella sopra di essa ne paga due, la radice e se git traccia "
+         "qualcosa sotto `.pe`, e in una sessione worker un Write ha misurato circa 57-65 ms e una chiamata Bash "
+         "circa 56-58 ms. Tutti questi costi vengono da una sola sessione di misura, tre giri da 50 esecuzioni "
+         "ciascuno con le versioni alternate, sulla macchina macOS del manutentore, con un carico medio di circa 7-8 "
+         "dovuto ad altro lavoro."),
+        # the worker boundary: what it holds and what is not proven
         ("The worker boundary of the `PreToolUse` hook is not proven live: no live run has exercised it.",
          "Il confine del worker nell'hook `PreToolUse` non è provato dal vivo: nessuna esecuzione dal vivo lo ha "
          "esercitato."),
@@ -1832,10 +1839,41 @@ GUIDED_SENTENCES = {
          "because such a session is known only from its signal.",
          "Un guasto dell'hook nega una chiamata dell'agente worker, ma lascia passare una chiamata di una sessione "
          "worker, perché una tale sessione si riconosce solo dal suo segnale."),
-        ("The hook does not read a worker's Bash commands: through Bash a worker can still write or delete outside "
-         "its worktree, and it can delete `.pe/worker` and so turn off the hold of its own session.",
-         "L'hook non legge i comandi Bash di un worker: con Bash un worker può ancora scrivere o cancellare fuori dal "
-         "suo worktree, e può cancellare `.pe/worker` e spegnere così il vincolo della propria sessione."),
+        # the Bash part of the worker boundary: what it reads, what it denies, and what the text does not show
+        ("The Bash part of the worker boundary is not proven live either, and it reads the text of a command, not what "
+         "the shell runs.",
+         "Anche la parte Bash del confine del worker non è provata dal vivo, e legge il testo di un comando, non ciò "
+         "che la shell esegue."),
+        ("It denies `rm`, `rmdir`, `unlink` and `find ... -delete` on a path that does not lie below the worktree "
+         "root, so the root itself is denied too, or that the text does not spell out, because it starts with `~` or "
+         "holds `$`, a backtick, a brace or a backslash; a `cd` or `pushd` to anything but one folder inside the "
+         "worktree, even on its own, because the shell keeps that folder for the next call and from there the hook "
+         "would no longer find the worktree; a git command that `-C`, `--git-dir`, `--work-tree`, `GIT_DIR` or "
+         "`GIT_WORK_TREE` points outside it; and `git stash`, `git worktree remove` and `prune`, and a `git branch` "
+         "that deletes, moves or forces a branch, because all the worktrees share them.",
+         "Nega `rm`, `rmdir`, `unlink` e `find ... -delete` su un percorso che non sta sotto la radice del worktree, "
+         "quindi anche sulla radice stessa, o che il testo non scrive per esteso, perché comincia con `~` o contiene "
+         "`$`, un apice inverso, una graffa o una barra rovesciata; un `cd` o un `pushd` verso qualunque cosa che non "
+         "sia una sola cartella dentro il worktree, anche da solo, perché la shell tiene quella cartella per la "
+         "chiamata dopo e da lì l'hook non troverebbe più il worktree; un comando git che `-C`, `--git-dir`, "
+         "`--work-tree`, `GIT_DIR` o `GIT_WORK_TREE` puntano fuori da esso; e `git stash`, `git worktree remove` e "
+         "`prune`, e un `git branch` che cancella, sposta o forza un ramo, perché tutti i worktree li condividono."),
+        ("Every path is read from the call's working directory, where a `cd` that fails leaves the shell, so "
+         "`cd docs; cd ..` at the root is denied too.",
+         "Ogni percorso si legge dalla cartella di lavoro della chiamata, dove un `cd` che fallisce lascia la shell, "
+         "quindi anche `cd docs; cd ..` alla radice è negato."),
+        ("The check does not see what the text does not show, and these stay open: variables and aliases, the scripts "
+         "a command runs, `sh -c` and `eval`, `xargs` and `find -exec`, the folder options of `env` and `sudo` "
+         "(`env -C`, `sudo -D`), other wrappers such as `nohup`, `time` and `exec`, subshells `( ... )`, groups "
+         "`{ ...; }`, `if`, `for` and `while`, `$( ... )`, redirections, `mv` and `cp`, `git worktree add` and `move`, "
+         "and `git update-ref` and `git push .` towards the integration branch. Inside its worktree a worker can "
+         "still delete `.pe/worker`, and so turn off the hold of its own session.",
+         "Il controllo non vede ciò che il testo non mostra, e restano aperti: variabili e alias, gli script che un "
+         "comando lancia, `sh -c` ed `eval`, `xargs` e `find -exec`, le opzioni di cartella di `env` e `sudo` "
+         "(`env -C`, `sudo -D`), altri involucri come `nohup`, `time` ed `exec`, le sottoshell `( ... )`, i gruppi "
+         "`{ ...; }`, `if`, `for` e `while`, `$( ... )`, le redirezioni, `mv` e `cp`, `git worktree add` e `move`, e "
+         "`git update-ref` e `git push .` verso il ramo d'integrazione. Dentro il suo worktree un worker può ancora "
+         "cancellare `.pe/worker`, e spegnere così il vincolo della propria sessione."),
         ("(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documents another "
          "route, a `SubagentStart` hook that adds the rules as context, and the plugin does not take it: it would "
          "add about 9,500 characters to each of the most frequent subagents.",
@@ -1929,6 +1967,9 @@ GUIDED_SENTENCES = {
          "`PreToolUse`, registrato in `hooks/hooks.json` con il matcher `Agent|Bash|Write|Edit|NotebookEdit` come "
          "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, con un timeout di 10 secondi e "
          "`\"onFailure\": \"continue\"`."),
+        ("and the file writes and the Bash commands of a worker that reach outside its worktree, each with its reason,",
+         "e le scritture di file e i comandi Bash di un worker che escono dal suo worktree, ciascuno con il suo "
+         "motivo,"),
         ("`skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made "
          "outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository.",
          "`skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori "
