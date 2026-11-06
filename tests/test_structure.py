@@ -1566,10 +1566,10 @@ GUIDED_SENTENCES = {
          "dopo)"),
     ),
     "explanation": (
-        ("Ten of the parts below each end with a line that says what guarantees the part; two have none: the life "
+        ("Eleven of the parts below each end with a line that says what guarantees the part; two have none: the life "
          "cycle in three modes, because it only follows the others, and the note on languages and frameworks, "
          "which only says where good practices come from.",
-         "Dieci delle parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte; due non "
+         "Undici delle parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte; due non "
          "ce l'hanno: il ciclo di vita in tre modalità, perché non fa che seguire le altre, e la nota sui linguaggi "
          "e sui framework, che dice solo da dove vengono le buone pratiche."),
     ),
@@ -1824,11 +1824,11 @@ GUIDED_SENTENCES = {
          "esercitato."),
         ("It denies the agent `pragmatic-engineering:worker` a Write, Edit or NotebookEdit outside the repository root "
          "of the call's working directory, and does the same to a session whose root carries the signal `.pe/worker`, "
-         "an empty file that the coordinating session writes into the worktree of a worker session; the agents that "
+         "an empty file that the coordinating session writes into the worktree of a worker session before it sends the brief; the agents that "
          "such a session launches in its worktree are held too.",
          "Nega all'agente `pragmatic-engineering:worker` un Write, un Edit o un NotebookEdit fuori dalla radice del "
          "repository della cartella di lavoro della chiamata, e fa lo stesso con una sessione la cui radice porta il "
-         "segnale `.pe/worker`, un file vuoto che la sessione che coordina scrive nel worktree di una sessione worker; "
+         "segnale `.pe/worker`, un file vuoto che la sessione che coordina scrive nel worktree di una sessione worker prima di mandare il brief; "
          "anche gli agenti che una tale sessione lancia nel suo worktree sono vincolati."),
         ("The signal holds only when `.pe` is a real folder, not a symlink, and git tracks nothing under `.pe` in "
          "any letter case, so a repository that commits any file there, or a `.pe` symlink, never holds a session; "
@@ -2206,6 +2206,19 @@ def test_readmes_explain_that_the_coordinator_never_resolves_a_conflict():
             assert needed in explanation, needed
 
 
+def test_readmes_class_the_delivery_check_as_a_rule_for_the_model_and_say_when_the_brief_goes_out():
+    """verify_delivery.py runs only when the model runs it, as the night script does: only the hook is a mechanism."""
+    classed = ("a rule for the model", "una regola per il modello")
+    sent = ("sends the brief only after", "manda il brief solo dopo")
+    unmeasured = ("not measured", "non misurati")
+    for guide, explanation, label, rule, after, caps in zip(
+        pages("parallel"), pages("explain-parallel"), GUARANTEE_LABELS, classed, sent, unmeasured
+    ):
+        line = guarantee_line(explanation, label)
+        assert "`team-lead`" in line and rule in line and "`PreToolUse`" in line
+        assert after in explanation and caps in guide
+
+
 def test_readmes_place_the_parallel_guide_after_autonomy_and_the_final_team_lead_row():
     for text in pages():
         ids = list(marked_blocks(text))
@@ -2220,14 +2233,9 @@ def test_readmes_say_the_coordinator_ships_with_team_lead_and_only_the_guard_is_
         "La guardia sulle merge request arriva in una versione successiva.",
     )
     gone = ("multi-agent coordinator", "coordinatore a più agenti")
-    untried = (
-        "real work over several days and the parallel work of `team-lead` in a live run.",
-        "il lavoro vero di più giorni e il lavoro in parallelo di `team-lead` in una prova dal vivo.",
-    )
-    for text, sentence, old, not_proven in zip(pages(), wording, gone, untried):
+    for text, sentence, old in zip(pages(), wording, gone):
         status = text.split("<!-- section:")[0]
         assert sentence in status
-        assert not_proven in status
         assert old not in status
 
 
