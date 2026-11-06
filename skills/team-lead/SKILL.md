@@ -5,8 +5,6 @@ description: Use when an approved plan is to be built by several workers at once
 
 # team-lead
 
-This skill is the method for building one approved plan with several workers at once, and for checking each delivery against git, not against the worker's report.
-
 ## When to use
 
 Use it only when all three conditions hold:
@@ -15,7 +13,7 @@ Use it only when all three conditions hold:
 - at least two disjoint file areas in that plan, so that no two workers edit the same file;
 - a test environment for each suite that runs at the same time: its own database, its own port, its own cache index, so that two suites never share a resource.
 
-Before all three hold, no parallel work starts: design the plan with the user, then build it one task at a time in this session.
+Until all three hold, no parallel work: design the plan with the user, then build it task by task here.
 
 ## The team
 
@@ -30,6 +28,8 @@ Before the first order write the team: for each worker a file area and a package
 | Permissions | the coordinator's mode | the launching session's (not verified) |
 
 Right after `start_session`, before any brief, write an empty `.pe/worker` and `.pe/.gitignore` holding `*` into the worktree that `get_session` gives, and only then send the brief by `SendMessage`; the hook holds a session with that signal to its worktree; when the auto mode classifier denies that write, the boundary does not hold for that worker, and the coordinator says so. A session worker may launch at most two internal agents, declared in its report.
+
+Before the first sub-agent launch, add `.claude/worktrees/`, where the host puts sub-agent worktrees, to `git rev-parse --git-path info/exclude`: local, never committed.
 
 ## The brief
 
@@ -50,16 +50,16 @@ No wake-up reports it. At each wake-up, and once after the package's estimated t
 
 ## Delivery
 
-A worker declares a branch and the tip of that branch. Check it from your own checkout, never the worker's:
+A worker declares a branch and its tip. Check it from your own checkout, never the worker's:
 
 `python3 <this skill's folder>/verify_delivery.py --integration <branch> --branch <branch> --tip <sha> --worktree <folder> --brief <file> [--reviewed <sha>] [--red <command>]`
 
 `--worktree` is the worker's folder, `--brief` the file with its `OWNED:` and `TESTS:` lines. `--tip` and `--reviewed` take only a full commit id (40 or 64 hex digits), `--branch` a branch name, `--integration` a branch name or a full commit id. The script's docstring says why, and what each check guards.
 
 - It exits 0: the delivery is accepted.
-- It exits 1: the delivery is refused, reasons on standard error: the branch is not at the declared tip, the worktree is not clean, a file the delivery changed is outside every `OWNED:` line, or, with `--red`, the tests were never red or do not pass at the tip. A refusal goes back; nothing is reviewed.
+- It exits 1: the delivery is refused, reasons on standard error: the branch is not at the declared tip, the worktree is not clean, a changed file is outside every `OWNED:` line, or, with `--red`, the tests were never red or fail at the tip. A refusal goes back; nothing is reviewed.
 - It exits 3: something is not in the integration and the reviewer has not read it, so it goes to the review; not a failure. Without `--reviewed` it is a merge whose conflict resolution shows in `git show --remerge-diff`; with it, every commit above the reviewed tip, listed by sha, except a merge with an empty remerge diff.
-- It exits 2: the call is wrong (the docstring lists the cases); fix it.
+- It exits 2: the call is wrong (see the docstring); fix it.
 
 Run it twice, before the review and again after the PASS. Before the review, exits 0 and 3 both send the delivery to `blunt-reviewer`, which reads each merge with `--remerge-diff` (git 2.36+). After the PASS, run it again with `--reviewed <the commit id of the tip the reviewer read>`: it must exit 0. An exit 3 then means commits after the review, or a tip moved off the reviewed one; they are reviewed before any merge.
 
@@ -85,4 +85,4 @@ A test that depends on time under load is unstable until it passes alone; say so
 
 ## Closing
 
-A worker's worktree and session are archived only when its branch is integrated and its report recorded, never mid-suite. Handover: `development-workflow`. Measure in tokens per task delivered; if the session log lacks it, usage per package with only the team running, noisier as the quota is shared.
+A worker's worktree and session are archived only when its branch is integrated and its report recorded, never mid-suite; then remove a sub-agent's with `git worktree remove <folder>`. Handover: `development-workflow`. Measure in tokens per task delivered; if the session log lacks it, usage per package with only the team running, noisier as the quota is shared.

@@ -754,7 +754,6 @@ OUTSIDE_THE_GRAMMAR = [
     ("CDPATH=.. cd main", UNREADABLE),  # an assignment before a command
     ("GIT_DIR=../x git commit -m x", UNREADABLE),
     ("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0=../main git status", UNREADABLE),
-    ("env GIT_WORK_TREE=../main git add .", UNREADABLE),
     ("\u00e9=1 rm -rf ../main", UNREADABLE),  # zsh takes a non-ASCII name for an assignment
     ("GIT_EDITOR=true git merge --continue", UNREADABLE),
     ("env -i PATH=/usr/bin python3 x.py", UNREADABLE),
@@ -879,6 +878,40 @@ def test_worker_commands_in_the_grammar_get_no_decision(worker_worktree, command
 ])
 def test_the_command_word_is_read_through_its_path_and_its_wrappers(worker_worktree, tmp_path, command):
     assert hook.decide(bash_call(command % {"outside": outside(tmp_path)}, worker_worktree))
+
+
+def test_the_variables_that_env_sets_for_a_test_command_pass(worker_worktree):
+    """The skill passes a brief's resources as env NAME=value <command>; the live run of 6 November 2026 wrote this
+    command in both workers, and the hook denied it."""
+    command = "env SHOP_DATA_DIR=/abs/folder python3 -m unittest tests.test_report"
+    assert hook.decide(bash_call(command, worker_worktree)) is None
+
+
+@pytest.mark.parametrize("folder,command,because", [
+    ("", "env -S 'rm -rf ..' x", "read only with the options the reader knows"),  # env runs the string it splits
+    ("docs", "env A=1 rm -rf ../../x", "deletes only"),  # the command after the variables keeps its own check
+    ("", "env A=$(x) cmd", "falls outside it"),
+    ("", "env PATH=x cd ..", CD_RULE),
+    ("", "env A=1 -i rm -rf ../main", "a command word is read only as a plain name"),  # no option after a variable
+    ("", "env -i A=1 rm -rf build", "a command word is read only as a plain name"),  # nor before one
+])
+def test_the_command_after_the_variables_of_env_is_read_with_its_own_rules(worker_worktree, folder, command, because):
+    reason = hook.decide(bash_call(command, worker_worktree / folder))
+    assert reason and because in reason
+
+
+@pytest.mark.parametrize("command", [
+    "env GIT_WORK_TREE=../main git add .", "env GIT_DIR=../main/.git git commit -m x", "env A=1 git status",
+    "env A=1 sudo -E git status", "env A=1 env B=2 /usr/bin/git log",
+])
+def test_a_worker_git_command_with_a_variable_set_by_env_is_denied(worker_worktree, command):
+    """git reads where its repository and its configuration are from variables, as from -C and -c, so it takes none."""
+    assert hook.decide(bash_call(command, worker_worktree)) == hook._WORKER_GIT_PLACE_REASON
+
+
+def test_a_variable_written_before_the_command_word_is_denied_with_the_form_that_passes(worker_worktree):
+    reason = hook.decide(bash_call("SHOP_DATA_DIR=/abs/folder python3 -m unittest", worker_worktree))
+    assert reason and "env NAME=value" in reason
 
 
 @pytest.mark.parametrize("command", [

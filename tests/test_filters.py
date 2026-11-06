@@ -819,12 +819,25 @@ def test_read_statements_reads_the_command_word_through_wrappers_and_redirection
     assert [(s.name, s.arguments) for s in filters.read_statements(text)] == expected
 
 
+# env NAME=value is how a brief's resources reach a test command: env sets them and runs the command after them.
+@pytest.mark.parametrize("text,expected", [
+    ("env SHOP_DATA_DIR=/abs/folder python3 -m unittest tests.test_report",
+     [("python3", ["-m", "unittest", "tests.test_report"], ("SHOP_DATA_DIR",))]),
+    ("env A=1 B='x y; z' env -u C sudo -E /usr/bin/GIT status", [("git", ["status"], ("A", "B"))]),
+    ("env A= a_1=x:y,z@%+.-/ rm x", [("rm", ["x"], ("A", "a_1"))]),  # an empty value, and every plain character
+    ("rm x; env -i ls", [("rm", ["x"], ()), ("ls", [], ())]),
+])
+def test_read_statements_reads_the_variables_that_env_sets_for_the_command(text, expected):
+    assert [tuple(s) for s in filters.read_statements(text)] == expected
+
+
 @pytest.mark.parametrize("text", [
     "echo \\'; rm x", "echo \"a \\\" b\"", "cat <(rm x)", "cat < <(rm x)", "diff >(rm x) y", "rm a >| b",
     "env -iu HOME rm x", "env -S 'rm x'", "env -C .. rm x", "sudo -e x", "sudo -D .. rm x", "command -x rm",
     "cat <<'EOF'\nit's\nEOF", "cat <<< x", "echo x # y", "echo $HOME", "echo \"$HOME\"", "echo `id`", "rm \\x",
     "rm x &", "rm x &> y", "rm x >&2", "make |& tee x", "(rm x)", "{ rm x; }", "! rm x", "FOO=1 rm x",
-    "env FOO=1 rm x", "export A=1", "declare A=1", "typeset A=1", "readonly A=1", "local A=1", "alias a=b",
+    "env -i FOO=1 rm x", "env FOO=1 -i rm x", "env FOO=1 -- rm x", "env FOO=* rm x", "env FOO=~ rm x",
+    "env FOO=\"x\" rm x", "env FOO=a=b rm x", "env FOO+=1 rm x", "env 1FOO=x rm x", "export A=1", "declare A=1", "typeset A=1", "readonly A=1", "local A=1", "alias a=b",
     "hash -p /bin/rm x", "enable -n cd", "if x; then y; fi", "while x; do y; done", "time rm x", "r* x", "r[m] x",
     "rm x >", "rm x > 2>&1", "rm x 2>&-", "rm 'x", "\u00e9=1 rm x", "rm \u00e9",
     "1>x rm", "3<x rm", "rm 12>x", "rm 1>>x", "A+=x rm", "=rm x", "''=rm x", "\"\"=rm x", "rm =python3", "noglob rm",
@@ -911,3 +924,11 @@ def test_the_hint_of_each_refused_command_word_names_it():
     unnamed = [word for word, hint in filters._REFUSED_COMMAND_WORDS.items()
                if not re.search(r"(?<![\w-])%s(?![\w-])" % re.escape(word), hint)]
     assert unnamed == []
+
+
+def test_the_hint_names_every_character_of_a_value_that_env_sets_and_no_other():
+    """A worker writes the value the hint describes, so the hint and the reader list the same characters."""
+    listed = ". _ / : @ , + % -".split()
+    assert "letters, digits and %s, or in single quotes" % " ".join(listed) in filters._COMMAND_WORD_HINT
+    punctuation = [chr(code) for code in range(33, 127) if not chr(code).isalnum() and chr(code) != "'"]
+    assert sorted(mark for mark in punctuation if filters._ENV_SETTING.fullmatch("A=" + mark)) == sorted(listed)

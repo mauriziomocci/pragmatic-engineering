@@ -46,6 +46,7 @@ raises UnreadableCommand on anything else, because a check that denies by
 command word lets a call through wherever its model of the shell is
 approximate.
 """
+import itertools
 import re
 from pathlib import PurePath
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple
@@ -483,10 +484,12 @@ class UnreadableCommand(ValueError):
 
 class ShellStatement(NamedTuple):
     """One statement as ``read_statements`` reads it: the name of its command word after the last /, read through the
-    wrappers, and the words after it, without quotes and without redirections."""
+    wrappers, the words after it, without quotes and without redirections, and the names of the variables that env
+    sets for it."""
 
     name: str
     arguments: List[str]
+    variables: Tuple[str, ...]
 
 
 # The tokens of the worker grammar: blanks; the list operators && || ; | and newline; the redirections 2>&1, 2>, >>,
@@ -521,7 +524,8 @@ _EQUALS_HINT = "a word that starts with = is the path of a command in zsh; write
 _COMMAND_WORD_HINT = (
     "a command word is read only as a plain name, letters, digits, . _ + and - after the first character, with a plain "
     "path before it; a NAME=value or NAME+=value, a glob or a ~ leave open which command runs or what it gets: "
-    "name the command in full, and set no variable for it"
+    "name the command in full, and set a variable for it only as env NAME=value <command>, right after env, with the "
+    "value in letters, digits and . _ / : @ , + % -, or in single quotes"
 )
 _WRAPPER_HINT = (
     "env, command, sudo, builtin, exec and nohup are read only with the options the reader knows, each as a word of "
@@ -578,15 +582,19 @@ _WRAPPER_OPTIONS: Dict[str, Dict[str, int]] = {
     "exec": {},
     "nohup": {},
 }
+# The words that set a variable for the command env runs: right after env, before any option of it, each NAME a plain
+# name and each value plain characters or single-quoted text, so that no shell changes it (bash expands a ~ after the
+# = of an argument, zsh's magic_equal_subst an = too). env reads no option after them: the next word is the command.
+_ENV_SETTING = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=(?:[A-Za-z0-9_./:@,+%-]|'[^']*')*")
 
 
 def read_statements(text: str) -> List[ShellStatement]:
     """Read each statement of a worker's shell command by its command word, accepting only a grammar read for sure.
 
     The tokens are those of ``_GRAMMAR_TOKEN``; a redirection and its target are left out. The command word is read
-    through the wrappers of ``_WRAPPER_OPTIONS`` and must be a plain name (``_PLAIN_COMMAND_WORD``) and none of
-    ``_REFUSED_COMMAND_WORDS``. Anything else raises ``UnreadableCommand``, whose message says what to write instead.
-    The arguments keep a leading ~ and their globs, which the caller judges.
+    through the wrappers of ``_WRAPPER_OPTIONS`` and the ``_ENV_SETTING`` words right after env, and must be a plain
+    name (``_PLAIN_COMMAND_WORD``) and none of ``_REFUSED_COMMAND_WORDS``. Anything else raises ``UnreadableCommand``,
+    whose message says what to write instead. The arguments keep a leading ~ and their globs, which the caller judges.
     """
     return [_read_statement(words) for words in _grammar_statements(text)]
 
@@ -608,21 +616,24 @@ def _grammar_tokens(text: str) -> List[Tuple[str, str]]:
 
 
 def _grammar_statements(text: str) -> List[List[str]]:
-    """The words of each statement without their quotes, each redirection left out with its target."""
+    """The words of each statement as they are written, each redirection left out with its target."""
     statements: List[List[str]] = [[]]
     tokens = iter(_grammar_tokens(text))
     for kind, token in tokens:
         if kind == "operator":
             statements.append([])
         elif kind == "word":
-            statements[-1].append(remove_quotes(token))
+            statements[-1].append(token)
         elif token != "2>&1" and next(tokens, ("", ""))[0] != "word":
             raise UnreadableCommand(_TARGET_HINT)
     return [words for words in statements if words]
 
 
-def _read_statement(words: List[str]) -> ShellStatement:
-    """The command word by its name after the last /, read through the wrappers, and the words after it."""
+def _read_statement(written: List[str]) -> ShellStatement:
+    """The command word by its name after the last /, read through the wrappers, the words after it without their
+    quotes, and the names of the variables that env sets for it, whose values are judged as they are written."""
+    words = [remove_quotes(word) for word in written]
+    variables: List[str] = []
     position = 0
     while True:
         word = words[position] if position < len(words) else ""
@@ -630,8 +641,12 @@ def _read_statement(words: List[str]) -> ShellStatement:
         _refuse_an_unsure_command_word(word, name)
         options = _WRAPPER_OPTIONS.get(name)
         if options is None:
-            return ShellStatement(name, words[position + 1:])
-        position = _after_wrapper_options(words, position + 1, options)
+            return ShellStatement(name, words[position + 1:], tuple(variables))
+        settings = list(itertools.takewhile(_ENV_SETTING.fullmatch, written[position + 1:])) if name == "env" else []
+        variables += [setting.partition("=")[0] for setting in settings]
+        position += 1 + len(settings)
+        if not settings:
+            position = _after_wrapper_options(words, position, options)
 
 
 def _refuse_an_unsure_command_word(word: str, name: str) -> None:

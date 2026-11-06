@@ -494,6 +494,9 @@ CONTRACTS: Dict[str, Contract] = {
             # decisions, failures, closing
             "cites the entry it derives from", "after two rounds",
             "archived only when its branch is integrated and its report recorded",
+            # the worktrees of sub-agents live inside the repository: excluded before the first launch, removed after
+            "Before the first sub-agent launch", "`.claude/worktrees/`", "`git rev-parse --git-path info/exclude`",
+            "never committed", "then remove a sub-agent's with `git worktree remove <folder>`",
             "tokens per task delivered", "usage per package",
             # the review base is a commit id, because deliveries are integrated while others are reviewed
             "`<integration tip>..<tip>`", "the commit id of the integration tip", "never the branch name",

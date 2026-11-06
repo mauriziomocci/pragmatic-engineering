@@ -45,15 +45,16 @@
    (a leading ~, a glob), and a find -delete with -files0-from; a git command
    with a glob in any word, which the shell could turn into another subcommand
    or option, or that -C, --git-dir or --work-tree points outside <toplevel>,
-   or that carries a configuration of its own (-c, --config-env); and the git
-   commands that change what all the worktrees share, in _SHARED_STATE, among
-   them a fetch or a pull with a : in any word. The operands are read as getopt
-   reads them: the options end at -- or at the first word that is not one, and
-   every word after is an operand. The reader refuses eval and trap, which run
-   their words as shell text. Any other command word, and any other git
-   subcommand, gets no decision: the READMEs list under "Known limits" what
-   stays open. lib/pe_guard is imported only for a worker's command, so a
-   broken module fails no other call.
+   or that carries a configuration of its own (-c, --config-env, or a variable
+   that env NAME=value sets for it); and the git commands that change what all
+   the worktrees share, in _SHARED_STATE, among them a fetch or a pull with a :
+   in any word. The operands are read as getopt reads them: the options end at
+   -- or at the first word that is not one, and every word after is an operand.
+   The reader refuses eval and trap, which run their words as shell text, and
+   reads the command after env's NAME=value words as any other. Any other
+   command word, and any other git subcommand, gets no decision: the READMEs
+   list under "Known limits" what stays open. lib/pe_guard is imported only for
+   a worker's command, so a broken module fails no other call.
 
 The reviewer's checks match closed shapes only: anything a pattern does not
 describe is denied, so a gap in a pattern can only make the reviewer stricter.
@@ -283,7 +284,8 @@ _WORKER_CD_REASON = (
 )
 _WORKER_GIT_PLACE_REASON = (
     "a worker runs git only on its own worktree: no -C, --git-dir or --work-tree that points outside it, and no "
-    "configuration of its own (-c, --config-env), which can point it elsewhere, as core.worktree does"
+    "configuration of its own (-c, --config-env, or a variable that env sets for it), which can point it elsewhere, "
+    "as core.worktree and GIT_DIR do"
 )
 _WORKER_GIT_SHARED_REASON = (
     "a worker leaves alone what all the worktrees share: no git stash, git worktree remove or prune, git push, git "
@@ -343,7 +345,8 @@ def _popd_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) ->
 
 # git's options before the subcommand that take the next word as their value when no = joins it to them; those that
 # point git at another repository or working tree; and those that give git a configuration of its own, which can do
-# the same (core.worktree). The variables that would do it (GIT_DIR=, GIT_CONFIG_COUNT=) never get past the grammar.
+# the same (core.worktree). A variable does it too (GIT_DIR, GIT_CONFIG_COUNT): one written before git never gets
+# past the grammar, and git takes none that env sets, as it takes no -c.
 _GIT_VALUE_OPTIONS = frozenset({
     "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source",
 })
@@ -410,7 +413,8 @@ def _git_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> 
     if any(_GLOB.search(word) for word in statement.arguments):
         return _WORKER_GIT_GLOB_REASON
     options, places, words = _git_options(statement.arguments)
-    if _GIT_CONFIG_OPTIONS.intersection(options) or not all(_spelled_within(root, cwd, place) for place in places):
+    configured = statement.variables or _GIT_CONFIG_OPTIONS.intersection(options)
+    if configured or not all(_spelled_within(root, cwd, place) for place in places):
         return _WORKER_GIT_PLACE_REASON
     shared = _SHARED_STATE.get(words[0]) if words else None
     return _WORKER_GIT_SHARED_REASON if shared and shared(words[1:]) else None

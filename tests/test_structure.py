@@ -1821,9 +1821,24 @@ GUIDED_SENTENCES = {
          "ciascuno con le versioni alternate, sulla macchina macOS del manutentore, con un carico medio di circa 7-8 "
          "dovuto ad altro lavoro."),
         # the worker boundary: what it holds and what is not proven
-        ("The worker boundary of the `PreToolUse` hook is not proven live: no live run has exercised it.",
-         "Il confine del worker nell'hook `PreToolUse` non è provato dal vivo: nessuna esecuzione dal vivo lo ha "
-         "esercitato."),
+        ("The worker boundary of the `PreToolUse` hook is proven live only in part. In the live run of 6 November "
+         "2026, with two `worker` sub-agents started with `isolation: worktree`, Claude Code itself refused a "
+         "sub-agent "
+         "a Write into the checkout of the session that launched it, before the hook; whether it refuses other paths "
+         "outside the worktree was not tried. For a sub-agent the hook's boundary on file writes is therefore a second "
+         "line, while a worker session, which has no such isolation, needs it in full. The Bash part of the boundary "
+         "ran inside the sub-agents: it denied four times a command outside its grammar, `env NAME=value <command>`, "
+         "which it now reads, and its checks of `rm`, `cd` and git were not reached. For a worker session the "
+         "boundary is not proven live.",
+         "Il confine del worker nell'hook `PreToolUse` è provato dal vivo solo in parte. Nella prova dal vivo del 6 "
+         "novembre 2026, con due sotto-agenti `worker` avviati con `isolation: worktree`, Claude Code stesso ha "
+         "rifiutato a un sotto-agente un Write nel checkout della sessione che lo aveva lanciato, prima dell'hook; se "
+         "rifiuti anche altri percorsi fuori dal worktree non è stato provato. Per un sotto-agente il confine "
+         "dell'hook sulle scritture di file è quindi una seconda linea, mentre a una sessione worker, che non ha "
+         "quell'isolamento, serve per intero. La parte Bash del confine ha girato dentro i sotto-agenti: ha negato "
+         "quattro volte un comando fuori dalla sua grammatica, `env NOME=valore <comando>`, che ora legge, e i suoi "
+         "controlli su `rm`, `cd` e git non sono stati raggiunti. Per una sessione worker il confine non è provato "
+         "dal vivo."),
         ("It denies the agent `pragmatic-engineering:worker` a Write, Edit or NotebookEdit outside the repository root "
          "of the call's working directory, and does the same to a session whose root carries the signal `.pe/worker`, "
          "an empty file that the coordinating session writes into the worktree of a worker session before it sends the brief; the agents that "
@@ -1865,10 +1880,8 @@ GUIDED_SENTENCES = {
          "Un guasto dell'hook nega una chiamata dell'agente worker, ma lascia passare una chiamata di una sessione "
          "worker, perché una tale sessione si riconosce solo dal suo segnale."),
         # the Bash part of the worker boundary: the grammar it accepts, what it denies, what stays open
-        ("The Bash part of the worker boundary is not proven live either, and it reads the text of a command, not "
-         "what the shell runs.",
-         "Anche la parte Bash del confine del worker non è provata dal vivo, e legge il testo di un comando, non ciò "
-         "che la shell esegue."),
+        ("The Bash part of the worker boundary reads the text of a command, not what the shell runs.",
+         "La parte Bash del confine del worker legge il testo di un comando, non ciò che la shell esegue."),
         ("For the same calls as the file writes, the hook accepts a command only in a plain grammar: words of plain "
          "characters, text in single quotes, and text in double quotes without `$`, backtick or backslash; the "
          "operators `&&`, `||`, `;`, `|` and newlines; and the redirections `>`, `>>`, `<` and `2>`, each with one "
@@ -1905,6 +1918,20 @@ GUIDED_SENTENCES = {
          "`/` in minuscolo, perché un file system che non distingue maiuscole e minuscole esegue `RM` come `rm`, e "
          "attraverso `env`, `command`, `sudo`, `builtin`, `exec` e `nohup`, lasciando fuori le redirezioni e i loro "
          "bersagli."),
+        ("Right after `env`, before any option of it, it reads `NAME=value` words, each NAME a plain name and each "
+         "value made of letters, digits and `. _ / : @ , + % -`, or text in single quotes, as the variables that "
+         "`env` sets for the command after "
+         "them, which it reads as any other; this is the form for the resources of a brief, `env NAME=value "
+         "<command>`.",
+         "Subito dopo `env`, prima di ogni sua opzione, legge le parole `NOME=valore`, ciascun NOME un nome semplice "
+         "e ciascun valore fatto di lettere, cifre e `. _ / : @ , + % -`, o testo fra apici singoli, come le "
+         "variabili che `env` imposta per il "
+         "comando che le segue, che legge come ogni altro; è la forma per le risorse di un brief, `env NOME=valore "
+         "<comando>`."),
+        ("`env -i <command>` and `env -u NAME <command>` pass too, but after an option of `env` a `NAME=value` word "
+         "is denied.",
+         "Passano anche `env -i <comando>` e `env -u NOME <comando>`, ma dopo un'opzione di `env` una parola "
+         "`NOME=valore` è negata."),
         ("It denies `rm`, `rmdir`, `unlink` and `find ... -delete` on a path that does not lie below the worktree "
          "root, so the root itself is denied too, or that the shell would still expand, because it starts with `~` or "
          "holds a glob (`*`, `?`, `[`), and a `find ... -delete` with `-files0-from`, which reads its start paths from "
@@ -1913,7 +1940,8 @@ GUIDED_SENTENCES = {
          "worktree, because the shell keeps that folder for the next call and from there the hook would no longer find "
          "the worktree, and a `popd` with any word; a git command with a glob in any of its words, which the shell "
          "could turn into another subcommand or option, a git command that `-C`, `--git-dir` or `--work-tree` points "
-         "outside the worktree, or that carries a configuration of its own (`-c`, `--config-env`); and, because all "
+         "outside the worktree, or that carries a configuration of its own (`-c`, `--config-env`, or a variable that "
+         "`env` sets for it); and, because all "
          "the worktrees share what they change, `git stash`, `git worktree remove` and `prune`, `git push`, `git "
          "update-ref`, a `git config` that does more than read, a `git branch` or `git tag` that deletes, moves or "
          "forces one, and a `git fetch` or `git pull` with a `:` in any of its words, operand or option value "
@@ -1927,7 +1955,8 @@ GUIDED_SENTENCES = {
          "cartella per la chiamata dopo e da lì l'hook non troverebbe più il worktree, e un `popd` con una parola "
          "qualsiasi; un comando git con un carattere jolly in una qualsiasi delle sue parole, che la shell potrebbe "
          "trasformare in un altro sottocomando o in un'altra opzione, un comando git che `-C`, `--git-dir` o "
-         "`--work-tree` puntano fuori dal worktree, o che porta una configurazione propria (`-c`, `--config-env`); e, "
+         "`--work-tree` puntano fuori dal worktree, o che porta una configurazione propria (`-c`, `--config-env`, o "
+         "una variabile che `env` gli imposta); e, "
          "perché tutti i worktree condividono ciò che cambiano, `git stash`, `git worktree remove` e `prune`, `git "
          "push`, `git update-ref`, un `git config` che non si limita a leggere, un `git branch` o un `git tag` che "
          "cancella, sposta o forza un ramo o un tag, e un `git fetch` o un `git pull` con un `:` in una qualsiasi "
@@ -1951,7 +1980,9 @@ GUIDED_SENTENCES = {
          "such as `sh -c`, `bash -c`, `source`, `xargs`, `find -exec`, `nice`, `timeout` or a script; a builtin that "
          "reads a word as arithmetic, and so runs a `$( ... )` written in single quotes inside it, such as `let`, `[[ "
          "... -eq ... ]]`, `[ ... -eq ... ]`, `unset`, `shift`, `exit`, `printf -v` and `read`, in bash and in zsh; a "
-         "command word that an alias or a function defined before the call stands for; a variable or a shell option "
+         "command word that an alias or a function defined before the call stands for; a variable that `env` sets "
+         "for a command other than git, such as `PATH`, which chooses the program that a command word runs; a "
+         "variable or a shell option "
          "set before the call, such as `CDPATH` for `cd`, `GIT_DIR` for git, or zsh's `extended_glob` and "
          "`cdable_vars` from the shell configuration; and the targets of redirections. Inside its worktree a worker "
          "can still delete `.pe/worker`, and so turn off the hold of its own session.",
@@ -1964,7 +1995,9 @@ GUIDED_SENTENCES = {
          "della shell che legge una parola come aritmetica, e così esegue un `$( ... )` scritto fra apici singoli al "
          "suo interno, come `let`, `[[ ... -eq ... ]]`, `[ ... -eq ... ]`, `unset`, `shift`, `exit`, `printf -v` e "
          "`read`, in bash e in zsh; una parola di comando al posto della quale sta un alias o una funzione definiti "
-         "prima della chiamata; una variabile o un'opzione della shell impostate prima della chiamata, come `CDPATH` "
+         "prima della chiamata; una variabile che `env` imposta per un comando diverso da git, come `PATH`, che "
+         "sceglie il programma che una parola di comando esegue; una variabile o un'opzione della shell impostate "
+         "prima della chiamata, come `CDPATH` "
          "per `cd`, `GIT_DIR` per git, o `extended_glob` e `cdable_vars` di zsh dalla configurazione della shell; e i "
          "bersagli delle redirezioni. Dentro il suo worktree un worker può ancora cancellare `.pe/worker`, e spegnere "
          "così il vincolo della propria sessione."),
@@ -2089,7 +2122,8 @@ GUIDED_SENTENCES = {
          "-delete` reaches outside the worktree, a `cd`, `chdir` or `pushd` to anything but one folder inside the "
          "worktree and of its own repository, a `popd` with any word, any of those four that is not the whole command, "
          "a git command that points outside the worktree, holds a glob or carries a configuration of its own (`-c`, "
-         "`--config-env`), and a git command that changes what all the worktrees share, each with its reason; Known "
+         "`--config-env`, or a variable that `env` sets for it), and a git command that changes what all the "
+         "worktrees share, each with its reason; Known "
          "limits lists what it does not read.",
          "fuori dalla sua definizione, le scritture di file di un worker fuori dal suo worktree, ogni comando Bash di "
          "un worker fuori dalla grammatica semplice che i limiti noti descrivono e, dentro quella grammatica, "
@@ -2097,7 +2131,8 @@ GUIDED_SENTENCES = {
          "`pushd` verso qualunque cosa che non sia una sola cartella dentro il worktree e del suo stesso repository, "
          "un `popd` con una parola qualsiasi, ciascuno di quei quattro che non sia l'intero comando, un comando git "
          "che punta fuori dal worktree, contiene un carattere jolly o porta una configurazione propria (`-c`, "
-         "`--config-env`), e un comando git che cambia ciò che tutti i worktree condividono, ciascuna con il suo "
+         "`--config-env`, o una variabile che `env` gli imposta), e un comando git che cambia ciò che tutti i "
+         "worktree condividono, ciascuna con il suo "
          "motivo; i limiti noti elencano ciò che non legge."),
         ("`skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made "
          "outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository.",
@@ -2143,17 +2178,45 @@ def test_readmes_count_the_command_words_and_git_subcommands_of_the_worker_check
     assert "e quei %s sottocomandi" % subcommands[1] in italian
 
 
+# What the live run of team-lead on 6 November 2026 proved, in the status line, in the explanation of parallel
+# work and in its guarantee line.
+EN_STATUS = (
+    "Not proven yet: an install on a clean machine, real work over several days and the parallel work of `team-lead` "
+    "on a real project and with session workers, which so far has had one live run on a small test repository, with "
+    "two sub-agent workers, on 6 November 2026."
+)
+IT_STATUS = (
+    "Non ancora provato: l'installazione su una macchina pulita, il lavoro vero di più giorni e il lavoro in "
+    "parallelo di `team-lead` su un progetto vero e con worker in sessione, che finora ha avuto un'esecuzione dal "
+    "vivo su un piccolo repository di prova, con due worker sotto-agenti, il 6 novembre 2026."
+)
+EN_PARALLEL = (
+    "Parallel work is not proven on a real project nor with session workers: it has had one live run on a small test "
+    "repository, with two sub-agent workers, on 6 November 2026; see [Known limits](#known-limits)."
+)
+IT_PARALLEL = (
+    "Il lavoro in parallelo non è provato su un progetto vero né con worker in sessione: ha avuto un'esecuzione dal "
+    "vivo su un piccolo repository di prova, con due worker sotto-agenti, il 6 novembre 2026; vedi [Limiti "
+    "noti](#limiti-noti)."
+)
+EN_GUARANTEE = (
+    "(the `PreToolUse` hook, proven live only in part, in one run with two sub-agent workers on a small test "
+    "repository on 6 November 2026, and not with session workers: see [Known limits](#known-limits))"
+)
+IT_GUARANTEE = (
+    "(l'hook `PreToolUse`, provato dal vivo solo in parte, in un'esecuzione con due worker sotto-agenti su un "
+    "piccolo repository di prova il 6 novembre 2026, e non con worker in sessione: vedi [Limiti noti](#limiti-noti))"
+)
+
+
 def test_readmes_date_the_live_regression_runs_and_drop_the_claims_they_made_false():
     status = ("Proven so far: the unit and structure tests, one live run of the end-to-end test of the rules import "
               "(29 October 2026), and the live regression runs against an existing setup of 4 November 2026: nine "
-              "scenarios, each with and without the plugin, with a matrix of ten languages. Not proven yet: an "
-              "install on a clean machine, real work over several days and the parallel work of `team-lead` in a "
-              "live run.",
+              "scenarios, each with and without the plugin, with a matrix of ten languages. " + EN_STATUS,
               "Provato finora: le prove di unità e di struttura, un'esecuzione dal vivo della prova da capo a fondo "
               "dell'import delle regole (29 ottobre 2026) e le esecuzioni dal vivo di regressione contro una "
               "configurazione esistente del 4 novembre 2026: nove scenari, ciascuno con e senza il plugin, con una "
-              "matrice di dieci linguaggi. Non ancora provato: l'installazione su una macchina pulita, il lavoro "
-              "vero di più giorni e il lavoro in parallelo di `team-lead` in una prova dal vivo.")
+              "matrice di dieci linguaggi. " + IT_STATUS)
     stale = (
         "the live regression scenarios against an existing setup", "a run in languages other than Python",
         "are declared, not enforced", "the runs on other languages are still to come", "tried on macOS only",
@@ -2161,8 +2224,12 @@ def test_readmes_date_the_live_regression_runs_and_drop_the_claims_they_made_fal
         "sono dichiarati, non imposti", "le prove su altri linguaggi devono ancora arrivare",
         "provato solo su macOS", "dichiarati nell'agente, non imposti",
     )
-    for path, text, claim in zip((README, README_IT), pages(), status):
-        assert claim in text and [old for old in stale if old in text] == [], path.name
+    stale += ("Parallel work is not proven live", "hook, not proven live)", "in a live run.",
+              "Il lavoro in parallelo non è provato dal vivo", "non provato dal vivo)", "in una prova dal vivo.")
+    claims = ((EN_PARALLEL, EN_GUARANTEE), (IT_PARALLEL, IT_GUARANTEE))
+    for path, text, claim, more in zip((README, README_IT), pages(), status, claims):
+        missing = [sentence for sentence in (claim,) + more if sentence not in text]
+        assert missing == [] and [old for old in stale if old in text] == [], path.name
 
 
 def test_readmes_count_a_repeated_breach_once_and_name_wcag_2_2():
@@ -2269,9 +2336,9 @@ def test_readmes_integrate_the_commit_id_the_check_accepted_and_the_guide_answer
                  "l'id di commit che l'esecuzione dopo il PASS ha accettato, mai il nome del ramo")
     guide = (
         ("its own database, port and cache index", "nothing is asked of you", "more than 10 minutes", "terminal",
-         "stays yours", "(#known-limits)", "not proven live"),
+         "stays yours", "(#known-limits)", "not proven on a real project"),
         ("il suo database, la sua porta e il suo indice di cache", "non ti viene chiesto nulla", "più di 10 minuti",
-         "terminale", "resta tuo", "(#limiti-noti)", "non è provato dal vivo"),
+         "terminale", "resta tuo", "(#limiti-noti)", "non è provato su un progetto vero"),
     )
     for explanation, text, sentence, needed in zip(pages("explain-parallel"), pages("parallel"), integrate, guide):
         assert sentence in explanation
