@@ -116,10 +116,11 @@ _MODELLED = re.compile(r"(?:[\w\-.,/=:@+% \t\n;|]|&&|'[^']*'|\"[^\"$`\\]*\")*", 
 # folder) as it does without the quotes. The start of a word is the start of the text, a blank or a separator.
 EMPTY_QUOTES_BEFORE_EXPANSION = r"(?<![^\s;&|])(?:''|\"\")+[=~]"
 _EMPTY_QUOTES_EXPANSION = re.compile(EMPTY_QUOTES_BEFORE_EXPANSION)
-# Statements end at && || ; | & and newline outside quotes, but not at a backslash-newline continuation; words end at
+# Statements end at && || ; | & and newline outside quotes, but not at a backslash-newline continuation nor at the &
+# or the | of a redirection (2>&1, >&2, <&0, &>file, >|file), which the shell keeps inside its statement; words end at
 # blanks outside quotes, and lose their quotes. A command outside the model is cut the same way, approximately: there
 # its calls can only add blocks to the whole-text verdict.
-_STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[^|;&\n])+")
+_STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[<>]&|&>|>\||[^|;&\n])+")
 _WORD = re.compile(r"(?:[^\s\"'\\]|\\(?!\r?\n)|\"[^\"]*\"|'[^']*')+")
 _QUOTES = re.compile(r"\"([^\"]*)\"|'([^']*)'")
 _CLIENT = re.compile(r"(?:.*\W)?(gh|glab)", _I | re.DOTALL)  # also /usr/local/bin/gh, zsh's =gh, GH on macOS
@@ -492,11 +493,15 @@ class ShellStatement(NamedTuple):
 # > and <; and words of plain characters, single-quoted text, and double-quoted text without $, backtick or
 # backslash. A text that is not a run of these tokens is outside the grammar. An operator the shell reads on from a
 # redirection (>|, >&, <<, <( and >( ) needs no pattern of its own: it leaves either a character that no token matches
-# or a redirection whose next token is not a word, which _grammar_statements refuses.
+# or a redirection whose next token is not a word, which _grammar_statements refuses. Two tokens the shell reads by
+# their position match before a word and are refused: a number glued to < or >, which redirects that descriptor
+# (1>, 3<, 12>), and an = that starts a word, which zsh turns into the path of the command it names (=rm, ''=rm).
 _GRAMMAR_TOKEN = re.compile(r"""
     [ \t]+
   | (?P<operator>&&|\|\||[;|\n])
   | (?P<redirection>2>&1|2>|>>|[<>])
+  | (?P<descriptor>[0-9]+[<>])
+  | (?P<equals>(?:''|"")*=)
   | (?P<word>(?:[A-Za-z0-9_./:@,+%=~^*?\[\]-]|'[^']*'|"[^"$`\\]*")+)
 """, re.VERBOSE)
 _GRAMMAR_HINT = (
@@ -507,11 +512,18 @@ _GRAMMAR_HINT = (
     "subshell, a loop or a command in the background"
 )
 _TARGET_HINT = "a redirection takes one word as its target, written out after it"
-_ASSIGNMENT_HINT = (
-    "a NAME=value before a command, or after env, sets a variable that the hook does not follow; a worker runs its "
-    "commands without one"
+_DESCRIPTOR_HINT = (
+    "a number glued to < or > redirects that descriptor, which the reader does not follow; write 2> or 2>&1"
 )
-_COMMAND_GLOB_HINT = "a glob in the command word leaves open which command runs; name the command in full"
+_EQUALS_HINT = "a word that starts with = is the path of a command in zsh; write the word without the ="
+_COMMAND_WORD_HINT = (
+    "a command word is read only as a plain name, letters, digits, . _ + and - after the first character, with a plain "
+    "path before it; a NAME=value or NAME+=value, a glob, a ~ or zsh's =name leave open which command runs or what it "
+    "gets: name the command in full, and set no variable for it"
+)
+_PRECOMMAND_HINT = (
+    "zsh's noglob and nocorrect change how the command after them is read; run the command without them"
+)
 _COMPOUND_HINT = (
     "if, for, while, case, function, time and the other reserved words open a compound command, whose commands the "
     "hook does not read; write each command as a statement of its own"
@@ -521,15 +533,24 @@ _DEFINING_HINT = (
     "does not use them"
 )
 _WRAPPER_HINT = (
-    "env, command and sudo are read only with the options the reader knows, each as a word of its own (env -i, "
-    "env -u NAME, sudo -u USER); write them so, or run the command without the wrapper"
+    "env, command, sudo, builtin, exec and nohup are read only with the options the reader knows, each as a word of "
+    "its own (env -i, env -u NAME, sudo -u USER, and none for builtin, exec and nohup); write them so, or run the "
+    "command without the wrapper"
 )
+# The reserved words of bash and zsh, the commands that change how later ones are read, and zsh's precommand
+# modifiers, which the reader does not read through (zsh's - is no plain name, see _PLAIN_COMMAND_WORD).
 _REFUSED_COMMAND_WORDS: Dict[str, str] = {
     **dict.fromkeys(("if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac",
-                     "select", "function", "time", "coproc"), _COMPOUND_HINT),
-    **dict.fromkeys(("export", "declare", "typeset", "readonly", "local", "alias", "hash", "enable"), _DEFINING_HINT),
+                     "select", "function", "time", "coproc", "repeat", "foreach", "end"), _COMPOUND_HINT),
+    **dict.fromkeys(("export", "declare", "typeset", "readonly", "local", "alias", "hash", "enable", "float",
+                     "integer"), _DEFINING_HINT),
+    **dict.fromkeys(("noglob", "nocorrect"), _PRECOMMAND_HINT),
 }
-_GLOB = re.compile(r"[*?\[]")
+# A command word the reader can name: a plain name, with a plain path before it (/usr/bin/git, ./run.sh). [ and [[
+# run no command of their own, and an empty word is a wrapper with nothing after it.
+_PLAIN_COMMAND_WORD = re.compile(r"(?:[A-Za-z0-9_.+-]*/)*[A-Za-z0-9_][A-Za-z0-9_.+-]*")
+_COMMAND_WORDS_AS_THEY_ARE = frozenset({"", "[", "[["})
+_REFUSED_TOKENS = {"descriptor": _DESCRIPTOR_HINT, "equals": _EQUALS_HINT}
 # The commands that run the command written after their options, with the options of each that the reader knows and
 # how many words each takes after it. Any other option makes the statement unreadable: a bundle (-iu), a folder
 # option (env -C, sudo -D), env -S, which runs the string it splits, sudo -e, which edits the file it names, exec -a.
@@ -554,9 +575,9 @@ def read_statements(text: str) -> List[ShellStatement]:
     """Read each statement of a worker's shell command by its command word, accepting only a grammar read for sure.
 
     The tokens are those of ``_GRAMMAR_TOKEN``; a redirection and its target are left out. The command word is read
-    through the wrappers of ``_WRAPPER_OPTIONS`` and must be no assignment, no glob, no reserved word and none of the
-    commands that change how later ones are read. Anything else raises ``UnreadableCommand``, whose message says what
-    to write instead. The arguments keep a leading ~ and their globs, which the caller judges.
+    through the wrappers of ``_WRAPPER_OPTIONS`` and must be a plain name (``_PLAIN_COMMAND_WORD``) and none of
+    ``_REFUSED_COMMAND_WORDS``. Anything else raises ``UnreadableCommand``, whose message says what to write instead.
+    The arguments keep a leading ~ and their globs, which the caller judges.
     """
     return [_read_statement(words) for words in _grammar_statements(text)]
 
@@ -569,6 +590,8 @@ def _grammar_tokens(text: str) -> List[Tuple[str, str]]:
         token = _GRAMMAR_TOKEN.match(text, position)
         if token is None:
             raise UnreadableCommand(_GRAMMAR_HINT % text[position])
+        if token.lastgroup in _REFUSED_TOKENS:
+            raise UnreadableCommand(_REFUSED_TOKENS[token.lastgroup])
         if token.lastgroup:
             tokens.append((token.lastgroup, token.group()))
         position = token.end()
@@ -603,10 +626,8 @@ def _read_statement(words: List[str]) -> ShellStatement:
 
 
 def _refuse_an_unsure_command_word(word: str, name: str) -> None:
-    if _ASSIGNMENT.match(word):
-        raise UnreadableCommand(_ASSIGNMENT_HINT)
-    if word not in ("[", "[[") and _GLOB.search(word):
-        raise UnreadableCommand(_COMMAND_GLOB_HINT)
+    if word not in _COMMAND_WORDS_AS_THEY_ARE and not _PLAIN_COMMAND_WORD.fullmatch(word):
+        raise UnreadableCommand(_COMMAND_WORD_HINT)
     if name in _REFUSED_COMMAND_WORDS:
         raise UnreadableCommand(_REFUSED_COMMAND_WORDS[name])
 

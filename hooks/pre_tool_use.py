@@ -36,11 +36,12 @@
    <toplevel> or that the shell would still expand (a leading ~, a glob); a
    cd or pushd to anything but one folder at or below <toplevel>, even on
    its own, because the shell keeps that folder for the next call and the
-   hold is found from it; a git command that -C, --git-dir or --work-tree
-   points outside <toplevel>, or that carries a configuration of its own
-   (-c, --config-env); and the git commands that change what all the
-   worktrees share, in _SHARED_STATE. Every path is read from the call's
-   cwd, where a cd that fails leaves the shell. Any other command word, and
+   hold is found from it; a git command with a glob in any word, which the
+   shell could turn into another subcommand or option, or that -C,
+   --git-dir or --work-tree points outside <toplevel>, or that carries a
+   configuration of its own (-c, --config-env); and the git commands that
+   change what all the worktrees share, in _SHARED_STATE. Every path is
+   read from the call's cwd, where a cd that fails leaves the shell. Any other command word, and
    any other git subcommand, gets no decision: the READMEs list under
    "Known limits" what stays open. lib/pe_guard is imported only for a
    worker's command, so a broken module fails no other call.
@@ -218,10 +219,12 @@ def _worker_file_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional[st
     return _WORKER_WRITE_REASON
 
 
-# What the shell still changes in a word of the worker grammar before using it as a path: a leading ~ to expand, a glob
-# to match (bash before 5.2 counts .. among the matches of .?). A path with either is not the path the text spells;
-# the grammar itself keeps out $, backticks, braces and backslashes.
-_UNSPELLED = re.compile(r"^~|[*?\[]")
+# The glob characters, which the shell may expand into other words (bash before 5.2 counts .. among the matches of
+# .?), and what the shell still changes in a word of the worker grammar before using it as a path: a leading ~ or a
+# glob. A path with either is not the path the text spells; the grammar keeps out $, backticks, braces, backslashes
+# and a leading =.
+_GLOB = re.compile(r"[*?\[]")
+_UNSPELLED = re.compile(r"^~|" + _GLOB.pattern)
 
 
 def _shell_reader() -> ModuleType:
@@ -266,6 +269,10 @@ _WORKER_GIT_SHARED_REASON = (
     "a worker leaves alone what all the worktrees share: no git stash, git worktree remove or prune, git push, git "
     "update-ref or git config that writes, no git branch or git tag that deletes, moves or forces one, and no git "
     "fetch or git pull into a local branch (<src>:<dst>); name the need in the delivery file instead"
+)
+_WORKER_GIT_GLOB_REASON = (
+    "a worker writes every word of a git command without a glob (*, ?, [), which the shell may expand into another "
+    "subcommand, option or path; write each word in full"
 )
 _WORKER_COMMAND_REASON = "a worker's Bash call carries its command as one string, which the hook reads"
 _WORKER_UNREADABLE_REASON = "the hook cannot read this worker command for sure, so it denies it: %s"
@@ -358,6 +365,8 @@ _SHARED_STATE: Dict[str, Callable[[List[str]], bool]] = {
 
 
 def _git_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> Optional[str]:
+    if any(_GLOB.search(word) for word in statement.arguments):
+        return _WORKER_GIT_GLOB_REASON
     options, places, words = _git_options(statement.arguments)
     if _GIT_CONFIG_OPTIONS.intersection(options) or not all(_spelled_within(root, cwd, place) for place in places):
         return _WORKER_GIT_PLACE_REASON

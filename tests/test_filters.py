@@ -126,6 +126,10 @@ BLOCKED_COMMANDS = [
     ("gh api repos/o/r/pulls >&2 -f title=x", "pull or merge requests"),
     ("gh api repos/o/r/pulls/1/merge <&0 -X PUT", "pull or merge requests"),
     # separators inside a command substitution do not split the call
+    # a redirection keeps its & and its | inside the statement, so the fields after it stay arguments of the call
+    ("gh api repos/o/r/pulls 2>&1 -ftitle=x -fhead=b -fbase=main", "pull or merge requests"),
+    ("gh api repos/o/r/pulls >|out -ftitle=x -fhead=b -fbase=main", "pull or merge requests"),
+    ("gh api repos/o/r/pulls &>out -ftitle=x -fhead=b -fbase=main", "pull or merge requests"),
     ("gh api repos/o/r/pulls/$(echo 1; echo)/merge -X PUT", "pull or merge requests"),
     ("gh api repos/o/r/pulls/$(echo 1 | cat)/merge -X PUT", "pull or merge requests"),
     ("gh api repos/o/r/pulls/$(true && echo 1)/merge -X PUT", "pull or merge requests"),
@@ -807,6 +811,7 @@ def test_remove_quotes_takes_off_the_quotes_and_nothing_else(word, expected):
     ("make CC=gcc", [("make", ["CC=gcc"])]),  # NAME=value after the command word is an argument
     ("builtin cd x; exec nohup rm y", [("cd", ["x"]), ("rm", ["y"])]),
     ("env -i", [("", [])]),
+    ("echo '=x' a=b x2>y", [("echo", ["=x", "a=b", "x2"])]),  # a quoted = and an = inside a word expand nothing
 ])
 def test_read_statements_reads_the_command_word_through_wrappers_and_redirections(text, expected):
     assert [(s.name, s.arguments) for s in filters.read_statements(text)] == expected
@@ -820,6 +825,8 @@ def test_read_statements_reads_the_command_word_through_wrappers_and_redirection
     "env FOO=1 rm x", "export A=1", "declare A=1", "typeset A=1", "readonly A=1", "local A=1", "alias a=b",
     "hash -p /bin/rm x", "enable -n cd", "if x; then y; fi", "while x; do y; done", "time rm x", "r* x", "r[m] x",
     "rm x >", "rm x > 2>&1", "rm x 2>&-", "rm 'x", "\u00e9=1 rm x", "rm \u00e9",
+    "1>x rm", "3<x rm", "rm 12>x", "rm 1>>x", "A+=x rm", "=rm x", "''=rm x", "\"\"=rm x", "rm =python3", "noglob rm",
+    "nocorrect rm", "- rm", "repeat 1 rm", "foreach", "integer A", "float A", "~/bin/rm", ":",
 ])
 def test_read_statements_refuses_what_it_cannot_read_for_sure(text):
     with pytest.raises(filters.UnreadableCommand):
@@ -889,3 +896,8 @@ def test_long_runs_of_options_are_read_for_a_pr_command_in_linear_time(command):
     started = time.process_time()
     assert filters.pr_command_kind(command) is None
     assert time.process_time() - started < 1.0
+
+
+def test_the_wrapper_hint_names_every_wrapper_the_reader_reads_through():
+    named = [name for name in filters._WRAPPER_OPTIONS if re.search(r"\b%s\b" % name, filters._WRAPPER_HINT)]
+    assert named == list(filters._WRAPPER_OPTIONS)

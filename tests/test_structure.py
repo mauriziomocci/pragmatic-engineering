@@ -1849,25 +1849,31 @@ GUIDED_SENTENCES = {
          "che la shell esegue."),
         ("For the same calls as the file writes, the hook accepts a command only in a plain grammar: words of plain "
          "characters, text in single quotes, and text in double quotes without `$`, backtick or backslash; the "
-         "operators `&&`, `||`, `;`, `|` and newlines; and the redirections `>`, `>>`, `<`, `2>` and `2>&1`, each "
-         "with one target written out.",
+         "operators `&&`, `||`, `;`, `|` and newlines; and the redirections `>`, `>>`, `<` and `2>`, each with one "
+         "target written out, and `2>&1`.",
          "Per le stesse chiamate delle scritture di file, l'hook accetta un comando solo in una grammatica semplice: "
          "parole di caratteri semplici, testo fra apici singoli e testo fra apici doppi senza `$`, apice inverso o "
-         "barra rovesciata; gli operatori `&&`, `||`, `;`, `|` e gli a capo; e le redirezioni `>`, `>>`, `<`, `2>` e "
-         "`2>&1`, ciascuna con un bersaglio scritto per esteso."),
+         "barra rovesciata; gli operatori `&&`, `||`, `;`, `|` e gli a capo; e le redirezioni `>`, `>>`, `<` e `2>`, "
+         "ciascuna con un bersaglio scritto per esteso, e `2>&1`."),
         ("It denies any other command as a whole, and its reason says what to write instead: a heredoc, a comment, "
-         "`$`, a backtick, `$( ... )`, `<( ... )`, `>|`, an `&` that is not part of `2>&1`, a backslash, a "
-         "NAME=value before a command or after `env`, `export`, `declare`, `typeset`, `readonly`, `local`, `alias`, "
-         "`hash`, `enable`, a reserved word such as `if`, `for` or `time`, a glob in the command word, and an option "
-         "of a wrapper that it does not know, such as `-iu`, `env -C`, `env -S`, `sudo -D` or `sudo -e`; for this "
-         "reason the worker commits with `git commit -F` and a message file.",
+         "`$`, a backtick, `$( ... )`, `<( ... )`, `>|`, an `&` that is not part of `2>&1`, a backslash, a number "
+         "glued to `<` or `>` (`1>`), a word that starts with `=`, which zsh turns into the path of a command, a "
+         "command word that is not a plain name with a plain path before it (a NAME=value or NAME+=value, a glob, a "
+         "`~`, zsh's `-`), `export`, `declare`, `typeset`, `readonly`, `local`, `alias`, `hash`, `enable`, `float`, "
+         "`integer`, a reserved word of bash or zsh such as `if`, `for`, `time` or `repeat` (`[` and `[[` pass, "
+         "because they run no command of their own), zsh's `noglob` and `nocorrect`, and an option of a wrapper that "
+         "it does not know, such as `-iu`, `env -C`, `env -S`, `sudo -D` or `sudo -e`; for this reason the worker "
+         "commits with `git commit -F` and a message file.",
          "Nega per intero ogni altro comando, e il suo motivo dice che cosa scrivere al suo posto: un heredoc, un "
          "commento, `$`, un apice inverso, `$( ... )`, `<( ... )`, `>|`, una `&` che non fa parte di `2>&1`, una "
-         "barra rovesciata, un NAME=value prima di un comando o dopo `env`, `export`, `declare`, `typeset`, "
-         "`readonly`, `local`, `alias`, `hash`, `enable`, una parola riservata come `if`, `for` o `time`, un "
-         "carattere jolly nella parola di comando, e un'opzione di un involucro che non conosce, come `-iu`, `env "
-         "-C`, `env -S`, `sudo -D` o `sudo -e`; per questo il worker fa i commit con `git commit -F` e un file del "
-         "messaggio."),
+         "barra rovesciata, un numero attaccato a `<` o a `>` (`1>`), una parola che comincia con `=`, che zsh "
+         "trasforma nel percorso di un comando, una parola di comando che non è un nome semplice con davanti un "
+         "percorso semplice (un NAME=value o un NAME+=value, un carattere jolly, una `~`, il `-` di zsh), `export`, "
+         "`declare`, `typeset`, `readonly`, `local`, `alias`, `hash`, `enable`, `float`, `integer`, una parola "
+         "riservata di bash o di zsh come `if`, `for`, `time` o `repeat` (`[` e `[[` passano, perché non eseguono un "
+         "comando proprio), `noglob` e `nocorrect` di zsh, e un'opzione di un involucro che non conosce, come `-iu`, "
+         "`env -C`, `env -S`, `sudo -D` o `sudo -e`; per questo il worker fa i commit con `git commit -F` e un file "
+         "del messaggio."),
         ("In that grammar it reads each statement by its command word, by the name after its last `/` and through "
          "`env`, `command`, `sudo`, `builtin`, `exec` and `nohup`, leaving out the redirections and their targets.",
          "In quella grammatica legge ciascuna istruzione dalla sua parola di comando, dal nome dopo la sua ultima "
@@ -1877,21 +1883,23 @@ GUIDED_SENTENCES = {
          "root, so the root itself is denied too, or that the shell would still expand, because it starts with `~` "
          "or holds a glob (`*`, `?`, `[`); a `cd` or `pushd` to anything but one folder inside the worktree, spelled "
          "out in the same way, even on its own, because the shell keeps that folder for the next call and from there "
-         "the hook would no longer find the worktree; a git command that `-C`, `--git-dir` or `--work-tree` points "
-         "outside it, or that carries a configuration of its own (`-c`, `--config-env`); and, because all the "
-         "worktrees share what they change, `git stash`, `git worktree remove` and `prune`, `git push`, `git "
+         "the hook would no longer find the worktree; a git command with a glob in any of its words, which the shell "
+         "could turn into another subcommand or option, a git command that `-C`, `--git-dir` or `--work-tree` points "
+         "outside the worktree, or that carries a configuration of its own (`-c`, `--config-env`); and, because all "
+         "the worktrees share what they change, `git stash`, `git worktree remove` and `prune`, `git push`, `git "
          "update-ref`, a `git config` that does more than read, a `git branch` or `git tag` that deletes, moves or "
          "forces one, and a `git fetch` or `git pull` whose refspec names a destination.",
          "Nega `rm`, `rmdir`, `unlink` e `find ... -delete` su un percorso che non sta sotto la radice del worktree, "
          "quindi anche sulla radice stessa, o che la shell espanderebbe ancora, perché comincia con `~` o contiene "
          "un carattere jolly (`*`, `?`, `[`); un `cd` o un `pushd` verso qualunque cosa che non sia una sola "
          "cartella dentro il worktree, scritta per esteso allo stesso modo, anche da solo, perché la shell tiene "
-         "quella cartella per la chiamata dopo e da lì l'hook non troverebbe più il worktree; un comando git che "
-         "`-C`, `--git-dir` o `--work-tree` puntano fuori da esso, o che porta una configurazione propria (`-c`, "
-         "`--config-env`); e, perché tutti i worktree condividono ciò che cambiano, `git stash`, `git worktree "
-         "remove` e `prune`, `git push`, `git update-ref`, un `git config` che non si limita a leggere, un `git "
-         "branch` o un `git tag` che cancella, sposta o forza un ramo o un tag, e un `git fetch` o un `git pull` il "
-         "cui refspec nomina una destinazione."),
+         "quella cartella per la chiamata dopo e da lì l'hook non troverebbe più il worktree; un comando git con un "
+         "carattere jolly in una qualsiasi delle sue parole, che la shell potrebbe trasformare in un altro "
+         "sottocomando o in un'altra opzione, un comando git che `-C`, `--git-dir` o `--work-tree` puntano fuori dal "
+         "worktree, o che porta una configurazione propria (`-c`, `--config-env`); e, perché tutti i worktree "
+         "condividono ciò che cambiano, `git stash`, `git worktree remove` e `prune`, `git push`, `git update-ref`, "
+         "un `git config` che non si limita a leggere, un `git branch` o un `git tag` che cancella, sposta o forza "
+         "un ramo o un tag, e un `git fetch` o un `git pull` il cui refspec nomina una destinazione."),
         ("Every path is read from the call's working directory, where a `cd` that fails leaves the shell, so `cd "
          "docs; cd ..` at the root is denied too.",
          "Ogni percorso si legge dalla cartella di lavoro della chiamata, dove un `cd` che fallisce lascia la shell, "
@@ -2037,9 +2045,8 @@ COUNT_WORDS = {7: ("seven", "sette"), 8: ("eight", "otto"), 9: ("nine", "nove"),
 
 def test_readmes_count_the_command_words_and_git_subcommands_of_the_worker_check():
     """The counts in prose follow _COMMAND_CHECKS and _SHARED_STATE, so a new row of either cannot leave them stale."""
-    import pre_tool_use as hook
-
-    commands, subcommands = COUNT_WORDS[len(hook._COMMAND_CHECKS)], COUNT_WORDS[len(hook._SHARED_STATE)]
+    commands = COUNT_WORDS[len(pre_tool_use._COMMAND_CHECKS)]
+    subcommands = COUNT_WORDS[len(pre_tool_use._SHARED_STATE)]
     english, italian = pages("limits")
     assert "only those %s command words" % commands[0] in english
     assert "and those %s subcommands" % subcommands[0] in english

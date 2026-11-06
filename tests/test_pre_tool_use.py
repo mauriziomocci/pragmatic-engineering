@@ -716,6 +716,23 @@ OUTSIDE_THE_GRAMMAR = [
     ("echo \"a\\\"b\"", UNREADABLE),
     ("rm -rf build >", UNREADABLE),  # a redirection without its target
     ("rm x > 2>&1", UNREADABLE),
+    # review of the allowlist: what the shell reads by position
+    ("1>/dev/null rm -rf ../main", UNREADABLE),  # a number glued to > redirects that descriptor
+    ("3>x rm -rf ../main", UNREADABLE),
+    ("12>x rm -rf ../main", UNREADABLE),
+    ("rm -rf build 1>>log ../main", UNREADABLE),
+    ("git 1>/dev/null push origin HEAD:main", UNREADABLE),
+    ("A+=x rm -rf ../main", UNREADABLE),  # += is an assignment too
+    ("GIT_WORK_TREE+=../main git checkout -- .", UNREADABLE),
+    ("=rm -rf ../main", UNREADABLE),  # zsh's =word is the path of the command word names
+    ("''=rm -rf ../main", UNREADABLE),
+    ("rm -rf =python3", UNREADABLE),
+    ("noglob rm -rf ../main", UNREADABLE),  # zsh's precommand modifiers
+    ("nocorrect rm -rf ../main", UNREADABLE),
+    ("- rm -rf ../main", UNREADABLE),
+    ("repeat 1 rm -rf ../main", UNREADABLE),  # zsh's reserved words
+    ("integer A=1", UNREADABLE),
+    ("~/bin/rm -rf ../main", UNREADABLE),  # a command word is a plain name, with a plain path before it
 ]
 
 
@@ -723,6 +740,17 @@ OUTSIDE_THE_GRAMMAR = [
 def test_a_worker_command_outside_the_grammar_the_reader_models_is_denied(worker_worktree, command, because):
     reason = hook.decide(bash_call(command, worker_worktree))
     assert reason and because in reason
+
+
+# A glob in any word of git: with a file named push or -C in the worktree, which a worker may write, the shell turns
+# pus? into push and -[C] into -C, while the check would read them as written.
+@pytest.mark.parametrize("command", [
+    "git pus? origin HEAD:main", "git -[C] ../main checkout -- .", "git worktree remov? x", "git branch --d[e]lete x",
+    "git add '*.py'",  # quoted too: the hook does not tell a quoted glob from one the shell expands
+])
+def test_a_worker_git_command_with_a_glob_is_denied(worker_worktree, command):
+    reason = hook.decide(bash_call(command, worker_worktree))
+    assert reason and "glob" in reason
 
 
 @pytest.mark.parametrize("command", [
