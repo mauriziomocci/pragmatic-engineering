@@ -496,55 +496,60 @@ class ShellStatement(NamedTuple):
 # or a redirection whose next token is not a word, which _grammar_statements refuses. Two tokens the shell reads by
 # their position match before a word and are refused: a number glued to < or >, which redirects that descriptor
 # (1>, 3<, 12>), and an = that starts a word, which zsh turns into the path of the command it names (=rm, ''=rm).
+# 2>&1 must end where a word would: 2>&10 duplicates descriptor 10, and falls to 2> and an & that no token matches.
 _GRAMMAR_TOKEN = re.compile(r"""
     [ \t]+
   | (?P<operator>&&|\|\||[;|\n])
-  | (?P<redirection>2>&1|2>|>>|[<>])
+  | (?P<redirection>2>&1(?![^ \t\n;&|<>])|2>|>>|[<>])
   | (?P<descriptor>[0-9]+[<>])
   | (?P<equals>(?:''|"")*=)
   | (?P<word>(?:[A-Za-z0-9_./:@,+%=~^*?\[\]-]|'[^']*'|"[^"$`\\]*")+)
 """, re.VERBOSE)
 _GRAMMAR_HINT = (
     "the hook reads a worker's command only in a plain grammar, words, '...' and \"...\" without $, backtick or "
-    "backslash, && || ; | and newlines, and the redirections > >> < 2> and 2>&1 with one target, and %r falls outside "
-    "it; write the command without it: a file with the Write tool instead of a heredoc, git commit -F <file> instead "
-    "of -m \"$(...)\", a value written out instead of $NAME, and one statement for each command instead of a group, a "
-    "subshell, a loop or a command in the background"
+    "backslash, && || ; | and newlines, and the redirections > >> < and 2> with one target, and 2>&1, and %r falls "
+    "outside it; write the command without it: a file with the Write tool instead of a heredoc, git commit -F <file> "
+    "instead of -m \"$(...)\", a value written out instead of $NAME, and one statement for each command instead of a "
+    "group, a subshell, a loop or a command in the background"
 )
 _TARGET_HINT = "a redirection takes one word as its target, written out after it"
 _DESCRIPTOR_HINT = (
-    "a number glued to < or > redirects that descriptor, which the reader does not follow; write 2> or 2>&1"
+    "a number glued to < or > redirects that descriptor, which the reader does not follow; write > or < without the "
+    "number, or 2> and 2>&1"
 )
 _EQUALS_HINT = "a word that starts with = is the path of a command in zsh; write the word without the ="
 _COMMAND_WORD_HINT = (
     "a command word is read only as a plain name, letters, digits, . _ + and - after the first character, with a plain "
-    "path before it; a NAME=value or NAME+=value, a glob, a ~ or zsh's =name leave open which command runs or what it "
-    "gets: name the command in full, and set no variable for it"
-)
-_PRECOMMAND_HINT = (
-    "zsh's noglob and nocorrect change how the command after them is read; run the command without them"
-)
-_COMPOUND_HINT = (
-    "if, for, while, case, function, time and the other reserved words open a compound command, whose commands the "
-    "hook does not read; write each command as a statement of its own"
-)
-_DEFINING_HINT = (
-    "export, declare, typeset, readonly, local, alias, hash and enable change how later commands are read; a worker "
-    "does not use them"
+    "path before it; a NAME=value or NAME+=value, a glob or a ~ leave open which command runs or what it gets: "
+    "name the command in full, and set no variable for it"
 )
 _WRAPPER_HINT = (
     "env, command, sudo, builtin, exec and nohup are read only with the options the reader knows, each as a word of "
     "its own (env -i, env -u NAME, sudo -u USER, and none for builtin, exec and nohup); write them so, or run the "
     "command without the wrapper"
 )
-# The reserved words of bash and zsh, the commands that change how later ones are read, and zsh's precommand
-# modifiers, which the reader does not read through (zsh's - is no plain name, see _PLAIN_COMMAND_WORD).
+# The command words the reader refuses, in groups, each with what its words do: the reserved words of bash and zsh,
+# the commands that define what later ones read, the builtins that set how the shell reads later words, and zsh's
+# precommand modifiers (zsh's - is no plain name, see _PLAIN_COMMAND_WORD). The hint of a word names its whole group.
+_REFUSED_WORD_GROUPS: Tuple[Tuple[Tuple[str, ...], str], ...] = (
+    (("if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac", "select", "function",
+      "time", "coproc", "repeat", "foreach", "end"),
+     "open a compound command, whose commands the hook does not read; write each command as a statement of its own"),
+    (("export", "declare", "typeset", "readonly", "local", "alias", "hash", "enable", "float", "integer"),
+     "change what later commands read; a worker does not use them"),
+    (("set", "shopt", "setopt", "unsetopt", "emulate", "disable", "zmodload"),
+     "change how the shell reads the words after them, as a cd that reads a variable or a ^ that globs; run the "
+     "commands without them, chained with && where set -e would stop on an error"),
+    (("noglob", "nocorrect"), "change how the command after them is read; run the command without them"),
+)
+
+
+def _named(words: Tuple[str, ...]) -> str:
+    return "%s and %s" % (", ".join(words[:-1]), words[-1])
+
+
 _REFUSED_COMMAND_WORDS: Dict[str, str] = {
-    **dict.fromkeys(("if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac",
-                     "select", "function", "time", "coproc", "repeat", "foreach", "end"), _COMPOUND_HINT),
-    **dict.fromkeys(("export", "declare", "typeset", "readonly", "local", "alias", "hash", "enable", "float",
-                     "integer"), _DEFINING_HINT),
-    **dict.fromkeys(("noglob", "nocorrect"), _PRECOMMAND_HINT),
+    word: "%s %s" % (_named(words), effect) for words, effect in _REFUSED_WORD_GROUPS for word in words
 }
 # A command word the reader can name: a plain name, with a plain path before it (/usr/bin/git, ./run.sh). [ and [[
 # run no command of their own, and an empty word is a wrapper with nothing after it.
@@ -617,7 +622,7 @@ def _read_statement(words: List[str]) -> ShellStatement:
     position = 0
     while True:
         word = words[position] if position < len(words) else ""
-        name = word.rsplit("/", 1)[-1]
+        name = word.rsplit("/", 1)[-1].lower()  # a case-insensitive file system, macOS's default, runs RM as rm
         _refuse_an_unsure_command_word(word, name)
         options = _WRAPPER_OPTIONS.get(name)
         if options is None:

@@ -271,8 +271,9 @@ _WORKER_GIT_SHARED_REASON = (
     "fetch or git pull into a local branch (<src>:<dst>); name the need in the delivery file instead"
 )
 _WORKER_GIT_GLOB_REASON = (
-    "a worker writes every word of a git command without a glob (*, ?, [), which the shell may expand into another "
-    "subcommand, option or path; write each word in full"
+    "a worker writes every word of a git command without a glob (*, ?, [), quoted or not, because the shell may "
+    "expand one into another subcommand, option or path; write each word in full, and list files with the Glob or "
+    "Grep tool"
 )
 _WORKER_COMMAND_REASON = "a worker's Bash call carries its command as one string, which the hook reads"
 _WORKER_UNREADABLE_REASON = "the hook cannot read this worker command for sure, so it denies it: %s"

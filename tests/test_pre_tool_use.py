@@ -733,6 +733,28 @@ OUTSIDE_THE_GRAMMAR = [
     ("repeat 1 rm -rf ../main", UNREADABLE),  # zsh's reserved words
     ("integer A=1", UNREADABLE),
     ("~/bin/rm -rf ../main", UNREADABLE),  # a command word is a plain name, with a plain path before it
+    # review of the allowlist, round 2: options that change how later words are read
+    ("shopt -s cdable_vars; cd HOME; rm -rf Documents", UNREADABLE),  # cd HOME moves to $HOME
+    ("setopt cdablevars; cd HOME", UNREADABLE),
+    ("set -o cdablevars; cd HOME", UNREADABLE),
+    ("setopt extendedglob; git pu^x origin HEAD:main", UNREADABLE),  # ^ globs, and pu^x matches a file named push
+    ("unsetopt nomatch", UNREADABLE),
+    ("emulate sh", UNREADABLE),
+    ("set -e", UNREADABLE),
+    ("disable cd", UNREADABLE),
+    ("zmodload zsh/files", UNREADABLE),
+    # a command word in another letter case: a case-insensitive file system finds RM as rm
+    ("RM -rf ../main", "deletes only"),
+    ("Rm -rf ../main", "deletes only"),
+    ("ENV rm -rf ../main", "deletes only"),
+    ("NOHUP rm -rf ../main", "deletes only"),
+    ("UNLINK ../main/x", "deletes only"),
+    ("CD ../main", "cd and pushd"),
+    ("GIT push origin HEAD:main", "all the worktrees share"),
+    ("SETOPT extendedglob", UNREADABLE),
+    # 2>&1 followed by a digit is the duplicate of another descriptor, not 2>&1 and a word
+    ("2>&10 rm -rf ../main", UNREADABLE),
+    ("git 2>&10 push origin HEAD:main", UNREADABLE),
 ]
 
 
@@ -750,7 +772,7 @@ def test_a_worker_command_outside_the_grammar_the_reader_models_is_denied(worker
 ])
 def test_a_worker_git_command_with_a_glob_is_denied(worker_worktree, command):
     reason = hook.decide(bash_call(command, worker_worktree))
-    assert reason and "glob" in reason
+    assert reason == hook._WORKER_GIT_GLOB_REASON
 
 
 @pytest.mark.parametrize("command", [

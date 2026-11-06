@@ -1860,25 +1860,28 @@ GUIDED_SENTENCES = {
          "glued to `<` or `>` (`1>`), a word that starts with `=`, which zsh turns into the path of a command, a "
          "command word that is not a plain name with a plain path before it (a NAME=value or NAME+=value, a glob, a "
          "`~`, zsh's `-`), `export`, `declare`, `typeset`, `readonly`, `local`, `alias`, `hash`, `enable`, `float`, "
-         "`integer`, a reserved word of bash or zsh such as `if`, `for`, `time` or `repeat` (`[` and `[[` pass, "
-         "because they run no command of their own), zsh's `noglob` and `nocorrect`, and an option of a wrapper that "
-         "it does not know, such as `-iu`, `env -C`, `env -S`, `sudo -D` or `sudo -e`; for this reason the worker "
-         "commits with `git commit -F` and a message file.",
+         "`integer`, `set`, `shopt`, `setopt`, `unsetopt`, `emulate`, `disable`, `zmodload`, a reserved word of bash "
+         "or zsh such as `if`, `for`, `time` or `repeat` (`[` and `[[` pass, because they run no command of their "
+         "own), zsh's `noglob` and `nocorrect`, and an option of a wrapper that it does not know, such as `-iu`, "
+         "`env -C`, `env -S`, `sudo -D` or `sudo -e`; for this reason the worker commits with `git commit -F` and a "
+         "message file.",
          "Nega per intero ogni altro comando, e il suo motivo dice che cosa scrivere al suo posto: un heredoc, un "
          "commento, `$`, un apice inverso, `$( ... )`, `<( ... )`, `>|`, una `&` che non fa parte di `2>&1`, una "
          "barra rovesciata, un numero attaccato a `<` o a `>` (`1>`), una parola che comincia con `=`, che zsh "
          "trasforma nel percorso di un comando, una parola di comando che non è un nome semplice con davanti un "
          "percorso semplice (un NAME=value o un NAME+=value, un carattere jolly, una `~`, il `-` di zsh), `export`, "
-         "`declare`, `typeset`, `readonly`, `local`, `alias`, `hash`, `enable`, `float`, `integer`, una parola "
-         "riservata di bash o di zsh come `if`, `for`, `time` o `repeat` (`[` e `[[` passano, perché non eseguono un "
-         "comando proprio), `noglob` e `nocorrect` di zsh, e un'opzione di un involucro che non conosce, come `-iu`, "
-         "`env -C`, `env -S`, `sudo -D` o `sudo -e`; per questo il worker fa i commit con `git commit -F` e un file "
-         "del messaggio."),
-        ("In that grammar it reads each statement by its command word, by the name after its last `/` and through "
-         "`env`, `command`, `sudo`, `builtin`, `exec` and `nohup`, leaving out the redirections and their targets.",
+         "`declare`, `typeset`, `readonly`, `local`, `alias`, `hash`, `enable`, `float`, `integer`, `set`, `shopt`, "
+         "`setopt`, `unsetopt`, `emulate`, `disable`, `zmodload`, una parola riservata di bash o di zsh come `if`, "
+         "`for`, `time` o `repeat` (`[` e `[[` passano, perché non eseguono un comando proprio), `noglob` e "
+         "`nocorrect` di zsh, e un'opzione di un involucro che non conosce, come `-iu`, `env -C`, `env -S`, `sudo "
+         "-D` o `sudo -e`; per questo il worker fa i commit con `git commit -F` e un file del messaggio."),
+        ("In that grammar it reads each statement by its command word, by the name after its last `/` in lower case, "
+         "because a case-insensitive file system runs `RM` as `rm`, and through `env`, `command`, `sudo`, `builtin`, "
+         "`exec` and `nohup`, leaving out the redirections and their targets.",
          "In quella grammatica legge ciascuna istruzione dalla sua parola di comando, dal nome dopo la sua ultima "
-         "`/` e attraverso `env`, `command`, `sudo`, `builtin`, `exec` e `nohup`, lasciando fuori le redirezioni e i "
-         "loro bersagli."),
+         "`/` in minuscolo, perché un file system che non distingue maiuscole e minuscole esegue `RM` come `rm`, e "
+         "attraverso `env`, `command`, `sudo`, `builtin`, `exec` e `nohup`, lasciando fuori le redirezioni e i loro "
+         "bersagli."),
         ("It denies `rm`, `rmdir`, `unlink` and `find ... -delete` on a path that does not lie below the worktree "
          "root, so the root itself is denied too, or that the shell would still expand, because it starts with `~` "
          "or holds a glob (`*`, `?`, `[`); a `cd` or `pushd` to anything but one folder inside the worktree, spelled "
@@ -1910,9 +1913,10 @@ GUIDED_SENTENCES = {
          "share, such as `git switch -C` and `git checkout -B`, which the worker's own resumption uses, `git "
          "worktree add` and `move`, `git symbolic-ref`, `git reflog` and `git remote`; a command that another "
          "program runs, such as `sh -c`, `bash -c`, `eval`, `source`, `xargs`, `find -exec`, `nice`, `timeout` or a "
-         "script; a command word that an alias or a function defined before the call stands for; a variable set "
-         "before the call, such as `CDPATH` for `cd` or `GIT_DIR` for git; and the targets of redirections. Inside "
-         "its worktree a worker can still delete `.pe/worker`, and so turn off the hold of its own session.",
+         "script; a command word that an alias or a function defined before the call stands for; a variable or a "
+         "shell option set before the call, such as `CDPATH` for `cd`, `GIT_DIR` for git, or zsh's `extended_glob` "
+         "and `cdable_vars` from the shell configuration; and the targets of redirections. Inside its worktree a "
+         "worker can still delete `.pe/worker`, and so turn off the hold of its own session.",
          "Tutto il resto resta aperto, perché il controllo legge solo quelle sette parole di comando, e di git solo "
          "le opzioni prima del sottocomando e quei nove sottocomandi: ogni altro comando che scrive o cancella, come "
          "`mv`, `cp`, `ln`, `tee`, `python3` o `make`; ogni altro sottocomando di git che cambia ciò che i worktree "
@@ -1920,7 +1924,8 @@ GUIDED_SENTENCES = {
          "add` e `move`, `git symbolic-ref`, `git reflog` e `git remote`; un comando che un altro programma esegue, "
          "come `sh -c`, `bash -c`, `eval`, `source`, `xargs`, `find -exec`, `nice`, `timeout` o uno script; una "
          "parola di comando al posto della quale sta un alias o una funzione definiti prima della chiamata; una "
-         "variabile impostata prima della chiamata, come `CDPATH` per `cd` o `GIT_DIR` per git; e i bersagli delle "
+         "variabile o un'opzione della shell impostate prima della chiamata, come `CDPATH` per `cd`, `GIT_DIR` per "
+         "git, o `extended_glob` e `cdable_vars` di zsh dalla configurazione della shell; e i bersagli delle "
          "redirezioni. Dentro il suo worktree un worker può ancora cancellare `.pe/worker`, e spegnere così il "
          "vincolo della propria sessione."),
         ("(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documents another "
