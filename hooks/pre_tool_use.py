@@ -17,13 +17,14 @@
    worker's own worktree, both paths compared after os.path.realpath; with
    no <toplevel> it denies them all. The same file calls of any other session
    or agent are held the same way when that <toplevel> carries the signal
-   .pe/worker, which the coordinator writes into the worktree of a worker
-   session, so the agents such a session launches there are held too.
-   Finding <toplevel> costs one git subprocess, paid by the worker agent and
-   by a call that finds .pe/worker in its cwd or a folder above it; any other
-   file call looks only for that file, without git, so a setup whose
-   <toplevel> is not one of those folders (core.worktree, GIT_WORK_TREE) is
-   never held.
+   .pe/worker and git does not track it: the coordinator writes it into the
+   worktree of a worker session, so the agents such a session launches there
+   are held too, while a repository that commits the file holds nothing.
+   The worker agent pays one git subprocess to find <toplevel>, and a call
+   that finds .pe/worker in its cwd or a folder above it pays two, the root
+   and whether git tracks the signal; any other file call looks only for
+   that file, without git, so a setup whose <toplevel> is not one of those
+   folders (core.worktree, GIT_WORK_TREE) is never held.
 
 The reviewer's checks match closed shapes only: anything a pattern does not
 describe is denied, so a gap in a pattern can only make the reviewer stricter.
@@ -118,19 +119,19 @@ def _command_problem(tool_input: Dict[str, Any], cwd: Any) -> Optional[str]:
     return _COMMAND_REASON
 
 
-def _toplevel(cwd: Any) -> Optional[str]:
-    """The repository root of ``cwd`` with every symlink resolved, or None when git finds none."""
-    if not (isinstance(cwd, str) and cwd):
-        return None
+def _git(cwd: str, *args: str) -> Optional[subprocess.CompletedProcess]:
+    """Run git in ``cwd`` and return what it did, or None when git cannot start or hangs."""
     try:
-        proc = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=GIT_TIMEOUT,
-        )
+        return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=GIT_TIMEOUT)
     except (OSError, subprocess.SubprocessError):  # no git, or git hangs
         return None
-    top = proc.stdout.strip()
-    return os.path.realpath(top) if proc.returncode == 0 and top else None
+
+
+def _toplevel(cwd: Any) -> Optional[str]:
+    """The repository root of ``cwd`` with every symlink resolved, or None when git finds none."""
+    proc = _git(cwd, "rev-parse", "--show-toplevel") if isinstance(cwd, str) and cwd else None
+    top = proc.stdout.strip() if proc and proc.returncode == 0 else ""
+    return os.path.realpath(top) if top else None
 
 
 def _inside(root: str, cwd: str, path: str) -> bool:
@@ -165,17 +166,18 @@ def _signal_above(cwd: Any) -> bool:
     return any((parent / WORKER_SIGNAL).exists() for parent in (folder, *folder.parents))
 
 
-def _worker_root(payload: Dict[str, Any]) -> Optional[str]:
-    """The root a call is held to: its repository's for the worker agent, else only a root with the worker signal.
+def _signalled_root(cwd: Any) -> Optional[str]:
+    """The root of a worker session: the repository root of ``cwd`` when it holds a signal git does not track.
 
-    None means the call is not held, or, for the worker agent, that git finds no repository from its cwd. Any
-    other call asks git only when the signal lies at or above its cwd, so a session without workers pays no git.
+    Git is asked only after the signal is found at or above ``cwd``, so a session without workers starts none. A
+    tracked signal holds nothing: committed, it would hold every session opened in that repository. When git
+    gives no clear "not tracked" (exit 1 of --error-unmatch), the session is not held, as one without a signal.
     """
-    cwd = payload.get("cwd")
-    if _runs_in_worker(payload):
-        return _toplevel(cwd)
     top = _toplevel(cwd) if _signal_above(cwd) else None
-    return top if top and os.path.exists(os.path.join(top, WORKER_SIGNAL)) else None
+    if not (top and os.path.exists(os.path.join(top, WORKER_SIGNAL))):
+        return None
+    proc = _git(top, "ls-files", "--error-unmatch", "--", WORKER_SIGNAL)
+    return top if proc and proc.returncode == 1 else None
 
 
 def _worker_file_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional[str]) -> Optional[str]:
@@ -201,16 +203,17 @@ def decide(payload: Any) -> Optional[str]:
         return _prompt_problem(payload["tool_input"].get("prompt"))
     tool_input = payload.get("tool_input")
     tool_input = tool_input if isinstance(tool_input, dict) else {}
+    cwd = payload.get("cwd")
     if _runs_in_reviewer(payload):
         check = _REVIEWER_TOOL_CHECKS.get(payload.get("tool_name"))
-        return check(tool_input, payload.get("cwd")) if check else None
+        return check(tool_input, cwd) if check else None
     worker_check = _WORKER_TOOL_CHECKS.get(payload.get("tool_name"))
     if worker_check is None:
         return None
-    root = _worker_root(payload)
-    if root is None and not _runs_in_worker(payload):  # not held; a worker agent with no root fails closed instead
-        return None
-    return worker_check(tool_input, payload.get("cwd"), root)
+    if _runs_in_worker(payload):  # held even when git finds no root, so a lost root fails closed
+        return worker_check(tool_input, cwd, _toplevel(cwd))
+    root = _signalled_root(cwd)
+    return worker_check(tool_input, cwd, root) if root else None
 
 
 def main() -> int:

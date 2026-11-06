@@ -698,8 +698,9 @@ WORKER_SECTIONS = [
 ]
 # Without it a new worktree shows `?? .pe/` once the delivery file exists, and every delivery is refused as unclean.
 IGNORE_FIRST = "Before any other write, create `.pe/.gitignore` with the single line `*` if it is missing"
+WORKER_REPORT_LINE = "REPORT: <worktree>/.pe/delivery.md"
 WORKER_FINAL_LINES = (
-    "    BRANCH: <branch>\n    TIP: <sha>\n    REPORT: .pe/delivery.md\n"
+    "    BRANCH: <branch>\n    TIP: <sha>\n    %s\n" % WORKER_REPORT_LINE +
     "    OPEN: <decisions taken and questions, or none>"
 )
 
@@ -740,6 +741,9 @@ def test_worker_body_states_its_contract():
     for needed in ("`.pe/delivery.md`", "STATUS: IN PROGRESS", "STATUS: COMPLETE"):
         assert needed in parts["What you write"], needed
     assert WORKER_FINAL_LINES in parts["Your final message"]
+    # read from the coordinator's checkout, a bare .pe/delivery.md would name that checkout's own file
+    assert "`<worktree>` is the absolute path of your worktree, read with `git rev-parse --show-toplevel`" in body
+    assert [text for text in pages("reference") if "`%s`" % WORKER_REPORT_LINE not in text] == []
     assert unknown_references(body) == []
     assert len(text.splitlines()) < 200
 
@@ -816,6 +820,21 @@ def test_readmes_explain_where_good_practices_come_from_with_the_same_shape():
         assert lines[0] == heading
         assert len([part for part in "\n".join(lines[1:]).split("\n\n") if part.strip()]) == 2
         assert "Context7" in text
+
+
+# The sentence of each opening that lists the parts of the plugin: English, then Italian.
+OPENING_PARTS = (
+    "Version 0.1.0 is the core of the method: the rules, the skills, the two agents, a `SessionStart` hook that keeps "
+    "the rules in place and a `PreToolUse` hook that holds the reviewer to its interface and a worker to its worktree.",
+    "La versione 0.1.0 è il nucleo del metodo: le regole, le skill, i due agenti, un hook `SessionStart` che tiene le "
+    "regole al loro posto e un hook `PreToolUse` che tiene il revisore alla sua interfaccia e un worker al suo "
+    "worktree.",
+)
+
+
+def test_readmes_list_every_part_of_the_plugin_in_the_opening():
+    for text, sentence in zip(pages(), OPENING_PARTS):
+        assert sentence in text.split("<!-- section:")[0]
 
 
 def test_readmes_link_each_other_at_the_top():
@@ -1720,11 +1739,12 @@ GUIDED_SENTENCES = {
          "the forms it lists. It costs about 30 to 40 ms on every Bash and Agent call, for every user, and about 55 "
          "ms on a Write inside the reviewer, which pays one git subprocess. Since the worker boundary the hook also "
          "starts on every Edit and NotebookEdit of every user, and these calls pay that start, about as much as a "
-         "Write: the median of 50 runs of the hook on a Write of the main session was about 31 to 32 ms before the "
-         "worker boundary and about 32 to 33 ms with it, because a session without workers asks git nothing. Only "
-         "the worker agent and a call that finds `.pe/worker` in its working directory or in a folder above it pay "
-         "one git subprocess more, to find the root: a Write that pays it measured about 44 to 50 ms. All these "
-         "costs were measured on the maintainer's macOS machine.",
+         "Write: the median of 50 runs of the hook on a Write of the main session was about 27 ms before the worker "
+         "boundary and about 27 to 28 ms with it, because a session without workers asks git nothing. The worker "
+         "agent pays one git subprocess more, to find its root, and a Write of it measured about 38 to 40 ms; a call "
+         "that finds `.pe/worker` in its working directory or in a folder above it pays two, the root and whether "
+         "git tracks the signal, and a Write of a worker session measured about 49 to 51 ms. All these costs were "
+         "measured on the maintainer's macOS machine.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
@@ -1733,11 +1753,13 @@ GUIDED_SENTENCES = {
          "elenca. Costa circa da 30 a 40 ms a ogni chiamata di Bash e Agent, per ogni utente, e circa 55 ms a un "
          "Write dentro il revisore, che paga un sottoprocesso git. Dal confine del worker l'hook parte anche a ogni "
          "Edit e NotebookEdit di ogni utente, e queste chiamate pagano quella partenza, circa quanto un Write: la "
-         "mediana di 50 esecuzioni dell'hook su un Write della sessione principale era di circa 31-32 ms prima del "
-         "confine del worker ed è di circa 32-33 ms con esso, perché una sessione senza worker non chiede nulla a "
-         "git. Solo l'agente worker e una chiamata che trova `.pe/worker` nella sua cartella di lavoro o in una "
-         "cartella sopra di essa pagano un sottoprocesso git in più, per trovare la radice: un Write che lo paga ha "
-         "misurato circa 44-50 ms. Tutti questi costi sono misurati sulla macchina macOS del manutentore."),
+         "mediana di 50 esecuzioni dell'hook su un Write della sessione principale era di circa 27 ms prima del "
+         "confine del worker ed è di circa 27-28 ms con esso, perché una sessione senza worker non chiede nulla a "
+         "git. L'agente worker paga un sottoprocesso git in più, per trovare la sua radice, e un suo Write ha "
+         "misurato circa 38-40 ms; una chiamata che trova `.pe/worker` nella sua cartella di lavoro o in una "
+         "cartella sopra di essa ne paga due, la radice e se git traccia il segnale, e un Write di una sessione "
+         "worker ha misurato circa 49-51 ms. Tutti questi costi sono misurati sulla macchina macOS del "
+         "manutentore."),
         # the worker boundary: what it holds, what is not proven, and the hole that Bash leaves
         ("The worker boundary of the `PreToolUse` hook is not proven live: no live run has exercised it.",
          "Il confine del worker nell'hook `PreToolUse` non è provato dal vivo: nessuna esecuzione dal vivo lo ha "
@@ -1750,6 +1772,12 @@ GUIDED_SENTENCES = {
          "repository della cartella di lavoro della chiamata, e fa lo stesso con una sessione la cui radice porta il "
          "segnale `.pe/worker`, un file vuoto che la sessione che coordina scrive nel worktree di una sessione worker; "
          "anche gli agenti che una tale sessione lancia nel suo worktree sono vincolati."),
+        ("A `.pe/worker` that git tracks holds nothing, so a repository cannot turn the hold on by committing the "
+         "file; an untracked one that something else writes holds the sessions opened in that repository just the "
+         "same.",
+         "Un `.pe/worker` che git traccia non vincola nulla, quindi un repository non può accendere il vincolo "
+         "facendo il commit del file; uno non tracciato scritto da qualcos'altro vincola allo stesso modo le "
+         "sessioni aperte in quel repository."),
         ("For a subagent started with `isolation: worktree`, which `cwd` Claude Code puts in the hook's input is not "
          "verified: if it is the checkout of the session that launched the worker, the hook holds the worker to that "
          "checkout and not to its own worktree.",
@@ -1855,11 +1883,18 @@ GUIDED_SENTENCES = {
          "nel worktree di un `worker` anche `delivery.md` (il suo file di consegna) e, in quello di una sessione "
          "worker, `worker` (il segnale che vincola la sessione al suo worktree, scritto dalla sessione che "
          "coordina), e"),
-        ("There are no commands in this version and, besides the `SessionStart` hook described below, only one script, "
-         "`skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells the model to run.",
-         "In questa versione non ci sono comandi e, oltre all'hook `SessionStart` descritto sotto, c'è un solo "
-         "script, `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al modello di "
-         "eseguire."),
+        ("There are no commands in this version and, besides the `SessionStart` and `PreToolUse` hooks described "
+         "below, only one script, `skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells "
+         "the model to run.",
+         "In questa versione non ci sono comandi e, oltre agli hook `SessionStart` e `PreToolUse` descritti sotto, "
+         "c'è un solo script, `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al "
+         "modello di eseguire."),
+        ("`PreToolUse`, registered in `hooks/hooks.json` with the matcher `Agent|Bash|Write|Edit|NotebookEdit` as "
+         "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, with a timeout of 10 seconds and "
+         "`\"onFailure\": \"continue\"`.",
+         "`PreToolUse`, registrato in `hooks/hooks.json` con il matcher `Agent|Bash|Write|Edit|NotebookEdit` come "
+         "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, con un timeout di 10 secondi e "
+         "`\"onFailure\": \"continue\"`."),
         ("`skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made "
          "outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository.",
          "`skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori "

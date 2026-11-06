@@ -46,7 +46,7 @@ Deliver with a clean worktree, every change committed, and end with exactly thes
 
     BRANCH: <branch>
     TIP: <sha>
-    REPORT: .pe/delivery.md
+    REPORT: <worktree>/.pe/delivery.md
     OPEN: <decisions taken and questions, or none>
 
-`<sha>` is the full sha of your branch tip, read with `git rev-parse HEAD` after the last commit. `OPEN:` names, on one line, the decisions you took alone and the questions left open, or says `none`. The coordinator checks the tip, the files and the tests against git, not against this message.
+`<sha>` is the full sha of your branch tip, read with `git rev-parse HEAD` after the last commit. `<worktree>` is the absolute path of your worktree, read with `git rev-parse --show-toplevel`, so the file can be found from another checkout. `OPEN:` names, on one line, the decisions you took alone and the questions left open, or says `none`. The coordinator checks the tip, the files and the tests against git, not against this message.

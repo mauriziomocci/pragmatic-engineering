@@ -484,6 +484,17 @@ def test_a_signal_above_the_repository_root_holds_nothing(worker_worktree, tmp_p
     assert hook.decide(file_call("Write", tmp_path / "sentinel.txt", nested, None)) is None
 
 
+@pytest.mark.parametrize("record", ["commit", "add"])
+@pytest.mark.parametrize("agent_type", [None, "general-purpose"])
+def test_a_worker_signal_that_git_tracks_holds_nothing(worker_worktree, tmp_path, record, agent_type):
+    """A repository that commits .pe/worker would otherwise hold every session opened in it to its root."""
+    write_signal(worker_worktree)
+    git(worker_worktree, "add", "-f", ".pe/worker")
+    if record == "commit":
+        git(worker_worktree, "commit", "-q", "-m", "commit the signal")
+    assert hook.decide(file_call("Write", tmp_path / "sentinel.txt", worker_worktree, agent_type)) is None
+
+
 @pytest.mark.parametrize("agent_type", [None, "general-purpose", "pragmatic-engineering:other-agent"])
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)
 def test_other_agents_keep_no_decision_on_file_tools(worker_worktree, tmp_path, tool_name, agent_type):
