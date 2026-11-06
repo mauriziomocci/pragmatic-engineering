@@ -4,6 +4,7 @@ The script runs from the coordinator's checkout (``repo``, on the branch ``integ
 branch ``w``, checked out in ``worktree``. Every path inside a command line is written with ``as_posix()``: the
 suite also runs on Windows, where a backslash is an escape for the command splitter.
 """
+import os
 import shlex
 import subprocess
 import sys
@@ -137,17 +138,22 @@ def test_a_tag_or_a_ref_named_like_the_integration_is_ignored(delivery, kind):
     refused(delivery.run(), "outside the OWNED lines")
 
 
-@pytest.mark.parametrize("kind", ["tag", "ref-under-refs"])
-def test_a_tag_or_a_ref_named_like_the_reviewed_branch_is_ignored(delivery, kind):
-    """``--reviewed w`` is the branch ``w`` (the delivery tip, so nothing is unread), whatever else is named ``w``."""
+@pytest.mark.parametrize("option", ["--reviewed", "--tip"])
+@pytest.mark.parametrize("value", ["w", "refs/heads/w", ""], ids=["branch", "full-ref", "empty"])
+def test_the_tip_and_the_reviewed_tip_take_only_a_full_commit_id(delivery, option, value):
+    """A branch is what the worker moves: ``--reviewed w`` would read the new tip and find nothing unread."""
     delivery.work({"src/a/new.py": "x = 1\n"})
-    base = git(delivery.repo, "rev-parse", "integration").strip()
-    if kind == "tag":
-        git(delivery.repo, "tag", "w", base)
-    else:
-        git(delivery.repo, "update-ref", "refs/w", base)
-    proc = delivery.run(("--reviewed", "w"))
-    assert proc.returncode == 0, proc.stderr
+    usage_error(delivery.run(replace={option: value}) if option == "--tip" else delivery.run((option, value)),
+                "full commit id")
+
+
+def test_a_tip_behind_the_reviewed_tip_exits_3(delivery):
+    """The worker resets its branch below the commit that fixed a finding and declares the older tip."""
+    older = delivery.work({"src/a/new.py": "x = 1\n"})
+    reviewed = delivery.work({"src/a/fix.py": "f = 1\n"})
+    git(delivery.worktree, "reset", "-q", "--hard", older)
+    proc = delivery.run(("--reviewed", reviewed))
+    assert proc.returncode == 3 and older in proc.stderr and "does not descend" in proc.stderr, proc.stderr
 
 
 @pytest.mark.parametrize("spelling", ["full-ref", "sha"])
@@ -158,6 +164,16 @@ def test_a_full_ref_or_a_sha_still_names_the_integration_when_a_tag_shadows_it(d
                                                                               "refs/heads/integration").strip()
     proc = delivery.run(replace={"--integration": integration})
     assert proc.returncode == 0, proc.stderr
+
+
+def test_a_run_without_red_leaves_the_index_of_the_worker_as_it_was(delivery):
+    """``git status`` refreshes the index of the worktree it reads unless it is told not to take optional locks."""
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    index = Path(git(delivery.worktree, "rev-parse", "--absolute-git-dir").strip()) / "index"
+    os.utime(str(delivery.worktree / "src/a/new.py"), (1_000_000_000, 1_000_000_000))  # stale stat data, same content
+    before = index.read_bytes()
+    assert delivery.run().returncode == 0
+    assert index.read_bytes() == before
 
 
 def test_a_clean_sync_merge_exits_0(delivery):

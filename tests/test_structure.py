@@ -2274,3 +2274,35 @@ def test_swallowed_failure_catches_the_forms_it_must():
 def test_readmes_name_the_ci_workflow():
     for path in (README, README_IT):
         assert "`.github/workflows/ci.yml`" in path.read_text(encoding="utf-8"), path.name
+
+
+def direct_git_calls(source: str) -> List[int]:
+    """The lines of a ``subprocess.<anything>(["git", ...])`` call: git started by the file itself."""
+    lines = []
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess" and node.args):
+            continue
+        command = node.args[0]
+        if isinstance(command, (ast.List, ast.Tuple)) and command.elts:
+            first = command.elts[0]
+            if isinstance(first, ast.Constant) and first.value == "git":
+                lines.append(node.lineno)
+    return lines
+
+
+def test_the_guard_against_a_direct_git_call_sees_one():
+    fake = "import subprocess\n\ndef f():\n    return subprocess.run(['git', 'status'], capture_output=True)\n"
+    assert direct_git_calls(fake) == [4]
+    assert direct_git_calls("import subprocess\nsubprocess.run(['python3', 'x'])\nrun_git('status')\n") == []
+
+
+def test_only_lib_pe_git_starts_git_in_lib_and_the_skill_scripts():
+    """The runner pins ``--no-replace-objects``: a script that starts git itself reads what ``git replace`` says."""
+    files = sorted(path for folder in ("lib", "skills") for path in (REPO_ROOT / folder).rglob("*.py"))
+    assert REPO_ROOT / "lib" / "pe_git.py" in files
+    offenders = {
+        str(path.relative_to(REPO_ROOT)): direct_git_calls(path.read_text(encoding="utf-8"))
+        for path in files if path.name != "pe_git.py" or path.parent.name != "lib"
+    }
+    assert {name: lines for name, lines in offenders.items() if lines} == {}

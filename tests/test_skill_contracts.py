@@ -434,6 +434,7 @@ CONTRACTS: Dict[str, Contract] = {
             "included, so a commit re-created on a weekend morning carries a date inside the weekday hours and is "
             "accepted.",
             "At the first failed check it exits non-zero and leaves the branch unchanged.",
+            "It reads the commits themselves, with `git replace` ignored, so a replacement ref is not replayed.",
             "The dates of author and committer are checked again on the integrated branch before its push; once it is "
             "pushed, delete the tag with `git tag -d`.",
             "When the user says in chat that they are working outside the window, interactive work goes on, and the "

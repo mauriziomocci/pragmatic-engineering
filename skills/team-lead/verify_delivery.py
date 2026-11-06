@@ -4,18 +4,21 @@
 Usage: python3 <this skill's folder>/verify_delivery.py --integration <branch> --branch <branch> --tip <sha>
 --worktree <folder> --brief <file> [--reviewed <sha>] [--red <command>]
 
-Every revision (``--integration``, ``--branch``, ``--tip``, ``--reviewed``) is a full object id of 40 or 64 hex digits
-that is a commit, or else a branch name, which is read only as the exact ref ``refs/heads/<name>`` (the prefix is
-optional) with ``git show-ref --verify``, which also refuses a name that is no valid ref. A tag, ``refs/<name>``, ``HEAD`` or ``w~1`` is never read in its place:
-git's own lookup tries a tag and ``refs/<name>`` before a branch, and the worker can create them. Every git call runs
-with ``--no-replace-objects``, so ``git replace`` cannot change what a commit contains.
+``--tip`` and ``--reviewed`` are a full object id of 40 or 64 hex digits that is a commit, and nothing else: a branch is
+what the worker moves, so ``--reviewed w`` would read the new tip and find nothing unread. ``--integration`` and
+``--branch`` are a branch name, read only as the exact ref ``refs/heads/<name>`` (the prefix is optional) with
+``git show-ref --verify``, which also refuses a name that is no valid ref (``w~1``, ``..``, ``@{1}``); ``--integration``
+may also be a full commit id. A tag, ``refs/<name>``, ``HEAD`` or ``w~1`` is never read in place of a branch: git's own
+lookup tries a tag and ``refs/<name>`` before a branch, and the worker can create them. Every git call runs with
+``--no-replace-objects``, so ``git replace`` cannot change what a commit contains.
 
 ``--tip`` is the tip the worker declared in its report, ``--worktree`` is the worker's worktree and ``--brief`` the
 brief the worker was given: its ``OWNED: <glob>`` lines (one or more) name the files the worker may change, matched
 with ``fnmatchcase`` on the repository paths, where ``*`` also crosses ``/``.
 
 Exit 1, a refusal, with every reason on standard error: the branch does not point to the declared tip; the worktree
-is not clean (``git status --porcelain --untracked-files=all`` prints something); a file the delivery changed is
+is not clean (``git --no-optional-locks status --porcelain --untracked-files=all`` prints something; the option keeps
+status from refreshing and locking the worker's index); a file the delivery changed is
 outside every ``OWNED:`` line. The files are those of ``git diff --no-renames --name-only <merge base> <tip>``, where
 the merge base is that of the integration and the tip, so a delivery the integration has overtaken is judged on its
 own changes (without ``--no-renames`` a rename names only its destination, and a file moved in from another worker's
@@ -36,7 +39,9 @@ Exit 3, a review is needed, only when nothing is refused. The commits above ``--
 (``git rev-list <reviewed>..<tip> --not <integration>``, because the integration's own history was read when it was
 merged) are the ones to read. Without ``--reviewed`` (it then equals ``--integration``) only a merge whose
 ``git show --remerge-diff`` is not empty counts, that is, a merge whose conflict resolution nobody has read. With
-``--reviewed`` every commit counts, listed by sha, except a merge with an empty remerge diff.
+``--reviewed`` every commit counts, listed by sha, except a merge with an empty remerge diff; and the tip must descend
+from the reviewed tip (``git merge-base --is-ancestor``), or the branch was moved below or away from what the reviewer
+read, which is exit 3 with that reason.
 
 Exit 2, a usage error: a missing or unknown argument, a brief with no ``OWNED:`` line, a value that is neither a
 commit id nor a branch of the repository, a ``--red`` command that is empty, has an unbalanced quote or cannot start,
@@ -109,14 +114,19 @@ def branch_head(option: str, value: str) -> str:
     return found.stdout.strip()
 
 
-def commit_of(option: str, value: str) -> str:
-    """A full object id (40 or 64 hex digits) that is a commit, or else a branch name; nothing else reaches git."""
-    if not OBJECT_ID.fullmatch(value):
-        return branch_head(option, value)
-    found = run_git("rev-parse", "--verify", "--quiet", value + "^{commit}")
-    if found.returncode != 0:
-        raise UsageError("%s %r is not a commit of this repository" % (option, value))
+def commit_id(option: str, value: str) -> str:
+    """A full object id (40 or 64 hex digits) that is a commit of the repository; nothing else reaches git. The tip the
+    worker declares and the tip the reviewer read are pinned this way: a branch is what the worker moves."""
+    found = run_git("rev-parse", "--verify", "--quiet", value + "^{commit}") if OBJECT_ID.fullmatch(value) else None
+    if found is None or found.returncode != 0:
+        raise UsageError("%s %r is not a full commit id (40 or 64 hex digits) of a commit of this repository"
+                         % (option, value))
     return found.stdout.strip()
+
+
+def commit_of(option: str, value: str) -> str:
+    """A full commit id, or else a branch name."""
+    return commit_id(option, value) if OBJECT_ID.fullmatch(value) else branch_head(option, value)
 
 
 def brief_globs(lines: Sequence[str], key: str) -> Tuple[str, ...]:
@@ -157,11 +167,11 @@ def parse(argv: Sequence[str]) -> Request:
     if not Path(args.worktree).is_dir():
         raise UsageError("--worktree %r is not a folder" % args.worktree)
     integration = commit_of("--integration", args.integration)
-    reviewed = commit_of("--reviewed", args.reviewed) if args.reviewed else integration
+    reviewed = commit_id("--reviewed", args.reviewed) if args.reviewed is not None else integration
     owned, tests = read_brief(args.brief)
     if args.red is not None and not tests:
         raise UsageError("--red needs a `TESTS:` line in the brief")
-    return Request(integration, args.branch, branch_head("--branch", args.branch), commit_of("--tip", args.tip),
+    return Request(integration, args.branch, branch_head("--branch", args.branch), commit_id("--tip", args.tip),
                    args.worktree, owned, tests, reviewed,
                    args.reviewed is not None, None if args.red is None else split_command(args.red))
 
@@ -186,7 +196,7 @@ def branch_problems(request: Request) -> List[str]:
 
 
 def worktree_problems(request: Request) -> List[str]:
-    dirty = git("-C", request.worktree, "status", "--porcelain", "--untracked-files=all")
+    dirty = git("--no-optional-locks", "-C", request.worktree, "status", "--porcelain", "--untracked-files=all")
     return ["the worktree is not clean:\n%s" % dirty.rstrip()] if dirty.strip() else []
 
 
@@ -252,6 +262,15 @@ def unread_commits(request: Request) -> List[str]:
     return [sha for sha in git("rev-list", *above).split() if unread(sha)]
 
 
+def review_reasons(request: Request) -> List[str]:
+    """After a review the tip must descend from the tip the reviewer read: a branch moved below it, or away from it,
+    would otherwise show nothing above the reviewed tip."""
+    descends = run_git("merge-base", "--is-ancestor", request.reviewed, request.tip).returncode == 0
+    if request.after_review and not descends:
+        return ["the tip %s does not descend from the reviewed tip %s" % (request.tip, request.reviewed)]
+    return ["%s is not read by the reviewer" % sha for sha in unread_commits(request)]
+
+
 def main(argv: Sequence[str]) -> int:
     try:
         request = parse(argv)
@@ -260,12 +279,13 @@ def main(argv: Sequence[str]) -> int:
             for problem in problems:
                 print("verify_delivery: refused: %s" % problem, file=sys.stderr)
             return 1
-        unread = unread_commits(request)
+        reasons = review_reasons(request)
     except UsageError as error:
         print("verify_delivery: %s" % error, file=sys.stderr)
         return 2
-    if unread:
-        print("verify_delivery: review needed: not read by the reviewer: %s" % ", ".join(unread), file=sys.stderr)
+    if reasons:
+        for reason in reasons:
+            print("verify_delivery: review needed: %s" % reason, file=sys.stderr)
         return 3
     print("verify_delivery: accepted %s" % request.tip)
     return 0

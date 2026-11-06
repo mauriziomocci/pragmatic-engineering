@@ -12,7 +12,9 @@ branches are read as they are after the last fetch); a backup tag that already e
 checks on the result, stopping at the first that fails (``rebase.updateRefs`` is pinned off, so no other local branch
 moves). Only when all four pass does the branch move to the result, with ``git update-ref`` guarded by the tip read
 before the run. The user's working tree and index are never read or written: the new tree is the tag's, so they stay
-consistent, and uncommitted changes and untracked files, ignored or not, are safe. On any failure after the tag the
+consistent, and uncommitted changes and untracked files, ignored or not, are safe. Every git call runs with
+``--no-replace-objects`` (the shared runner of ``lib/pe_git.py``), so the commits are read as they are and a
+``git replace`` ref is not replayed. On any failure after the tag the
 branch has not moved, and the message says how to delete the tag.
 
 Every day uses the hours of ``pe.officeHours``, weekends and ``pe.holidays`` included, so a commit re-created on a
