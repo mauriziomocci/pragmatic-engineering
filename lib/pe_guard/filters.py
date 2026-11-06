@@ -524,8 +524,8 @@ _EQUALS_HINT = "a word that starts with = is the path of a command in zsh; write
 _COMMAND_WORD_HINT = (
     "a command word is read only as a plain name, letters, digits, . _ + and - after the first character, with a plain "
     "path before it; a NAME=value or NAME+=value, a glob or a ~ leave open which command runs or what it gets: "
-    "name the command in full, and set a variable for it only as env NAME=value <command>, right after env, with the "
-    "value in letters, digits and . _ / : @ , + % -, or in single quotes"
+    "name the command in full, and set a variable for a command other than git only as env NAME=value <command>, "
+    "right after env, with the value in letters, digits and . _ / : @ , + % -, or in single quotes; git takes none"
 )
 _WRAPPER_HINT = (
     "env, command, sudo, builtin, exec and nohup are read only with the options the reader knows, each as a word of "

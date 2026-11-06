@@ -911,7 +911,7 @@ def test_a_worker_git_command_with_a_variable_set_by_env_is_denied(worker_worktr
 
 def test_a_variable_written_before_the_command_word_is_denied_with_the_form_that_passes(worker_worktree):
     reason = hook.decide(bash_call("SHOP_DATA_DIR=/abs/folder python3 -m unittest", worker_worktree))
-    assert reason and "env NAME=value" in reason
+    assert reason and "env NAME=value" in reason and "git takes none" in reason
 
 
 @pytest.mark.parametrize("command", [

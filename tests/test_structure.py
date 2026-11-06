@@ -1822,23 +1822,20 @@ GUIDED_SENTENCES = {
          "dovuto ad altro lavoro."),
         # the worker boundary: what it holds and what is not proven
         ("The worker boundary of the `PreToolUse` hook is proven live only in part. In the live run of 6 November "
-         "2026, with two `worker` sub-agents started with `isolation: worktree`, Claude Code itself refused a "
-         "sub-agent "
-         "a Write into the checkout of the session that launched it, before the hook; whether it refuses other paths "
-         "outside the worktree was not tried. For a sub-agent the hook's boundary on file writes is therefore a second "
-         "line, while a worker session, which has no such isolation, needs it in full. The Bash part of the boundary "
-         "ran inside the sub-agents: it denied four times a command outside its grammar, `env NAME=value <command>`, "
-         "which it now reads, and its checks of `rm`, `cd` and git were not reached. For a worker session the "
-         "boundary is not proven live.",
+         "2026, launched with `claude -p`, with two `worker` sub-agents started with `isolation: worktree`, Claude "
+         "Code refused a sub-agent a Write into the checkout of the session that launched it, before the hook; one "
+         "path was tried, and why it refused, whether it refuses other paths and whether it does so in an interactive "
+         "run were not tried. The Bash part of the boundary ran inside the sub-agents: it denied four times a command "
+         "outside its grammar, `env NAME=value <command>`, which it now reads, and its checks of `rm`, `cd` and git "
+         "were not reached. For a worker session the boundary is not proven live.",
          "Il confine del worker nell'hook `PreToolUse` è provato dal vivo solo in parte. Nella prova dal vivo del 6 "
-         "novembre 2026, con due sotto-agenti `worker` avviati con `isolation: worktree`, Claude Code stesso ha "
-         "rifiutato a un sotto-agente un Write nel checkout della sessione che lo aveva lanciato, prima dell'hook; se "
-         "rifiuti anche altri percorsi fuori dal worktree non è stato provato. Per un sotto-agente il confine "
-         "dell'hook sulle scritture di file è quindi una seconda linea, mentre a una sessione worker, che non ha "
-         "quell'isolamento, serve per intero. La parte Bash del confine ha girato dentro i sotto-agenti: ha negato "
-         "quattro volte un comando fuori dalla sua grammatica, `env NOME=valore <comando>`, che ora legge, e i suoi "
-         "controlli su `rm`, `cd` e git non sono stati raggiunti. Per una sessione worker il confine non è provato "
-         "dal vivo."),
+         "novembre 2026, lanciata con `claude -p`, con due sotto-agenti `worker` avviati con `isolation: worktree`, "
+         "Claude Code ha rifiutato a un sotto-agente un Write nel checkout della sessione che lo aveva lanciato, "
+         "prima dell'hook; è stato provato un solo percorso, e non è stato provato perché l'abbia rifiutato, se "
+         "rifiuti altri percorsi né se lo faccia in un'esecuzione interattiva. La parte Bash del confine ha girato "
+         "dentro i sotto-agenti: ha negato quattro volte un comando fuori dalla sua grammatica, `env NOME=valore "
+         "<comando>`, che ora legge, e i suoi controlli su `rm`, `cd` e git non sono stati raggiunti. Per una "
+         "sessione worker il confine non è provato dal vivo."),
         ("It denies the agent `pragmatic-engineering:worker` a Write, Edit or NotebookEdit outside the repository root "
          "of the call's working directory, and does the same to a session whose root carries the signal `.pe/worker`, "
          "an empty file that the coordinating session writes into the worktree of a worker session before it sends the brief; the agents that "
@@ -2230,6 +2227,24 @@ def test_readmes_date_the_live_regression_runs_and_drop_the_claims_they_made_fal
     for path, text, claim, more in zip((README, README_IT), pages(), status, claims):
         missing = [sentence for sentence in (claim,) + more if sentence not in text]
         assert missing == [] and [old for old in stale if old in text] == [], path.name
+
+
+EXCLUDE_SENTENCES = (
+    "`team-lead` adds `.claude/worktrees/`, where Claude Code puts the worktrees of sub-agents, to the repository's "
+    "`info/exclude` before the first sub-agent launch, a local line never committed, and removes a sub-agent's "
+    "worktree with `git worktree remove` once its branch is integrated and its report recorded.",
+    "`team-lead` aggiunge `.claude/worktrees/`, dove Claude Code mette i worktree dei sotto-agenti, "
+    "all'`info/exclude` del repository prima del primo lancio di un sotto-agente, una riga locale mai inclusa in un "
+    "commit, e toglie il worktree di un sotto-agente con `git worktree remove` quando il suo ramo è integrato e il "
+    "suo rapporto registrato.",
+)
+
+
+@pytest.mark.parametrize("section", ["explain-parallel", "reference"])
+def test_readmes_say_where_the_line_in_info_exclude_comes_from(section):
+    """team-lead leaves a local line in the user's repository: the parallel work and the files reference name it."""
+    for text, sentence in zip(pages(section), EXCLUDE_SENTENCES):
+        assert sentence in text
 
 
 def test_readmes_count_a_repeated_breach_once_and_name_wcag_2_2():
