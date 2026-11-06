@@ -109,7 +109,7 @@ EXPECTED_RULE_MARKERS = {
     "Subagents": {"status-line", "escalate", "no-publishing", "no-config-edits"},
 }
 # Digest of the reviewed wording of rules.md (all of it: preamble, headings and every rule).
-RULES_SHA256 = "ce217d8c11fcf999d349459384af39fd56c2ec92d1e82b2d526e2a444089950a"
+RULES_SHA256 = "4a89e3c940d0fc1a014f22ec930b900677b4e631666fd5d780687e7baa561258"
 # Requirements of spec section 17.3 and of the method rules the plugin carries: each one must sit in the block
 # that reaches the right agents and say what the rule asks, so a rule gutted under its marker fails as well.
 # A value is (block, phrase, ...): every phrase must be in the line, the qualifiers of the master included.
@@ -163,7 +163,7 @@ MIGRATION_REQUIREMENTS = {
     "lenses": (
         "Main session", "never traded", "known defects", "as a proposal to the user",
         "a change to an interface or to API responses, other than a trivial text fix, gets one round of the UX, user "
-        "and review lenses before the spec, a round that first measures what the change touches, naming gaps",
+        "and review lenses before the spec; an agreement of lenses without an independent check is a finding",
     ),
     "quality-gate": (
         "Main session",
@@ -1682,8 +1682,13 @@ GUIDED_SENTENCES = {
          "2026 it did in one live run of three, with the step's earlier text, and covered the six widths and the zoom "
          "from the markup, named the rendering it could not see, and said nothing about a second theme, which that "
          "page does not have; in the other two the UX lens checked 320 px and the contrast at rest from the markup and "
-         "the single theme was named, with no other width, no zoom, no other state and no `Not verified:` line. The "
-         "current text has not been tried live.",
+         "the single theme was named, with no other width, no zoom, no other state and no `Not verified:` line. On 6 "
+         "November 2026, in three live runs of the same scenario with the plugin installed, whose rules then also asked "
+         "the round to measure first (a clause removed because these runs did not show it), the main session loaded "
+         "`interface-quality` in one, with the current text: its brief asked the UX lens to measure first, and the "
+         "lens did, with a `Not verified:` line naming the widths, the zoom and the hover and focus states it could "
+         "not see. In the other two the brief asked the UX lens to propose: when `interface-quality` is not loaded, "
+         "nothing in the plugin makes the main session ask for the measure first.",
          "In un'esecuzione dal vivo del 4 novembre 2026 la sessione principale non ha caricato il tuo "
          "`quality-scoring` alla validazione finale, benché la regola lo dica (l'esito del cancello era giusto, perché "
          "le due rubriche davano le stesse classi); in una del 5 novembre 2026 ha caricato prima quello del plugin e "
@@ -1692,8 +1697,15 @@ GUIDED_SENTENCES = {
          "il testo precedente, e il passo ha coperto le sei larghezze e lo zoom dal markup, ha nominato il rendering "
          "che non poteva vedere, e non ha detto nulla di un secondo tema, che quella pagina non ha; nelle altre due la "
          "lente UX ha controllato 320 px e il contrasto a riposo dal markup e l'unico tema è stato nominato, senza "
-         "altre larghezze, senza zoom, senza altri stati e senza la riga `Not verified:`. Il testo attuale non è "
-         "ancora stato provato dal vivo."),
+         "altre larghezze, senza zoom, senza altri stati e senza la riga `Not verified:`. Il 6 novembre 2026, in tre "
+         "esecuzioni dal vivo dello stesso scenario con il plugin installato, le cui regole chiedevano allora anche che il "
+         "giro misurasse prima (una clausola tolta perché queste esecuzioni non l'hanno mostrata), la sessione "
+         "principale ha caricato "
+         "`interface-quality` in una, con il testo attuale: il suo ordine ha chiesto alla lente UX di misurare prima, "
+         "e la lente lo ha fatto, con una riga `Not verified:` che nomina le larghezze, lo zoom e gli stati di hover e "
+         "focus che non poteva vedere. Nelle altre due l'ordine chiedeva alla lente UX di proporre: quando "
+         "`interface-quality` non è caricata, nel plugin niente fa chiedere alla sessione principale di misurare "
+         "prima."),
         ("The reviewer checks the failure that the commit message names against the diff, which shows that the "
          "claim is consistent with the change, not that the test was really seen failing before the code.",
          "Il revisore controlla sul diff il fallimento che il messaggio del commit nomina, il che mostra che "
