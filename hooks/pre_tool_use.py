@@ -24,9 +24,25 @@
    under .pe, or a .pe symlink, never holds a session.
    The worker agent pays one git subprocess to find <toplevel>, and a call
    that finds .pe/worker in its cwd or a folder above it pays two, the root
-   and whether git tracks anything under .pe; any other file call looks only
-   for that file, without git, so a setup whose <toplevel> is not one of
-   those folders (core.worktree, GIT_WORK_TREE) is never held.
+   and whether git tracks anything under .pe; any other call of these tools
+   looks only for that file, without git, so a setup whose <toplevel> is not
+   one of those folders (core.worktree, GIT_WORK_TREE) is never held.
+4. For the same calls it reads each statement of a Bash command, as
+   statement_words of lib/pe_guard/filters.py cuts it, by its command word:
+   the name after its last /, read through env, command and sudo, with the
+   redirections left out. It denies rm, rmdir, unlink and find -delete on a
+   path that is not below <toplevel> or that the text does not spell out (a
+   leading ~, or $, a backtick, a brace or a backslash); a cd or pushd to
+   anything but one folder at or below <toplevel>, even on its own, because
+   the shell keeps that folder for the next call and the hold is found from
+   it; a git command that -C, --git-dir, --work-tree, GIT_DIR or
+   GIT_WORK_TREE points outside <toplevel>; and git stash, git worktree
+   remove and prune, and a git branch that deletes, moves or forces a branch,
+   which all the worktrees share. Every path is read from the call's cwd,
+   where a cd that fails leaves the shell. The reading is textual, as in
+   lib/pe_guard/filters.py: what the text does not show stays open, and the
+   READMEs list it under "Known limits". lib/pe_guard is imported only for a
+   worker's command, so a broken module fails no other call.
 
 The reviewer's checks match closed shapes only: anything a pattern does not
 describe is denied, so a gap in a pattern can only make the reviewer stricter.
@@ -42,13 +58,15 @@ failure on its call is no decision. The hook is registered with "onFailure":
 "continue": a hook that cannot start or times out lets the call through, and
 the limits of the reviewer and of the worker are then declared only.
 """
+import itertools
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, FrozenSet, List, NamedTuple, Optional, Tuple
 
 REVIEWER = "pragmatic-engineering:blunt-reviewer"
 WORKER = "pragmatic-engineering:worker"
@@ -194,11 +212,221 @@ def _worker_file_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional[st
     return _WORKER_WRITE_REASON
 
 
-# The tools a worker changes files with; its Bash commands are not checked.
+class _Statement(NamedTuple):
+    """One statement of a shell command: its NAME=value words, its command word by its final name, and the rest."""
+
+    assignments: List[str]
+    name: str
+    arguments: List[str]
+
+
+# The commands that run the command written after their options, with the options of each that take the next word.
+_WRAPPERS: Dict[str, FrozenSet[str]] = {
+    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-P"}),
+    "command": frozenset(),
+    "sudo": frozenset({
+        "-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "--close-from", "-D", "--chdir",
+        "-R", "--chroot", "-r", "--role", "-t", "--type", "-T", "--command-timeout", "-U", "--other-user",
+    }),
+}
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+# Digits, then < or >, then the target, or nothing when the target is the next word.
+_REDIRECTION = re.compile(r"[0-9]*[<>]+(.*)", re.DOTALL)
+# What the shell would change before using a path: a ~ to expand, a $ or a backtick to substitute, a brace to expand,
+# a backslash to drop. A path with any of them is not the path the text spells.
+_UNSPELLED = re.compile(r"^~|[$`{\\]")
+
+
+def _statement_words() -> Callable[[str], List[List[str]]]:
+    """The shell reader of lib/pe_guard, imported only for a worker's command: a broken module stops no other call."""
+    lib = str(Path(__file__).resolve().parent.parent / "lib")
+    if lib not in sys.path:
+        sys.path.insert(0, lib)
+    from pe_guard.filters import statement_words
+
+    return statement_words
+
+
+def _without_redirections(words: List[str]) -> List[str]:
+    """The words without the redirections and their targets: a target is no argument, and nothing here reads it."""
+    kept: List[str] = []
+    remaining = iter(words)
+    for word in remaining:
+        redirection = _REDIRECTION.fullmatch(word)
+        if redirection is None:
+            kept.append(word)
+        elif not redirection.group(1):
+            next(remaining, None)
+    return kept
+
+
+def _after_options(words: List[str], position: int, value_options: FrozenSet[str]) -> int:
+    """The index of the first word after the options that start at ``position``, each with its value if it takes one."""
+    while position < len(words) and words[position].startswith("-"):
+        if words[position] == "--":
+            return position + 1
+        position += 2 if words[position] in value_options else 1
+    return position
+
+
+def _read_statement(words: List[str]) -> _Statement:
+    """The statement's assignments, its command word by the name after the last / and its arguments, read through
+    the wrappers env, command and sudo; quotes and backslashes in the command word do not hide it (\\rm is rm)."""
+    words = _without_redirections(words)
+    assignments: List[str] = []
+    position = 0
+    while position < len(words):
+        name = words[position].replace("\\", "").rsplit("/", 1)[-1]
+        if _ASSIGNMENT.fullmatch(words[position]):
+            assignments.append(words[position])
+            position += 1
+        elif name in _WRAPPERS:
+            position = _after_options(words, position + 1, _WRAPPERS[name])
+        else:
+            return _Statement(assignments, name, words[position + 1:])
+    return _Statement(assignments, "", [])
+
+
+def _operands(arguments: List[str]) -> List[str]:
+    return [word for word in arguments if not word.startswith("-")]
+
+
+def _spelled_below(root: Optional[str], cwd: Any, path: str) -> bool:
+    """Whether ``path`` is the path the shell uses and lies below ``root``: a path a worker may delete."""
+    return bool(root) and not _UNSPELLED.search(path) and _inside(root, cwd, path)
+
+
+def _spelled_within(root: Optional[str], cwd: Any, path: str) -> bool:
+    """Whether ``path`` is ``root`` or lies below it, spelled as above: a folder a worker may work in.
+
+    A folder is within the worktree when a name inside it lies below the root, which also holds for the root itself;
+    posixpath joins with /, which _UNSPELLED accepts, where os.path on Windows would join with a backslash.
+    """
+    return _spelled_below(root, cwd, posixpath.join(path, "x"))
+
+
+_WORKER_DELETE_REASON = (
+    "a worker deletes only below the root of its own worktree, never the root itself, and only paths that the command "
+    "spells out: none that starts with ~ or holds $, a backtick, a brace or a backslash"
+)
+_WORKER_CD_REASON = (
+    "a worker's shell stays in its own worktree: cd and pushd take one folder inside it, spelled out, because the "
+    "shell keeps that folder for the next call and the hook finds the worktree from it"
+)
+_WORKER_GIT_PLACE_REASON = (
+    "a worker runs git only on its own worktree: no -C, --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE that "
+    "points outside it"
+)
+_WORKER_GIT_SHARED_REASON = (
+    "a worker leaves alone what all the worktrees share: no git stash, no git worktree remove or prune, and no git "
+    "branch that deletes, moves or forces a branch; name the need in the delivery file instead"
+)
+_WORKER_COMMAND_REASON = "a worker's Bash call carries its command as one string, which the hook reads"
+
+
+def _deletion_problem(statement: _Statement, cwd: Any, root: Optional[str]) -> Optional[str]:
+    targets = _operands(statement.arguments)
+    return None if all(_spelled_below(root, cwd, target) for target in targets) else _WORKER_DELETE_REASON
+
+
+def _find_problem(statement: _Statement, cwd: Any, root: Optional[str]) -> Optional[str]:
+    """find -delete deletes what it finds below its start paths, the words between its leading options and its
+    expression; without any, the start is the working directory."""
+    if "-delete" not in statement.arguments:
+        return None
+    after_options = itertools.dropwhile(lambda word: word.startswith("-"), statement.arguments)
+    starts = list(itertools.takewhile(lambda word: not word.startswith(("-", "(", "!")), after_options)) or ["."]
+    return None if all(_spelled_below(root, cwd, start) for start in starts) else _WORKER_DELETE_REASON
+
+
+def _cd_problem(statement: _Statement, cwd: Any, root: Optional[str]) -> Optional[str]:
+    """cd and pushd without a folder go home or swap folders, and zsh reads two folders as a substitution in the path,
+    so only one folder, spelled out, passes."""
+    folders = _operands(statement.arguments)
+    return None if len(folders) == 1 and _spelled_within(root, cwd, folders[0]) else _WORKER_CD_REASON
+
+
+# git's options before the subcommand that take the next word as their value when no = joins it to them, and those
+# of them that point git at another repository or working tree, with the variables that do the same.
+_GIT_VALUE_OPTIONS = frozenset({
+    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source",
+})
+_GIT_PLACE_OPTIONS = frozenset({"-C", "--git-dir", "--work-tree"})
+_GIT_PLACE_VARIABLES = frozenset({"GIT_DIR", "GIT_WORK_TREE"})
+# git branch options that delete, move or force a branch (-C is --copy --force); git takes short ones bundled (-Df)
+# and long ones shortened to a prefix (--del), so a word that could be either counts.
+_BRANCH_WRITE_LETTERS = frozenset("dDfmMC")
+_BRANCH_WRITE_NAMES = ("delete", "force", "move")
+
+
+def _git_options(arguments: List[str]) -> Tuple[List[str], List[str]]:
+    """The folders named by git's options before the subcommand, and the words from the subcommand on."""
+    places: List[str] = []
+    position = 0
+    while position < len(arguments) and arguments[position].startswith("-"):
+        option, joined, value = arguments[position].partition("=")
+        if not joined and option in _GIT_VALUE_OPTIONS:
+            position += 1
+            value = arguments[position] if position < len(arguments) else ""
+        if option in _GIT_PLACE_OPTIONS:
+            places.append(value)
+        position += 1
+    return places, arguments[position:]
+
+
+def _writes_a_branch(word: str) -> bool:
+    if word.startswith("--"):
+        return len(word) > 2 and any(name.startswith(word[2:]) for name in _BRANCH_WRITE_NAMES)
+    return word.startswith("-") and bool(_BRANCH_WRITE_LETTERS & set(word[1:]))
+
+
+# The git subcommands that change what all the worktrees of a repository share, each with the test of the words after
+# it: one stash stack, one list of worktrees, one set of branches.
+_SHARED_STATE: Dict[str, Callable[[List[str]], bool]] = {
+    "stash": lambda words: True,
+    "worktree": lambda words: words[:1] in (["remove"], ["prune"]),
+    "branch": lambda words: any(_writes_a_branch(word) for word in words),
+}
+
+
+def _git_problem(statement: _Statement, cwd: Any, root: Optional[str]) -> Optional[str]:
+    places, words = _git_options(statement.arguments)
+    places += [assignment.partition("=")[2] for assignment in statement.assignments
+               if assignment.partition("=")[0] in _GIT_PLACE_VARIABLES]
+    if not all(_spelled_within(root, cwd, place) for place in places):
+        return _WORKER_GIT_PLACE_REASON
+    shared = _SHARED_STATE.get(words[0]) if words else None
+    return _WORKER_GIT_SHARED_REASON if shared and shared(words[1:]) else None
+
+
+# The commands whose words the check reads, by the name of the command word.
+_COMMAND_CHECKS: Dict[str, Callable[[_Statement, Any, Optional[str]], Optional[str]]] = {
+    "rm": _deletion_problem,
+    "rmdir": _deletion_problem,
+    "unlink": _deletion_problem,
+    "find": _find_problem,
+    "cd": _cd_problem,
+    "pushd": _cd_problem,
+    "git": _git_problem,
+}
+
+
+def _worker_command_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional[str]) -> Optional[str]:
+    """Why a statement of a worker's command reaches outside its worktree, or None; see the module docstring."""
+    command = tool_input.get("command")
+    if not isinstance(command, str):
+        return _WORKER_COMMAND_REASON
+    statements = (_read_statement(words) for words in _statement_words()(command))
+    reasons = (_COMMAND_CHECKS[s.name](s, cwd, root) for s in statements if s.name in _COMMAND_CHECKS)
+    return next((reason for reason in reasons if reason), None)
+
+
+# The tools a worker changes files with, its shell included.
 _WORKER_TOOL_CHECKS: Dict[str, Callable[[Dict[str, Any], Any, Optional[str]], Optional[str]]] = {
     "Write": _worker_file_problem,
     "Edit": _worker_file_problem,
     "NotebookEdit": _worker_file_problem,
+    "Bash": _worker_command_problem,
 }
 
 

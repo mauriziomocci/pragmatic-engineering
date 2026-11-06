@@ -559,3 +559,179 @@ def test_a_crash_on_any_other_file_call_is_no_decision(monkeypatch, capsys, tool
     monkeypatch.setattr(hook, "decide", crash)
     assert run_main(monkeypatch, file_call(tool_name, "/etc/hosts", "/srv/work", agent_type=None)) == 0
     assert capsys.readouterr() == ("", "")
+
+
+def bash_call(command, cwd, agent_type=WORKER):
+    return reviewer_call("Bash", {"command": command, "description": "run"}, cwd=str(cwd), agent_type=agent_type)
+
+
+def outside(tmp_path):
+    """A folder beside the worker's worktree, spelled with forward slashes: a backslash is an escape in the shell."""
+    return (tmp_path / "elsewhere").as_posix()
+
+
+DELETIONS_OUTSIDE = [
+    "rm -rf %(outside)s",
+    "rm -r ../main/x",
+    "rmdir ~/x",
+    'unlink "$HOME/x"',
+    "find %(outside)s -delete",
+    "echo ok && rm -rf ..",
+    "rm -rf .",  # the root itself is no deletion target
+    "find . -name '*.pyc' -delete",  # nor is it a start of find -delete
+    "rm -rf build/{..,x}",  # brace expansion: the text does not spell the paths out
+    "rm -rf ..\\/main",  # a backslash the shell drops
+    "rm -rf %(main)s/README.md > /dev/null 2>&1",
+]
+
+
+@pytest.mark.parametrize("command", DELETIONS_OUTSIDE)
+def test_a_worker_deletion_outside_its_worktree_is_denied(worker_worktree, tmp_path, command):
+    text = command % {"outside": outside(tmp_path), "main": (tmp_path / "main").as_posix()}
+    reason = hook.decide(bash_call(text, worker_worktree))
+    assert reason and "deletes only" in reason
+
+
+GIT_AIMED_OUTSIDE = [
+    "git -C %(main)s commit -m x",
+    "git --git-dir=%(main)s/.git log",
+    "git --git-dir %(main)s/.git log",
+    "git --work-tree=../main add .",
+    "GIT_DIR=../x git commit -m x",
+    "env GIT_WORK_TREE=../main git add .",
+    "git -c core.pager=cat -C ../mate status",  # -c takes its value, so -C is still read
+    "cd %(main)s && git commit -m x",
+]
+
+
+@pytest.mark.parametrize("command", GIT_AIMED_OUTSIDE)
+def test_a_worker_git_command_aimed_outside_its_worktree_is_denied(worker_worktree, tmp_path, command):
+    reason = hook.decide(bash_call(command % {"main": (tmp_path / "main").as_posix()}, worker_worktree))
+    assert reason and HELD in reason
+
+
+@pytest.mark.parametrize("command,denied", [
+    ("find -L %(outside)s -name x -delete", True),  # the start paths come after the leading options
+    ("find %(outside)s -name x", False),  # without -delete find deletes nothing
+    ("find -L . -name x -delete", False),  # from a subfolder its start lies below the root
+    ("find -name x -delete", False),  # no start path: the working directory
+])
+def test_find_delete_is_read_from_its_start_paths(worker_worktree, tmp_path, command, denied):
+    reason = hook.decide(bash_call(command % {"outside": outside(tmp_path)}, worker_worktree / "docs"))
+    assert bool(reason) == denied
+
+
+@pytest.fixture
+def nested_worktree(worker_worktree, tmp_path):
+    """A worktree inside the main checkout, like .superpowers/worktrees/*: ../.. leaves it, not the checkout."""
+    nested = tmp_path / "main" / ".superpowers" / "worktrees" / "n"
+    git(tmp_path / "main", "worktree", "add", "-q", "-b", "n", str(nested))
+    return nested
+
+
+@pytest.mark.parametrize("command", [
+    "cd %(main)s", "pushd /tmp", "cd", "cd ~", "cd -", "cd $HOME", "cd docs docs2", "cd ../..",
+    "cd docs; cd ..",  # every path is read from the call's folder, where a cd that fails leaves the shell
+])
+def test_a_worker_cd_out_of_its_worktree_is_denied_on_its_own(nested_worktree, tmp_path, command):
+    reason = hook.decide(bash_call(command % {"main": (tmp_path / "main").as_posix()}, nested_worktree))
+    assert reason and "cd and pushd" in reason
+
+
+@pytest.mark.parametrize("command", [
+    "git stash", "git stash push -m x", "git stash list", "git -C . stash pop",
+    "git worktree remove ../other", "git worktree prune",
+    "git branch -D x", "git branch -f integration HEAD", "git branch -d x", "git branch --delete x",
+    "git branch -m new", "git branch --move a b", "git branch -M a b", "git branch --force x HEAD",
+    "git branch -C x integration",  # --copy --force overwrites the branch it copies onto
+    "git branch -Df x",  # short options bundled
+    "git branch --del x",  # a long option shortened, as git accepts
+])
+def test_a_worker_git_command_on_state_shared_by_the_worktrees_is_denied(worker_worktree, command):
+    reason = hook.decide(bash_call(command, worker_worktree))
+    assert reason and "all the worktrees share" in reason
+
+
+@pytest.mark.parametrize("command", [
+    "/bin/rm -rf %(outside)s", "env rm -rf %(outside)s", "command rm -rf %(outside)s", "sudo rm -rf %(outside)s",
+    "env -u HOME FOO=1 rm -rf %(outside)s", "sudo -u bob rm -rf %(outside)s", "sudo env rm -rf %(outside)s",
+    "sudo -- rm -rf %(outside)s", "\\rm -rf %(outside)s", "'rm' -rf %(outside)s", "/usr/bin/git -C %(outside)s log",
+])
+def test_the_command_word_is_read_through_its_path_and_its_wrappers(worker_worktree, tmp_path, command):
+    assert hook.decide(bash_call(command % {"outside": outside(tmp_path)}, worker_worktree))
+
+
+@pytest.mark.parametrize("command", [
+    "rm -rf build", "rm -rf .pe/tmp", "git commit -m x", "git merge integration", "git branch", "git worktree list",
+    "python3 -m pytest -q", "cd sub && rm x",
+    "cd %(root)s", "cd docs && cd %(root)s", "git -C %(root)s status", "git -C docs log",
+    "git -C . switch -c w-sync HEAD",
+    "rm -rf build > /dev/null 2>&1", "pushd docs > /dev/null", "find build -name '*.pyc' -delete",
+    "git branch -vv", "git branch --sort=-committerdate", "git branch --merged", "git commit -m 'git stash; rm -rf /'",
+    "echo rm -rf /x", "ls ../main", "grep -rn cd ../main", "cat ~/x", "",
+])
+def test_worker_commands_inside_the_worktree_get_no_decision(worker_worktree, command):
+    assert hook.decide(bash_call(command % {"root": worker_worktree.as_posix()}, worker_worktree)) is None
+
+
+WORKER_PLACEHOLDERS = {"<integration tip>": "integration", "<branch>": "w", "<tip>": "HEAD"}
+
+
+def test_every_git_command_of_the_worker_definition_passes_the_check(worker_worktree):
+    """The boundary must not stop the worker's own contract: its branch, its merge, its resumption, its tip."""
+    _, body = parse_frontmatter((REPO_ROOT / "agents" / "worker.md").read_text(encoding="utf-8"))
+    commands = []
+    for command in AGENT_COMMAND.findall(body):
+        for placeholder, value in WORKER_PLACEHOLDERS.items():
+            command = command.replace(placeholder, value)
+        commands.append(command)
+    assert len(commands) >= 4 and "git switch -C w-sync HEAD" in commands
+    assert [command for command in commands if hook.decide(bash_call(command, worker_worktree))] == []
+
+
+@pytest.mark.parametrize("agent_type", [None, "general-purpose"])
+def test_the_bash_check_holds_a_session_with_the_signal(worker_worktree, tmp_path, agent_type):
+    write_signal(worker_worktree)
+    command = "rm -rf %s/README.md" % (tmp_path / "main").as_posix()
+    reason = hook.decide(bash_call(command, worker_worktree / "docs", agent_type))
+    assert reason and "deletes only" in reason
+    assert hook.decide(bash_call("rm -rf build", worker_worktree / "docs", agent_type)) is None
+
+
+@pytest.mark.parametrize("agent_type", [None, "general-purpose", "pragmatic-engineering:other-agent"])
+def test_a_command_with_no_signal_above_its_cwd_starts_no_git(worker_worktree, tmp_path, monkeypatch, agent_type):
+    calls = record_git(monkeypatch)
+    assert hook.decide(bash_call("rm -rf %s" % outside(tmp_path), worker_worktree, agent_type)) is None
+    assert calls == []
+
+
+@pytest.mark.parametrize("tool_input", [{}, {"command": None}, {"command": ["rm", "-rf", "/"]}, "rm -rf /"])
+def test_a_worker_command_of_an_unknown_shape_is_denied(worker_worktree, tool_input):
+    assert hook.decide(reviewer_call("Bash", tool_input, cwd=str(worker_worktree), agent_type=WORKER))
+
+
+def test_a_worker_outside_a_repository_is_denied_the_commands_the_check_reads(tmp_path):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert hook.decide(bash_call("rm -rf build", plain))
+    assert hook.decide(bash_call("python3 -m pytest -q", plain)) is None
+
+
+def test_a_broken_shared_module_denies_only_a_worker_command(worker_worktree, tmp_path, monkeypatch, capsys):
+    """The shell reader is imported only for a worker's command, so a broken module touches no other session."""
+    monkeypatch.setitem(sys.modules, "pe_guard.filters", None)  # the next import of it raises ImportError
+    assert run_main(monkeypatch, bash_call("rm -rf build", worker_worktree)) == 2
+    assert "pe_guard.filters" in capsys.readouterr().err
+    assert hook.decide(bash_call("rm -rf build", worker_worktree, agent_type=None)) is None
+    write_signal(worker_worktree)  # a worker session is known only from its signal: a failure lets its call through
+    assert run_main(monkeypatch, bash_call("rm -rf build", worker_worktree, agent_type=None)) == 0
+    assert capsys.readouterr() == ("", "")
+
+
+def test_a_worker_command_is_decided_by_the_script_run_as_a_process(worker_worktree, tmp_path):
+    """Run as a script the hook finds the shell reader in the plugin's lib folder, without the tests' path."""
+    env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    payload = json.dumps(bash_call("rm -rf %s" % outside(tmp_path), worker_worktree)).encode("utf-8")
+    proc = subprocess.run([sys.executable, str(SCRIPT)], cwd=str(tmp_path), input=payload, capture_output=True,
+                          env=env, timeout=120)
+    assert proc.returncode == 2 and b"deletes only" in proc.stderr
