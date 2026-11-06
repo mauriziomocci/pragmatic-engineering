@@ -142,7 +142,7 @@ MIGRATION_REQUIREMENTS = {
         "adopted it",
     ),
     "suite-before-commit": ("Every agent", "zero failures"),
-    "evidence": ("Every agent", "never taken as evidence"),
+    "evidence": ("Every agent", "a claim of another agent or lens is re-checked, never taken as evidence"),
     "reuse": ("Every agent", "the reuse statement"),
     "production-go": ("Every agent", "its own explicit go", "the blast radius and the way back"),
     "candour": (
@@ -163,7 +163,7 @@ MIGRATION_REQUIREMENTS = {
     "lenses": (
         "Main session", "never traded", "known defects", "as a proposal to the user",
         "a change to an interface or to API responses, other than a trivial text fix, gets one round of the UX, user "
-        "and review lenses before the spec",
+        "and review lenses before the spec; an agreement of lenses without an independent check is a finding",
     ),
     "quality-gate": (
         "Main session",
@@ -1683,7 +1683,8 @@ GUIDED_SENTENCES = {
          "from the markup, named the rendering it could not see, and said nothing about a second theme, which that "
          "page does not have; in the other two the UX lens checked 320 px and the contrast at rest from the markup and "
          "the single theme was named, with no other width, no zoom, no other state and no `Not verified:` line. On 6 "
-         "November 2026, in three live runs of the same scenario with the plugin installed, the main session loaded "
+         "November 2026, in three live runs of the same scenario with the plugin installed, whose rules then also asked "
+         "the round to measure first (a clause removed because these runs did not show it), the main session loaded "
          "`interface-quality` in one, with the current text: its brief asked the UX lens to measure first, and the "
          "lens did, with a `Not verified:` line naming the widths, the zoom and the hover and focus states it could "
          "not see. In the other two the brief asked the UX lens to propose: when `interface-quality` is not loaded, "
@@ -1697,7 +1698,9 @@ GUIDED_SENTENCES = {
          "che non poteva vedere, e non ha detto nulla di un secondo tema, che quella pagina non ha; nelle altre due la "
          "lente UX ha controllato 320 px e il contrasto a riposo dal markup e l'unico tema è stato nominato, senza "
          "altre larghezze, senza zoom, senza altri stati e senza la riga `Not verified:`. Il 6 novembre 2026, in tre "
-         "esecuzioni dal vivo dello stesso scenario con il plugin installato, la sessione principale ha caricato "
+         "esecuzioni dal vivo dello stesso scenario con il plugin installato, le cui regole chiedevano allora anche che il "
+         "giro misurasse prima (una clausola tolta perché queste esecuzioni non l'hanno mostrata), la sessione "
+         "principale ha caricato "
          "`interface-quality` in una, con il testo attuale: il suo ordine ha chiesto alla lente UX di misurare prima, "
          "e la lente lo ha fatto, con una riga `Not verified:` che nomina le larghezze, lo zoom e gli stati di hover e "
          "focus che non poteva vedere. Nelle altre due l'ordine chiedeva alla lente UX di proporre: quando "
