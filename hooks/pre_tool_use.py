@@ -32,19 +32,25 @@
    grammar that it reads for sure and raises UnreadableCommand on anything
    else; the hook then denies the command with the reader's advice, because
    a check by command word would let through whatever its reader misreads.
-   It denies rm, rmdir, unlink and find -delete on a path that is not below
-   <toplevel> or that the shell would still expand (a leading ~, a glob); a
-   cd or pushd to anything but one folder at or below <toplevel>, even on
-   its own, because the shell keeps that folder for the next call and the
-   hold is found from it; a git command with a glob in any word, which the
-   shell could turn into another subcommand or option, or that -C,
-   --git-dir or --work-tree points outside <toplevel>, or that carries a
-   configuration of its own (-c, --config-env); and the git commands that
-   change what all the worktrees share, in _SHARED_STATE. Every path is
-   read from the call's cwd, where a cd that fails leaves the shell. Any other command word, and
-   any other git subcommand, gets no decision: the READMEs list under
-   "Known limits" what stays open. lib/pe_guard is imported only for a
-   worker's command, so a broken module fails no other call.
+   Every path is read from the call's cwd, so it denies a cd or pushd that
+   is not the whole command, one statement alone: it would move the shell
+   away from cwd for the statements after it, while the shell keeps the new
+   folder for the next call, which is read from there. It denies a cd or
+   pushd to anything but one folder at or below <toplevel>, with no leading
+   ~ or glob and not -, +N or -N, because the hold is found from it; rm,
+   rmdir, unlink and find -delete, whose start paths include the word after
+   each -f, on a path that is not below <toplevel> or that the shell would
+   still expand (a leading ~, a glob); a git command with a glob in any
+   word, which the shell could turn into another subcommand or option, or
+   that -C, --git-dir or --work-tree points outside <toplevel>, or that
+   carries a configuration of its own (-c, --config-env); and the git
+   commands that change what all the worktrees share, in _SHARED_STATE.
+   The operands are read as getopt reads them: the options end at -- or at
+   the first word that is not one, and every word after is an operand. Any
+   other command word, and any other git subcommand, gets no decision: the
+   READMEs list under "Known limits" what stays open. lib/pe_guard is
+   imported only for a worker's command, so a broken module fails no other
+   call.
 
 The reviewer's checks match closed shapes only: anything a pattern does not
 describe is denied, so a gap in a pattern can only make the reviewer stricter.
@@ -236,7 +242,15 @@ def _shell_reader() -> ModuleType:
 
 
 def _operands(arguments: List[str]) -> List[str]:
-    return [word for word in arguments if not word.startswith("-")]
+    """The words after the options, as getopt reads them: the options end at -- or at the first word that is not one,
+    and a lone - is not one; every word after is an operand. BSD rm, macOS's, deletes a -d/.. written after a path;
+    GNU rm reads it as an option, so reading it as a path only denies more."""
+    position = 0
+    while position < len(arguments) and arguments[position].startswith("-") and arguments[position] != "-":
+        if arguments[position] == "--":
+            return arguments[position + 1:]
+        position += 1
+    return arguments[position:]
 
 
 def _spelled_below(root: Optional[str], cwd: Any, path: str) -> bool:
@@ -258,8 +272,10 @@ _WORKER_DELETE_REASON = (
     "spells out: none that starts with ~ or holds a glob (*, ?, [); name each path in full"
 )
 _WORKER_CD_REASON = (
-    "a worker's shell stays in its own worktree: cd and pushd take one folder inside it, spelled out in full, because "
-    "the shell keeps that folder for the next call and the hook finds the worktree from it"
+    "a worker's shell stays in its own worktree: cd and pushd take one folder inside it, spelled out in full (not -, "
+    "+N or -N), and each runs alone, in a call of its own, because the hook reads every path of a call from the "
+    "folder where the call starts, and the shell keeps the new folder for the next call, whose worktree the hook "
+    "finds from it; run the cd in its own call, or use git -C <folder> and paths from the current folder"
 )
 _WORKER_GIT_PLACE_REASON = (
     "a worker runs git only on its own worktree: no -C, --git-dir or --work-tree that points outside it, and no "
@@ -285,20 +301,30 @@ def _deletion_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]
 
 
 def _find_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> Optional[str]:
-    """find -delete deletes what it finds below its start paths, the words between its leading options and its
-    expression; without any, the start is the working directory."""
-    if "-delete" not in statement.arguments:
+    """find -delete deletes what it finds below its start paths: the word after each -f, BSD find's (macOS's) way to
+    name one that starts with -, and the words between its leading options and its expression; without any, the start
+    is the working directory."""
+    arguments = statement.arguments
+    if "-delete" not in arguments:
         return None
-    after_options = itertools.dropwhile(lambda word: word.startswith("-"), statement.arguments)
-    starts = list(itertools.takewhile(lambda word: not word.startswith(("-", "(", "!")), after_options)) or ["."]
-    return None if all(_spelled_below(root, cwd, start) for start in starts) else _WORKER_DELETE_REASON
+    after_options = itertools.dropwhile(lambda word: word.startswith("-"), arguments)
+    starts = [path for option, path in zip(arguments, arguments[1:]) if option == "-f"]
+    starts += itertools.takewhile(lambda word: not word.startswith(("-", "(", "!")), after_options)
+    return None if all(_spelled_below(root, cwd, start) for start in starts or ["."]) else _WORKER_DELETE_REASON
+
+
+# The folders that cd and pushd name by a shorthand: - is $OLDPWD, even after --, and +N or -N an entry of zsh's
+# directory stack.
+_CD_SHORTHAND = re.compile(r"[+-][0-9]*")
 
 
 def _cd_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> Optional[str]:
     """cd and pushd without a folder go home or swap folders, and zsh reads two folders as a substitution in the path,
     so only one folder, spelled out, passes."""
     folders = _operands(statement.arguments)
-    return None if len(folders) == 1 and _spelled_within(root, cwd, folders[0]) else _WORKER_CD_REASON
+    if len(folders) == 1 and not _CD_SHORTHAND.fullmatch(folders[0]) and _spelled_within(root, cwd, folders[0]):
+        return None
+    return _WORKER_CD_REASON
 
 
 # git's options before the subcommand that take the next word as their value when no = joins it to them; those that
@@ -375,14 +401,15 @@ def _git_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> 
     return _WORKER_GIT_SHARED_REASON if shared and shared(words[1:]) else None
 
 
-# The commands whose words the check reads, by the name of the command word.
+# The commands that move the shell to another folder; and the commands whose words the check reads, by the name of the
+# command word.
+_FOLDER_COMMANDS = ("cd", "pushd")
 _COMMAND_CHECKS: Dict[str, Callable[["ShellStatement", Any, Optional[str]], Optional[str]]] = {
     "rm": _deletion_problem,
     "rmdir": _deletion_problem,
     "unlink": _deletion_problem,
     "find": _find_problem,
-    "cd": _cd_problem,
-    "pushd": _cd_problem,
+    **dict.fromkeys(_FOLDER_COMMANDS, _cd_problem),
     "git": _git_problem,
 }
 
@@ -397,6 +424,8 @@ def _worker_command_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional
         statements = filters.read_statements(command)
     except filters.UnreadableCommand as unreadable:
         return _WORKER_UNREADABLE_REASON % unreadable
+    if len(statements) > 1 and any(s.name in _FOLDER_COMMANDS for s in statements):
+        return _WORKER_CD_REASON  # after a cd the shell runs the rest elsewhere than the cwd it is read from
     reasons = (_COMMAND_CHECKS[s.name](s, cwd, root) for s in statements if s.name in _COMMAND_CHECKS)
     return next((reason for reason in reasons if reason), None)
 

@@ -580,6 +580,8 @@ DELETIONS_OUTSIDE = [
     "find . -name '*.pyc' -delete",  # nor is it a start of find -delete
     "exec rm -rf %(outside)s", "nohup rm -rf %(outside)s",  # read through the wrappers
     "rm -rf %(main)s/README.md > /dev/null 2>&1",
+    "rm -rf -- -d/../../x",  # after -- every word is an operand, one that starts with - too
+    "rm -r x -d/../../x",  # BSD rm, macOS's, ends its options at the first operand: -d/../../x is a path
 ]
 
 
@@ -611,6 +613,7 @@ def test_a_worker_git_command_aimed_outside_its_worktree_is_denied(worker_worktr
     ("find %(outside)s -name x", False),  # without -delete find deletes nothing
     ("find -L . -name x -delete", False),  # from a subfolder its start lies below the root
     ("find -name x -delete", False),  # no start path: the working directory
+    ("find -f -d/../../../x -name x -delete", True),  # BSD find, macOS's, starts from the path after -f, even -d/..
 ])
 def test_find_delete_is_read_from_its_start_paths(worker_worktree, tmp_path, command, denied):
     reason = hook.decide(bash_call(command % {"outside": outside(tmp_path)}, worker_worktree / "docs"))
@@ -625,13 +628,40 @@ def nested_worktree(worker_worktree, tmp_path):
     return nested
 
 
-@pytest.mark.parametrize("command", [
-    "cd %(main)s", "pushd /tmp", "cd", "cd ~", "cd -", "cd docs docs2", "cd ../..",
-    "cd docs; cd ..",  # every path is read from the call's folder, where a cd that fails leaves the shell
+@pytest.mark.parametrize("folder,command", [
+    ("", "cd %(main)s"), ("", "pushd /tmp"), ("", "cd"), ("", "cd ~"), ("", "cd -"), ("", "cd docs docs2"),
+    ("", "cd ../.."), ("docs", "cd ../.."),
+    ("", "cd -- -"), ("", "pushd -- -"), ("", "cd -- -1"), ("", "cd +1"),  # $OLDPWD even after --, zsh's dir stack
+    ("", "cd - docs"),  # a lone - is an operand: bash 3.2, macOS's, goes to $OLDPWD and drops docs
+    ("", "cd docs -/../../x"),  # zsh reads two words as a substitution in the path, a second one led by - too
 ])
-def test_a_worker_cd_out_of_its_worktree_is_denied_on_its_own(nested_worktree, tmp_path, command):
-    reason = hook.decide(bash_call(command % {"main": (tmp_path / "main").as_posix()}, nested_worktree))
+def test_a_worker_cd_out_of_its_worktree_is_denied_on_its_own(nested_worktree, tmp_path, folder, command):
+    reason = hook.decide(bash_call(command % {"main": (tmp_path / "main").as_posix()}, nested_worktree / folder))
     assert reason and "cd and pushd" in reason
+
+
+CD_ALONE = "a call of its own"
+
+
+# The hook reads every path of a call from the call's folder, which a cd or pushd before it has moved the shell away
+# from; from docs each path below lies inside the worktree, while from the folder the shell reaches it does not.
+@pytest.mark.parametrize("folder,command", [
+    ("docs", "cd .. && rm -rf ../x"), ("docs", "cd .. && cd .."), ("docs", "cd .. && git -C ../mate checkout -- ."),
+    ("docs", "pushd .. && rm -rf ../x"), ("docs", "cd ..; ls"), ("docs", "cd ..\nls"), ("docs", "cd .. || ls"),
+    ("docs", "ls | cd .."), ("docs", "ls && cd sub"),
+    ("", "cd docs && ls"), ("", "cd sub && rm x"), ("", "cd docs && cd %(root)s"), ("", "cd docs; cd .."),
+])
+def test_a_worker_cd_or_pushd_with_another_statement_is_denied(worker_worktree, folder, command):
+    reason = hook.decide(bash_call(command % {"root": worker_worktree.as_posix()}, worker_worktree / folder))
+    assert reason and CD_ALONE in reason
+
+
+@pytest.mark.parametrize("folder,command", [
+    ("", "cd docs"), ("", "pushd docs"), ("docs", "cd .."), ("docs", "pushd .."), ("", "cd -- docs"),
+    ("", "cd -P docs"), ("", "cd docs;"), ("", "pushd docs > /dev/null"),
+])
+def test_a_worker_cd_or_pushd_alone_inside_its_worktree_gets_no_decision(worker_worktree, folder, command):
+    assert hook.decide(bash_call(command, worker_worktree / folder)) is None
 
 
 @pytest.mark.parametrize("command", [
@@ -819,8 +849,8 @@ def test_the_command_word_is_read_through_its_path_and_its_wrappers(worker_workt
 
 @pytest.mark.parametrize("command", [
     "rm -rf build", "rm -rf .pe/tmp", "git commit -m x", "git merge integration", "git branch", "git worktree list",
-    "python3 -m pytest -q", "cd sub && rm x",
-    "cd %(root)s", "cd docs && cd %(root)s", "git -C %(root)s status", "git -C docs log",
+    "python3 -m pytest -q",
+    "cd %(root)s", "git -C %(root)s status", "git -C docs log",
     "git -C . switch -c w-sync HEAD",
     "rm -rf build > /dev/null 2>&1", "pushd docs > /dev/null", "find build -name '*.pyc' -delete",
     "git branch -vv", "git branch --sort=-committerdate", "git branch --merged", "git commit -m 'git stash; rm -rf /'",
