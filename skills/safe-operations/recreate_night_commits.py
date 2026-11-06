@@ -19,7 +19,6 @@ Every day uses the hours of ``pe.officeHours``, weekends and ``pe.holidays`` inc
 weekend morning carries a date inside the weekday hours, which the date check accepts.
 """
 import re
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -27,6 +26,7 @@ from pathlib import Path
 from typing import Callable, List, Sequence, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+from pe_git import run_git  # noqa: E402
 from pe_worktree import WorktreeError, temporary_worktree  # noqa: E402  (the plugin's shared code, found from this file)
 
 WINDOW = re.compile(r"(\d\d)-(\d\d)")
@@ -69,24 +69,19 @@ def parse_window(value: str) -> Window:
     return Window(start, end)
 
 
-def _run(*args: str) -> subprocess.CompletedProcess:
-    """``surrogateescape`` keeps the bytes of a commit message that is not valid text, so it still compares exactly."""
-    return subprocess.run(["git", *args], capture_output=True, text=True, errors="surrogateescape")
-
-
 def git(*args: str) -> str:
-    proc = _run(*args)
+    proc = run_git(*args)
     if proc.returncode != 0:
         raise Refusal("git", "`git %s` failed: %s" % (" ".join(args), proc.stderr.strip()))
     return proc.stdout
 
 
 def git_succeeds(*args: str) -> bool:
-    return _run(*args).returncode == 0
+    return run_git(*args).returncode == 0
 
 
 def office_window() -> Window:
-    proc = _run("config", "--get", "pe.officeHours")
+    proc = run_git("config", "--get", "pe.officeHours")
     value = proc.stdout.strip()
     if proc.returncode != 0 or value in ("", "none"):
         raise Refusal("office hours", "no office hours set: the window comes from `git config pe.officeHours`")
@@ -139,7 +134,7 @@ def branch_is_unchanged(tag: str) -> Tuple[str]:
 def rebase(base: str, folder: str) -> str:
     """Replay the range inside ``folder`` and return the new tip. ``rebase.updateRefs`` is pinned off because it would
     move every other local branch that points into the range, before the checks."""
-    proc = _run("-c", "rebase.updateRefs=false", "-C", folder, "rebase", "--force-rebase", "--ignore-date",
+    proc = run_git("-c", "rebase.updateRefs=false", "-C", folder, "rebase", "--force-rebase", "--ignore-date",
                 "--rebase-merges", base)
     if proc.returncode != 0:
         raise Refusal("rebase", "`git rebase` failed: %s" % proc.stderr.strip())
@@ -205,7 +200,7 @@ def verify(recreation: Recreation) -> None:
 
 def move_branch(tip: str, recreation: Recreation) -> None:
     """``tip`` is the value read before the run, so a branch that moved meanwhile is refused, never overwritten."""
-    proc = _run("update-ref", "-m", "recreate_night_commits", "HEAD", recreation.new, tip)
+    proc = run_git("update-ref", "-m", "recreate_night_commits", "HEAD", recreation.new, tip)
     if proc.returncode != 0:
         detail = "the branch moved while the script ran: %s" % proc.stderr.strip()
         raise Refusal("branch", detail)

@@ -49,6 +49,19 @@ class Delivery:
         git(self.worktree, "commit", "-q", "--no-edit")
         return self.tip()
 
+    def integrate_a_resolved_merge(self) -> str:
+        """Another worker's delivery lands on ``integration`` as a merge that keeps the integration's side."""
+        git(self.repo, "branch", "other", "integration")
+        git(self.repo, "checkout", "-q", "other")
+        commit(self.repo, {"src/b/b.py": "b = 'other'\n"}, "other worker")
+        git(self.repo, "checkout", "-q", "integration")
+        commit(self.repo, {"src/b/b.py": "b = 'integration'\n"}, "integration moves")
+        subprocess.run(["git", "merge", "--no-edit", "other"], cwd=str(self.repo), capture_output=True)
+        git(self.repo, "checkout", "--ours", "--", "src/b/b.py")
+        git(self.repo, "add", "src/b/b.py")
+        git(self.repo, "commit", "-q", "--no-edit")
+        return git(self.repo, "rev-parse", "HEAD").strip()
+
     def red_command(self) -> str:
         return shlex.join([Path(sys.executable).as_posix(), "tests/test_a.py"])
 
@@ -113,15 +126,28 @@ def test_a_tag_named_like_the_branch_does_not_stand_in_for_it(delivery):
     refused(delivery.run(replace={"--tip": declared}), "not to the declared tip")
 
 
-@pytest.mark.parametrize("option", ["--integration", "--reviewed"])
-def test_a_name_that_is_both_a_branch_and_a_tag_exits_2(delivery, option):
-    """A tag ``integration`` at the delivery tip would empty the diff and accept any file."""
+@pytest.mark.parametrize("kind", ["tag", "ref-under-refs"])
+def test_a_tag_or_a_ref_named_like_the_integration_is_ignored(delivery, kind):
+    """A tag ``integration``, or ``refs/integration``, at the delivery tip would empty the diff if git read it."""
     delivery.work({"src/b/stray.py": "s = 1\n"})
-    name = "integration" if option == "--integration" else "w"
-    git(delivery.repo, "tag", name, delivery.tip())
-    proc = delivery.run(replace={option: name})
-    usage_error(proc, "refs/heads/%s" % name)
-    assert "refs/tags/%s" % name in proc.stderr
+    if kind == "tag":
+        git(delivery.repo, "tag", "integration", delivery.tip())
+    else:
+        git(delivery.repo, "update-ref", "refs/integration", delivery.tip())
+    refused(delivery.run(), "outside the OWNED lines")
+
+
+@pytest.mark.parametrize("kind", ["tag", "ref-under-refs"])
+def test_a_tag_or_a_ref_named_like_the_reviewed_branch_is_ignored(delivery, kind):
+    """``--reviewed w`` is the branch ``w`` (the delivery tip, so nothing is unread), whatever else is named ``w``."""
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    base = git(delivery.repo, "rev-parse", "integration").strip()
+    if kind == "tag":
+        git(delivery.repo, "tag", "w", base)
+    else:
+        git(delivery.repo, "update-ref", "refs/w", base)
+    proc = delivery.run(("--reviewed", "w"))
+    assert proc.returncode == 0, proc.stderr
 
 
 @pytest.mark.parametrize("spelling", ["full-ref", "sha"])
@@ -144,6 +170,21 @@ def test_a_clean_sync_merge_exits_0(delivery):
 
 
 # --- exit 1: refused, each with its reason -----------------------------------------------------------------------
+
+
+def test_a_delivery_the_integration_has_overtaken_is_judged_on_its_own_changes(delivery):
+    """Another worker's file landed on ``integration`` since this branch left it; that file is not this delivery's."""
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    delivery.integrate({"src/b/other.py": "o = 1\n"})
+    proc = delivery.run()
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_an_overtaken_delivery_with_its_red_is_judged_on_its_own_test_files(delivery):
+    delivery.work({"src/a/feature.py": "VALUE = 1\n", "tests/test_a.py": FEATURE_TEST})
+    delivery.integrate({"src/b/other.py": "o = 1\n"})
+    proc = delivery.run(("--red", delivery.red_command()))
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_a_tip_other_than_the_declared_one_exits_1(delivery):
@@ -227,6 +268,38 @@ def test_a_resolution_after_the_reviewed_tip_exits_3(delivery):
     assert delivery.run(("--reviewed", later)).returncode == 0
 
 
+def test_an_ordinary_commit_after_the_reviewed_tip_exits_3_and_is_listed(delivery):
+    """After the review, what the reviewer did not read is any commit, not only a merge."""
+    reviewed = delivery.work({"src/a/new.py": "x = 1\n"})
+    later = delivery.work({"src/a/more.py": "y = 1\n"})
+    proc = delivery.run(("--reviewed", reviewed))
+    assert proc.returncode == 3 and later in proc.stderr, proc.stderr
+
+
+def test_the_reviewed_tip_itself_and_a_clean_sync_after_it_exit_0(delivery):
+    reviewed = delivery.work({"src/a/new.py": "x = 1\n"})
+    assert delivery.run(("--reviewed", reviewed)).returncode == 0
+    delivery.integrate({"src/b/more.py": "m = 1\n"})
+    git(delivery.worktree, "merge", "-q", "--no-edit", "integration")
+    assert delivery.run(("--reviewed", reviewed)).returncode == 0
+
+
+def test_without_reviewed_ordinary_commits_do_not_ask_for_a_review(delivery):
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    delivery.work({"src/a/more.py": "y = 1\n"})
+    assert delivery.run().returncode == 0
+
+
+def test_a_reviewed_merge_already_in_the_integration_is_not_flagged_again(delivery):
+    """Another worker's resolution, merged into ``integration`` before this delivery synced, was read by its own review."""
+    reviewed = delivery.work({"src/a/new.py": "x = 1\n"})
+    delivery.integrate_a_resolved_merge()
+    git(delivery.worktree, "merge", "-q", "--no-edit", "integration")
+    for extra in ((), ("--reviewed", reviewed)):
+        proc = delivery.run(extra)
+        assert proc.returncode == 0, proc.stderr
+
+
 def test_a_refusal_wins_over_a_review_request(delivery):
     delivery.work({"src/b/stray.py": "s = 1\n"})
     conflicting_resolution(delivery)
@@ -252,6 +325,48 @@ def test_a_refusal_wins_over_a_review_request(delivery):
 def test_usage_errors_exit_2(delivery, replace):
     delivery.work({"src/a/new.py": "x = 1\n"})
     usage_error(delivery.run(replace=replace))
+
+
+@pytest.mark.parametrize(
+    "option, value",
+    [("--branch", "w~1"), ("--integration", "integration~0"), ("--reviewed", "integration^{commit}"),
+     ("--tip", "w~0"), ("--branch", "w..integration"), ("--integration", "HEAD")],
+)
+def test_a_name_that_is_not_a_plain_branch_name_exits_2(delivery, option, value):
+    """Revision syntax is not a branch name: ``w~1`` would be the base, and the declared tip could be made to match."""
+    delivery.work({"src/b/stray.py": "s = 1\n"})
+    replace = {option: value}
+    if option == "--branch":
+        replace["--tip"] = git(delivery.repo, "rev-parse", "integration").strip()
+    usage_error(delivery.run(replace=replace))
+
+
+def test_a_tag_spelled_like_a_full_branch_ref_is_no_branch(delivery):
+    """Git would find ``refs/tags/refs/heads/ghost`` for the name ``refs/heads/ghost``; no branch is called ``ghost``."""
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    git(delivery.repo, "tag", "refs/heads/ghost", delivery.tip())
+    usage_error(delivery.run(replace={"--integration": "ghost"}), "not a branch")
+
+
+def test_an_abbreviated_sha_is_no_commit_id(delivery):
+    tip = delivery.work({"src/a/new.py": "x = 1\n"})
+    usage_error(delivery.run(replace={"--tip": tip[:10]}))
+
+
+def test_the_refs_heads_prefix_of_a_branch_is_optional(delivery):
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    proc = delivery.run(replace={"--branch": "refs/heads/w", "--integration": "refs/heads/integration"})
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_a_replaced_commit_is_read_as_it_is(delivery):
+    """``git replace`` changes what git reads for a sha; the script reads the commits themselves."""
+    delivery.work({"src/b/stray.py": "s = 1\n"})
+    tip = delivery.tip()
+    clean = git(delivery.repo, "commit-tree", "-p", "integration", "-m", "clean",
+                git(delivery.repo, "rev-parse", "integration^{tree}").strip()).strip()
+    git(delivery.repo, "replace", tip, clean)
+    refused(delivery.run(), "outside the OWNED lines")
 
 
 def test_a_brief_without_owned_lines_exits_2(delivery):
@@ -323,6 +438,27 @@ def test_a_test_command_that_cannot_start_exits_2(delivery):
     usage_error(delivery.run(("--red", "no-such-program-for-the-red")), "cannot start")
 
 
+def test_a_red_refusal_carries_the_last_lines_of_the_output_of_the_command(delivery):
+    """The reason reaches the worker: without the output it names no test and no assertion."""
+    noisy = "".join("print('noise line %d')\n" % number for number in range(30)) + "raise SystemExit('LAST-WORDS')\n"
+    delivery.work({"tests/test_a.py": noisy})
+    proc = delivery.run(("--red", delivery.red_command()))
+    refused(proc, "fails at the delivery tip")
+    assert "LAST-WORDS" in proc.stderr and "noise line 29" in proc.stderr
+    assert "noise line 5\n" not in proc.stderr  # only the last 20 lines
+
+
+def test_a_red_that_never_failed_carries_the_output_of_the_command_too(delivery):
+    delivery.work({"tests/test_a.py": "print('RAN-AND-PASSED')\n"})
+    refused(delivery.run(("--red", delivery.red_command())), "RAN-AND-PASSED")
+
+
+@pytest.mark.parametrize("command", ['pytest "tests', "", "   "], ids=["unbalanced-quote", "empty", "blank"])
+def test_a_test_command_that_cannot_be_read_exits_2_with_its_reason(delivery, command):
+    add_feature_with_its_test(delivery)
+    usage_error(delivery.run(("--red", command)), "--red")
+
+
 @pytest.mark.parametrize(
     "scenario, command, code",
     [
@@ -339,3 +475,13 @@ def test_the_temporary_worktrees_are_gone_on_every_exit(delivery, scenario, comm
     assert proc.returncode == code, proc.stderr
     assert (code != 2) or "cannot start" in proc.stderr
     assert delivery.worktree_entries() == 2  # the checkout and the worker's own
+
+
+def test_no_text_says_that_the_script_changes_nothing_or_that_the_command_is_confined():
+    """With ``--red`` the script adds and removes worktrees and prunes, and the command inherits the environment."""
+    claims = ("changes nothing", "no others", "nessun'altra")
+    whole = [SCRIPT, REPO_ROOT / "skills" / "team-lead" / "SKILL.md"]
+    about_it = [line for name in ("README.md", "README.it.md")
+                for line in (REPO_ROOT / name).read_text(encoding="utf-8").splitlines() if "verify_delivery" in line]
+    for text in [path.read_text(encoding="utf-8") for path in whole] + about_it:
+        assert [claim for claim in claims if claim in text] == []

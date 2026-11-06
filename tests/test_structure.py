@@ -1752,14 +1752,22 @@ GUIDED_SENTENCES = {
          "ancora stato provato."),
     ),
     "limits": (
-        ("With `--red`, `verify_delivery.py` runs the command of the project in two temporary worktrees, one of the "
-         "integration tip and one of the delivery tip, with the resources that the brief names and no others: a "
-         "command that needs a database or a port that the brief does not give it fails for that reason, not for the "
-         "tests.",
-         "Con `--red`, `verify_delivery.py` esegue il comando del progetto in due worktree temporanei, uno della "
-         "punta d'integrazione e uno della punta della consegna, con le risorse che il brief nomina e nessun'altra: "
-         "un comando che ha bisogno di un database o di una porta che il brief non gli dà fallisce per quel motivo, "
-         "non per i test."),
+        ("With `--red`, `verify_delivery.py` runs the command of the project, and so the code of the delivery, in two "
+         "temporary worktrees, one of the integration tip and one of the delivery tip, which it removes afterwards, "
+         "and it runs `git worktree prune`, which drops the records of every worktree of the repository whose folder "
+         "is gone. The command inherits the environment of the session that runs the script, and the script enforces "
+         "none of the resources of the brief: the coordinator sets them in the command, through "
+         "`env NAME=value <command>` because no shell reads the command, or in the environment. The command is split "
+         "with `shlex.split`, so a path in it is written with `/`: a backslash is an escape, and on Windows a path "
+         "with backslashes is read wrongly.",
+         "Con `--red`, `verify_delivery.py` esegue il comando del progetto, e quindi il codice della consegna, in due "
+         "worktree temporanei, uno della punta d'integrazione e uno della punta della consegna, che poi rimuove, ed "
+         "esegue `git worktree prune`, che cancella le registrazioni di ogni worktree del repository la cui "
+         "cartella non c'è più. Il comando eredita l'ambiente della sessione che esegue lo script, e lo script non "
+         "impone nessuna delle risorse del brief: le imposta il coordinatore nel comando, con "
+         "`env NOME=valore <comando>` perché nessuna shell legge il comando, o nell'ambiente. Il comando è diviso con "
+         "`shlex.split`, quindi un percorso al suo interno si scrive con `/`: la barra rovesciata è un carattere di "
+         "escape, e su Windows un percorso con barre rovesciate viene letto male."),
         ("the autonomy (including the rule that the model sets its profile only when you ask)",
          "l'autonomia (compresa la regola per cui il modello ne imposta il profilo solo quando glielo chiedi)"),
         ("does not run when `python3` is missing, when it crashes before reading its input or when it passes its "
@@ -2025,14 +2033,14 @@ GUIDED_SENTENCES = {
          "modello di eseguire, e `skills/team-lead/verify_delivery.py`, che `team-lead` dice al modello di "
          "eseguire."),
         ("`skills/team-lead/verify_delivery.py` checks the delivery of a worker against git and exits 0 when it is "
-         "accepted, 1 when it is refused, 2 on a usage error and 3 when a merge of the delivery needs a review. To "
-         "run it by hand: `python3 <the folder of team-lead>/verify_delivery.py --integration <rev> --branch "
+         "accepted, 1 when it is refused, 2 on a usage error and 3 when it holds something the reviewer has not read. To "
+         "run it by hand: `python3 <the folder of team-lead>/verify_delivery.py --integration <branch> --branch "
          "<branch> --tip <sha> --worktree <folder> --brief <file> [--reviewed <sha>] [--red <command>]`, from the "
          "checkout of the repository.",
          "`skills/team-lead/verify_delivery.py` controlla con git la consegna di un worker ed esce con 0 se è "
-         "accettata, con 1 se è rifiutata, con 2 per un errore d'uso e con 3 quando un merge della consegna ha "
-         "bisogno di una revisione. Per eseguirlo a mano: `python3 <la cartella di team-lead>/verify_delivery.py "
-         "--integration <rev> --branch <ramo> --tip <sha> --worktree <cartella> --brief <file> [--reviewed <sha>] "
+         "accettata, con 1 se è rifiutata, con 2 per un errore d'uso e con 3 quando contiene qualcosa che il revisore "
+         "non ha letto. Per eseguirlo a mano: `python3 <la cartella di team-lead>/verify_delivery.py "
+         "--integration <ramo> --branch <ramo> --tip <sha> --worktree <cartella> --brief <file> [--reviewed <sha>] "
          "[--red <comando>]`, dal checkout del repository."),
         ("`PreToolUse`, registered in `hooks/hooks.json` with the matcher `Agent|Bash|Write|Edit|NotebookEdit` as "
          "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, with a timeout of 10 seconds and "

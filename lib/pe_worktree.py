@@ -3,18 +3,15 @@
 It lives in ``lib/`` because two skills use it and a skill never imports from another skill's folder.
 """
 import shutil
-import subprocess
 import tempfile
 from contextlib import contextmanager
 from typing import Iterator
 
+from pe_git import run_git
+
 
 class WorktreeError(Exception):
     """The temporary worktree could not be made; the message says why."""
-
-
-def _git(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], capture_output=True, text=True, errors="replace")
 
 
 @contextmanager
@@ -26,11 +23,11 @@ def temporary_worktree(revision: str, prefix: str) -> Iterator[str]:
     except OSError as error:
         raise WorktreeError("the temporary folder cannot be made: %s" % error) from error
     try:
-        added = _git("worktree", "add", "--detach", folder, revision)
+        added = run_git("worktree", "add", "--detach", folder, revision)
         if added.returncode != 0:
             raise WorktreeError("`git worktree add` failed: %s" % added.stderr.strip())
         yield folder
     finally:
-        _git("worktree", "remove", "--force", folder)
-        _git("worktree", "prune")
+        run_git("worktree", "remove", "--force", folder)
+        run_git("worktree", "prune")
         shutil.rmtree(folder, ignore_errors=True)  # what is left when `worktree add` failed before it took over

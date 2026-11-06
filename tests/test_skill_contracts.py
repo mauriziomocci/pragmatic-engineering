@@ -457,7 +457,10 @@ CONTRACTS: Dict[str, Contract] = {
             "an approved plan", "at least two disjoint file areas", "a test environment for each suite",
             "OWNED:", "TESTS:", "exits 1", "exits 3", "--remerge-diff", "--reviewed",
             "before the review and again after the PASS",
+            "inherits the environment", "env NAME=value", "git worktree prune", "write a path in it with `/`",
+            "not in the integration",
         ),
+        absent=("changes nothing", "no others"),
         extra_files=("verify_delivery.py",),
     ),
     "quality-scoring": Contract(
