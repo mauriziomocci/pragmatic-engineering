@@ -258,6 +258,10 @@ CONTRACTS: Dict[str, Contract] = {
             "When the project has its own audit criterion, a stop rule written in its own instructions or "
             "configuration and never inferred from any other document, that criterion closes the review cycle of "
             "`spec` instead of `pass`.",
+            # the user checks on return that the cycle really closed, coverage included, from the entry alone
+            "The decision log entry of a `spec` approval quotes the reviewer's lines `VERDICT:`, `FINDINGS:` and "
+            "`COVERAGE:` of the round that closed the cycle, or its verdict line when that round's report has no such "
+            "lines.",
             # the gate stays closed at the cap: the PM lens parks, it does not approve
             "The gate of `spec` stays closed while a critical or serious finding is open: at the cap of rounds the PM "
             "lens may only park the open findings or propose a deferral to the user, as `blunt-review` says; the "
