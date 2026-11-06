@@ -498,6 +498,8 @@ CONTRACTS: Dict[str, Contract] = {
             # the review base is a commit id, because deliveries are integrated while others are reviewed
             "`<integration tip>..<tip>`", "the commit id of the integration tip", "never the branch name",
             "(`git merge-base`)", "except a merge with an empty remerge diff",
+            "the commit id that the run after the PASS accepted, never the branch name",
+            "the worker can move its branch",
             "does not check that the integration tip is an ancestor", "the brief may set another",
             # the signal exists before the brief is sent, so the worker's first turn is held
             'asks only for the "online" report', "only then send the brief by `SendMessage`",

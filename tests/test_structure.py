@@ -616,8 +616,10 @@ def test_blunt_reviewer_body_states_the_a1_contract():
         "git merge-base --is-ancestor", 'git rev-parse --verify "<base>^{commit}"',
         "REPORT: none", "AGENTS.md",
         # --remerge-diff redoes each merge, and no option turns off a merge driver of the user's git configuration
-        "The one exception is the merge read of step 2, which redoes each merge: a merge driver that a git "
-        "configuration defines (`merge.<name>.driver`) runs during it and can hide a resolution.",
+        "There are two exceptions. The first is the merge read of step 2, which redoes each merge: a merge driver "
+        "that a git configuration defines (`merge.<name>.driver`) runs during it and can hide a resolution. The "
+        "second is `log.showSignature`: when it is set, git runs the program that `gpg.program` names during any "
+        "show or log.",
         "When the write of the report under `.pe/reviews/` is refused, put the whole report in your final message, "
         "before the five lines, and write `REPORT: inline`; `REPORT: none` keeps its one meaning, that nothing "
         "was reviewed.",
@@ -1905,8 +1907,8 @@ GUIDED_SENTENCES = {
         ("It denies `rm`, `rmdir`, `unlink` and `find ... -delete` on a path that does not lie below the worktree "
          "root, so the root itself is denied too, or that the shell would still expand, because it starts with `~` "
          "or holds a glob (`*`, `?`, `[`); a `cd` or `pushd` to anything but one folder inside the worktree, spelled "
-         "out in the same way, even on its own, because the shell keeps that folder for the next call and from there "
-         "the hook would no longer find the worktree; a git command with a glob in any of its words, which the shell "
+         "out in the same way and not `-`, `+N` or `-N`, because the shell keeps that folder for the next call and "
+         "from there the hook would no longer find the worktree; a git command with a glob in any of its words, which the shell "
          "could turn into another subcommand or option, a git command that `-C`, `--git-dir` or `--work-tree` points "
          "outside the worktree, or that carries a configuration of its own (`-c`, `--config-env`); and, because all "
          "the worktrees share what they change, `git stash`, `git worktree remove` and `prune`, `git push`, `git "
@@ -1915,18 +1917,23 @@ GUIDED_SENTENCES = {
          "Nega `rm`, `rmdir`, `unlink` e `find ... -delete` su un percorso che non sta sotto la radice del worktree, "
          "quindi anche sulla radice stessa, o che la shell espanderebbe ancora, perché comincia con `~` o contiene "
          "un carattere jolly (`*`, `?`, `[`); un `cd` o un `pushd` verso qualunque cosa che non sia una sola "
-         "cartella dentro il worktree, scritta per esteso allo stesso modo, anche da solo, perché la shell tiene "
-         "quella cartella per la chiamata dopo e da lì l'hook non troverebbe più il worktree; un comando git con un "
+         "cartella dentro il worktree, scritta per esteso allo stesso modo e che non sia `-`, `+N` o `-N`, perché la "
+         "shell tiene quella cartella per la chiamata dopo e da lì l'hook non troverebbe più il worktree; un comando git con un "
          "carattere jolly in una qualsiasi delle sue parole, che la shell potrebbe trasformare in un altro "
          "sottocomando o in un'altra opzione, un comando git che `-C`, `--git-dir` o `--work-tree` puntano fuori dal "
          "worktree, o che porta una configurazione propria (`-c`, `--config-env`); e, perché tutti i worktree "
          "condividono ciò che cambiano, `git stash`, `git worktree remove` e `prune`, `git push`, `git update-ref`, "
          "un `git config` che non si limita a leggere, un `git branch` o un `git tag` che cancella, sposta o forza "
          "un ramo o un tag, e un `git fetch` o un `git pull` il cui refspec nomina una destinazione."),
-        ("Every path is read from the call's working directory, where a `cd` that fails leaves the shell, so `cd "
-         "docs; cd ..` at the root is denied too.",
-         "Ogni percorso si legge dalla cartella di lavoro della chiamata, dove un `cd` che fallisce lascia la shell, "
-         "quindi anche `cd docs; cd ..` alla radice è negato."),
+        ("Every path is read from the call's working directory, which is why a `cd` or `pushd` passes only alone, as "
+         "the whole command, and `cd docs; cd ..` is denied too. The options of a command are read as getopt reads "
+         "them: they end at `--` or at the first word that is not an option, and every word after is a path that is "
+         "checked; of `find`, the word after each `-f` is checked as a path as well.",
+         "Ogni percorso si legge dalla cartella di lavoro della chiamata, ed è per questo che un `cd` o un `pushd` "
+         "passa solo da solo, come intero comando, e anche `cd docs; cd ..` è negato. Le opzioni di un comando si "
+         "leggono come le legge getopt: finiscono a `--` o alla prima parola che non è un'opzione, e ogni parola "
+         "dopo è un percorso che viene controllato; di `find`, anche la parola dopo ogni `-f` è controllata come "
+         "percorso."),
         ("Everything else stays open, because the check reads only those seven command words, and of git only the "
          "options before the subcommand and those nine subcommands: any other command that writes or deletes, such "
          "as `mv`, `cp`, `ln`, `tee`, `python3` or `make`; any other git subcommand that changes what the worktrees "
@@ -2064,9 +2071,12 @@ GUIDED_SENTENCES = {
          "`PreToolUse`, registrato in `hooks/hooks.json` con il matcher `Agent|Bash|Write|Edit|NotebookEdit` come "
          "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, con un timeout di 10 secondi e "
          "`\"onFailure\": \"continue\"`."),
-        ("and the file writes and the Bash commands of a worker that reach outside its worktree, each with its reason,",
-         "e le scritture di file e i comandi Bash di un worker che escono dal suo worktree, ciascuno con il suo "
-         "motivo,"),
+        ("the file writes of a worker outside its worktree, and the Bash statements of a worker whose `rm`, `rmdir`, "
+         "`unlink`, `find -delete`, `cd`, `pushd` or `git` reach outside its worktree, with `cd` and `pushd` passing "
+         "only as the whole command, each with its reason (Known limits lists what it does not read),",
+         "le scritture di file di un worker fuori dal suo worktree e le istruzioni Bash di un worker i cui `rm`, "
+         "`rmdir`, `unlink`, `find -delete`, `cd`, `pushd` o `git` escono dal suo worktree, con `cd` e `pushd` che "
+         "passano solo come intero comando, ciascuna con il suo motivo (i limiti noti elencano ciò che non legge),"),
         ("`skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made "
          "outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository.",
          "`skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori "
@@ -2228,6 +2238,22 @@ def test_readmes_explain_that_the_coordinator_never_resolves_a_conflict():
     for explanation, sentence in zip(pages("explain-parallel"), sentences):
         for needed in ("--ff-only", "--remerge-diff", "`verify_delivery.py`", sentence):
             assert needed in explanation, needed
+
+
+def test_readmes_integrate_the_commit_id_the_check_accepted_and_the_guide_answers_the_developer():
+    """The worker can move its branch after the check, so the merge takes the accepted id; the guide says what a
+    developer who follows it needs: the test environment, the base he gets, what he sees when it stalls."""
+    integrate = ("the commit id that the run after the PASS accepted, never the branch name",
+                 "l'id di commit che l'esecuzione dopo il PASS ha accettato, mai il nome del ramo")
+    guide = (
+        ("its own database, port and cache index", "nothing is asked of you", "more than 10 minutes", "terminal",
+         "stays yours", "(#known-limits)", "not proven live"),
+        ("il suo database, la sua porta e il suo indice di cache", "non ti viene chiesto nulla", "più di 10 minuti",
+         "terminale", "resta tuo", "(#limiti-noti)", "non è provato dal vivo"),
+    )
+    for explanation, text, sentence, needed in zip(pages("explain-parallel"), pages("parallel"), integrate, guide):
+        assert sentence in explanation
+        assert [phrase for phrase in needed if phrase not in text] == []
 
 
 def test_readmes_class_the_delivery_check_as_a_rule_for_the_model_and_say_when_the_brief_goes_out():

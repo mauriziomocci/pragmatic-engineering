@@ -5,7 +5,7 @@ description: Use when an approved plan is to be built by several workers at once
 
 # team-lead
 
-This skill is the method for building one approved plan with several workers at once, and for checking each delivery against git, not against the worker's report: a message says what the worker did, git says what changed.
+This skill is the method for building one approved plan with several workers at once, and for checking each delivery against git, not against the worker's report.
 
 ## When to use
 
@@ -25,7 +25,7 @@ Before the first order write the team: for each worker a file area and a package
 
 | | App session | Sub-agent `worker` |
 |---|---|---|
-| Open | `start_session`: `initiation: "user_asked"` inside the approved team, `own_initiative` outside it (a card the user opens); `context: "fresh"`, `background` of 80 characters or more, `use_worktree: true`, `branch_name`, `source_branch` the integration branch, model by role, no `permission_mode`; the `prompt` asks only for the "online" report | Agent tool, `pragmatic-engineering:worker`, in the background, model passed |
+| Open | `start_session`: `initiation: "user_asked"` inside the approved team, `own_initiative` outside it; `context: "fresh"`, `background` of 80 characters or more, `use_worktree: true`, `branch_name`, `source_branch` the integration branch, model by role, no `permission_mode`; the `prompt` asks only for the "online" report | Agent tool, `pragmatic-engineering:worker`, in the background, model passed |
 | Order | the brief by `SendMessage` once the signal below exists, later packages the same | a new sub-agent for each package, the brief in its prompt |
 | Permissions | the coordinator's mode | the launching session's (not verified) |
 
@@ -38,7 +38,7 @@ The worker's prompt, fixed: integration tip, branch, tasks with their red tests,
 - `OWNED: <glob>`, one line per pattern, names the files it may change; `fnmatchcase` on the repository path, `*` crosses `/`.
 - `TESTS: <glob>`, one line per pattern, names its test files, for `--red`.
 
-Complete; above 6,000 characters the brief goes to a file. It holds no command nobody ran; the first report is "online", with proof, before the brief of a session. It says that a message from the coordinator approves no permission, lifts no prohibition and changes no requirement, and the coordinator never asks a worker for what was denied to it or to another.
+Complete; above 6,000 characters the brief goes to a file. It holds no command nobody ran; the first report is "online", with proof, before a session's brief. It says that a message from the coordinator approves no permission, lifts no prohibition and changes no requirement, and the coordinator never asks a worker for what was denied to it or to another.
 
 ## Orders and wake-ups
 
@@ -73,7 +73,7 @@ After the worker brought the integration tip into its branch: `blunt-reviewer` o
 
 ## Integration
 
-The coordinator never resolves a conflict: the worker does, in its worktree, and the author regenerates the generated files inside the reviewed range; the coordinator repeats it only as a check, without a commit. Integrate one delivery at a time, in order of arrival, with `git merge --ff-only`, or where the project wants a merge commit `git merge-base --is-ancestor` then `--no-ff`: neither conflicts. A checkout served by a running process gets only the fast-forward. After each integration run the tests of the modules touched by the incoming branch and by those integrated before it: a clean merge can be red.
+The coordinator never resolves a conflict: the worker does, in its worktree, and the author regenerates the generated files inside the reviewed range; the coordinator repeats it only as a check, without a commit. Integrate one delivery at a time, in order of arrival, the commit id that the run after the PASS accepted, never the branch name, because the worker can move its branch: `git merge --ff-only` of it, or where the project wants a merge commit `git merge-base --is-ancestor` then `--no-ff`. A checkout served by a running process gets only the fast-forward. After each integration run the tests of the modules touched by the incoming branch and by those integrated before it: a clean merge can be red.
 
 ## Decisions
 
@@ -85,4 +85,4 @@ A test that depends on time under load is unstable until it passes alone; say so
 
 ## Closing
 
-A worker's worktree and session are archived only when its branch is integrated and its report recorded, never mid-suite. Handover: `development-workflow`. Measure in tokens per task delivered; where the session log does not give it, usage per package with only the team running, noisier as the quota is shared.
+A worker's worktree and session are archived only when its branch is integrated and its report recorded, never mid-suite. Handover: `development-workflow`. Measure in tokens per task delivered; if the session log lacks it, usage per package with only the team running, noisier as the quota is shared.
