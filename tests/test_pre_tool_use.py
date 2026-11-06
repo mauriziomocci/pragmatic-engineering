@@ -574,13 +574,11 @@ DELETIONS_OUTSIDE = [
     "rm -rf %(outside)s",
     "rm -r ../main/x",
     "rmdir ~/x",
-    'unlink "$HOME/x"',
     "find %(outside)s -delete",
     "echo ok && rm -rf ..",
     "rm -rf .",  # the root itself is no deletion target
     "find . -name '*.pyc' -delete",  # nor is it a start of find -delete
-    "rm -rf build/{..,x}",  # brace expansion: the text does not spell the paths out
-    "rm -rf ..\\/main",  # a backslash the shell drops
+    "exec rm -rf %(outside)s", "nohup rm -rf %(outside)s",  # read through the wrappers
     "rm -rf %(main)s/README.md > /dev/null 2>&1",
 ]
 
@@ -597,8 +595,6 @@ GIT_AIMED_OUTSIDE = [
     "git --git-dir=%(main)s/.git log",
     "git --git-dir %(main)s/.git log",
     "git --work-tree=../main add .",
-    "GIT_DIR=../x git commit -m x",
-    "env GIT_WORK_TREE=../main git add .",
     "git -c core.pager=cat -C ../mate status",  # -c takes its value, so -C is still read
     "cd %(main)s && git commit -m x",
 ]
@@ -630,7 +626,7 @@ def nested_worktree(worker_worktree, tmp_path):
 
 
 @pytest.mark.parametrize("command", [
-    "cd %(main)s", "pushd /tmp", "cd", "cd ~", "cd -", "cd $HOME", "cd docs docs2", "cd ../..",
+    "cd %(main)s", "pushd /tmp", "cd", "cd ~", "cd -", "cd docs docs2", "cd ../..",
     "cd docs; cd ..",  # every path is read from the call's folder, where a cd that fails leaves the shell
 ])
 def test_a_worker_cd_out_of_its_worktree_is_denied_on_its_own(nested_worktree, tmp_path, command):
@@ -653,11 +649,12 @@ def test_a_worker_git_command_on_state_shared_by_the_worktrees_is_denied(worker_
 
 
 UNREADABLE = "cannot read"
-# Texts where a reader that only approximates the shell would miss ../main; each must be denied, for the reason given.
-APPROXIMATIONS = [
-    ("rm -rf build 2>&1 ../main", "deletes only"),  # the & of a redirection ends no statement
-    ("rm -rf build &>/dev/null ../main", "deletes only"),
-    ("rm -rf build >&2 ../main", "deletes only"),
+# Texts the shell reads in a way the worker's grammar does not model, most of them hiding a command that leaves the
+# worktree: each is denied, for the reason given. Round 1 and round 2 of the review of block 3 named them.
+OUTSIDE_THE_GRAMMAR = [
+    ("rm -rf build 2>&1 ../main", "deletes only"),  # 2>&1 is in the grammar, so ../main is read
+    ("rm -rf build &>/dev/null ../main", UNREADABLE),  # an & that is not a list operator nor the & of 2>&1
+    ("rm -rf build >&2 ../main", UNREADABLE),
     ("rm -rf '>' ../main", "deletes only"),  # a quoted > is an operand, not a redirection
     ("rm -rf \">\" ../main", "deletes only"),
     ("env -iu HOME rm -rf ../main", UNREADABLE),  # a bundle of a wrapper's options, one of which takes a value
@@ -665,27 +662,71 @@ APPROXIMATIONS = [
     ("rm -rf .?/main", "deletes only"),  # a glob: bash before 5.2 counts .. among the matches of .?
     ("rm -rf build/*", "deletes only"),
     ("cd l*", "cd and pushd"),
-    ("r\\\nm -rf ../main", "deletes only"),  # a backslash-newline joins the two halves of the command word
+    ("r\\\nm -rf ../main", UNREADABLE),  # a backslash-newline joins the two halves of the command word
     ("echo \\'; rm -rf ../main; echo \\'", UNREADABLE),  # an escaped quote opens no quoted text
     ("cat <(rm -rf ../main)", UNREADABLE),  # a process substitution runs a command of its own
-    ("rm -rf ../main>../w/x", UNREADABLE),  # a > inside a word ends the operand there: rm gets ../main
+    ("rm -rf ../main>../w/x", "deletes only"),  # a > inside a word ends the operand there: rm gets ../main
     ("env -S 'rm -rf ../main'", UNREADABLE),  # env runs the string it splits
     ("env --split-string='rm -rf ../main'", UNREADABLE),
     ("env -C ../main rm -rf x", UNREADABLE),  # the wrappers' own folder options
     ("sudo -D ../main rm -rf x", UNREADABLE),
     ("sudo -e ../main/x", UNREADABLE),  # sudoedit writes the file it names
+    ('unlink "$HOME/x"', UNREADABLE),  # a $ is outside the grammar, quoted or not
+    ("cd $HOME", UNREADABLE),
+    ("rm -rf build/{..,x}", UNREADABLE),  # a brace expansion
+    ("rm -rf ..\\/main", UNREADABLE),  # a backslash the shell drops
+    # round 2: a quote in a heredoc body or a comment moves where a reader of quotes thinks the quoted text ends
+    ("cat > notes.md <<'EOF'\nThe reviewer's notes\nEOF\nrm -rf ../main\ngit commit -m 'notes'", UNREADABLE),
+    ("echo hi # it's\nrm -rf ../main\ngit commit -m 'notes'", UNREADABLE),
+    ("git commit -m \"$(cat <<'EOF'\nfix 12\" panel\nEOF\n)\"\nrm -rf ../main\necho \"ok\"", UNREADABLE),
+    ("rm -rf build >|out ../main", UNREADABLE),  # >| overrides noclobber, and its | ends no statement
+    ("cat < <(rm -rf ../main)", UNREADABLE),  # a process substitution as the separate target of a redirection
+    ("git status > >(git push origin w)", UNREADABLE),
+    ("export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0=../main; git status", UNREADABLE),
+    ("export GIT_WORK_TREE=../main && git checkout -- .", UNREADABLE),  # a variable for the statements after it
+    ("declare -x GIT_DIR=../main; git commit -m x", UNREADABLE),
+    ("typeset -x GIT_DIR=../main; git commit -m x", UNREADABLE),
+    ("readonly GIT_DIR=../main; git commit -m x", UNREADABLE),
+    ("local GIT_DIR=../main", UNREADABLE),
+    ("CDPATH=.. cd main", UNREADABLE),  # an assignment before a command
+    ("GIT_DIR=../x git commit -m x", UNREADABLE),
+    ("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0=../main git status", UNREADABLE),
+    ("env GIT_WORK_TREE=../main git add .", UNREADABLE),
+    ("\u00e9=1 rm -rf ../main", UNREADABLE),  # zsh takes a non-ASCII name for an assignment
+    ("GIT_EDITOR=true git merge --continue", UNREADABLE),
+    ("env -i PATH=/usr/bin python3 x.py", UNREADABLE),
+    ("cat > notes.txt <<'EOF'\nx\nEOF", UNREADABLE),  # a heredoc, even one the reader would get right
+    ("git commit -m \"$(cat <<'EOF'\nfix: x\nEOF\n)\"", UNREADABLE),
+    ("rm -rf build 2>&-", UNREADABLE),
+    ("cat <<< x", UNREADABLE),
+    ("make |& tee log", UNREADABLE),
+    ("rm -rf ../main &", UNREADABLE),  # a command sent to the background
+    ("{ rm -rf ../main; }", UNREADABLE),  # a group, a subshell, a negation: their first word is no command word
+    ("(rm -rf ../main)", UNREADABLE),
+    ("! rm -rf ../main", UNREADABLE),
+    ("if true; then rm -rf ../main; fi", UNREADABLE),  # reserved words
+    ("for d in a; do rm -rf ../main; done", UNREADABLE),
+    ("time rm -rf ../main", UNREADABLE),
+    ("alias x=rm", UNREADABLE),  # what changes how later command words are read
+    ("hash -p /bin/rm x; x -rf ../main", UNREADABLE),
+    ("/bin/r? -rf ../main", UNREADABLE),  # a glob in the command word
+    ("/bin/r[m] -rf ../main", UNREADABLE),
+    ("echo $(rm -rf ../main)", UNREADABLE),
+    ("echo `rm -rf ../main`", UNREADABLE),
+    ("echo \"a\\\"b\"", UNREADABLE),
+    ("rm -rf build >", UNREADABLE),  # a redirection without its target
+    ("rm x > 2>&1", UNREADABLE),
 ]
 
 
-@pytest.mark.parametrize("command,because", APPROXIMATIONS)
-def test_a_worker_command_the_reader_cannot_read_for_sure_is_denied(worker_worktree, command, because):
+@pytest.mark.parametrize("command,because", OUTSIDE_THE_GRAMMAR)
+def test_a_worker_command_outside_the_grammar_the_reader_models_is_denied(worker_worktree, command, because):
     reason = hook.decide(bash_call(command, worker_worktree))
     assert reason and because in reason
 
 
 @pytest.mark.parametrize("command", [
     "git -c core.worktree=../main status", "git -c user.name=x commit -m x", "git --config-env=core.pager=PAGER log",
-    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0=../main git status",
 ])
 def test_a_worker_git_command_with_its_own_configuration_is_denied(worker_worktree, command):
     reason = hook.decide(bash_call(command, worker_worktree))
@@ -706,13 +747,14 @@ def test_a_worker_git_write_that_it_never_needs_is_denied(worker_worktree, comma
 
 @pytest.mark.parametrize("command", [
     "python3 -m pytest -q 2>&1 | tail -5", "rm -rf build 2>/dev/null", "rm -f build.log >> /tmp/log 2>&1",
-    "rm -rf build 2>&-", "env -i PATH=/usr/bin python3 x.py", "env -u HOME rm -rf build", "sudo -u bob ls",
-    "GIT_EDITOR=true git merge --continue", "git tag v1", "git tag -l", "git tag -a v1 -m x", "git fetch",
+    "env -u HOME rm -rf build", "sudo -u bob ls", "git tag v1", "git tag -l", "git tag -a v1 -m x", "git fetch",
     "git fetch origin", "git config --get user.name", "git config --list", "git config get user.name",
-    "git switch -C w-sync HEAD", "git checkout -B w2", "rm -rf 'build dir'", "cat > notes.txt <<'EOF'\nx\nEOF",
-    "git commit -m \"$(cat <<'EOF'\nfix: x\nEOF\n)\"",
+    "git switch -C w-sync HEAD", "git checkout -B w2", "rm -rf 'build dir'", "git commit -F .pe/commit-message.txt",
+    "[ -d build ] && rm -rf build", "python3 -c \"print('x')\"", "git log --format=%h -3", "grep -rn 'a|b' src",
+    "make CC=gcc", "ls -la ~", "git diff HEAD~1 -- docs", "echo ok\n\npython3 -m pytest -q", "cd docs;",
+    "builtin cd docs", "exec python3 -m pytest -q", "nohup python3 x.py > out.log 2>&1", "sort < in.txt > out.txt",
 ])
-def test_worker_commands_the_reader_reads_for_sure_get_no_decision(worker_worktree, command):
+def test_worker_commands_in_the_grammar_get_no_decision(worker_worktree, command):
     assert hook.decide(bash_call(command, worker_worktree)) is None
 
 

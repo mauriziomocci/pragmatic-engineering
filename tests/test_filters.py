@@ -794,39 +794,32 @@ def test_remove_quotes_takes_off_the_quotes_and_nothing_else(word, expected):
 
 
 @pytest.mark.parametrize("text,expected", [
-    ("a && b", [["a"], ["b"]]),
-    ("x; y | z", [["x"], ["y"], ["z"]]),
-    ("a || b\nc & d", [["a"], ["b"], ["c"], ["d"]]),
-    ("echo 'a b' \"c d\"", [["echo", "a b", "c d"]]),
-    ("git commit -m 'x && y; z'", [["git", "commit", "-m", "x && y; z"]]),  # quoted separators cut nothing
-    ("rm -rf \\\n build", [["rm", "-rf", "build"]]),  # a backslash-newline continues the statement
-    ("GIT_DIR=../x git log", [["GIT_DIR=../x", "git", "log"]]),
-    ("a 2>&1 b", [["a", "2>&1", "b"]]),  # the & of a redirection ends no statement
-    ("a >&2 b <&0 c &>x d", [["a", ">&2", "b", "<&0", "c", "&>x", "d"]]),
-    ("a & b", [["a"], ["b"]]),
+    ("rm -rf x", [("rm", ["-rf", "x"])]),
+    ("a && b || c; d | e\nf", [("a", []), ("b", []), ("c", []), ("d", []), ("e", []), ("f", [])]),
+    ("git commit -m 'x && y; z'", [("git", ["commit", "-m", "x && y; z"])]),  # quoted separators cut nothing
+    ("echo 'a b' \"c d\" e'f'\"g\"", [("echo", ["a b", "c d", "efg"])]),
+    ("env -i -u HOME sudo -u bob -- /bin/rm -rf 'a b' 2>&1 >/dev/null c", [("rm", ["-rf", "a b", "c"])]),
+    ("env --unset=HOME rm x; command -p git status", [("rm", ["x"]), ("git", ["status"])]),
+    ("rm x > out '>' y < in 2> err >> log", [("rm", ["x", ">", "y"])]),  # a quoted > is an operand
+    ("rm a>b", [("rm", ["a"])]),  # a > inside a word ends the word, as in the shell
+    ("echo ok;\n\nls", [("echo", ["ok"]), ("ls", [])]),
+    ("[ -d x ] && rm -r x", [("[", ["-d", "x", "]"]), ("rm", ["-r", "x"])]),
+    ("make CC=gcc", [("make", ["CC=gcc"])]),  # NAME=value after the command word is an argument
+    ("builtin cd x; exec nohup rm y", [("cd", ["x"]), ("rm", ["y"])]),
+    ("env -i", [("", [])]),
 ])
-def test_statement_words_splits_statements_and_removes_quotes(text, expected):
-    assert filters.statement_words(text) == expected
-
-
-@pytest.mark.parametrize("text,expected", [
-    ("rm -rf x", [("rm", [], ["-rf", "x"])]),
-    ("FOO=1 env -i -u HOME BAR=2 sudo -u bob -- /bin/rm -rf 'a b' 2>&1 >/dev/null c", [
-        ("rm", ["FOO=1", "BAR=2"], ["-rf", "a b", "c"])]),
-    ("env --unset=HOME rm x; command -p git status", [("rm", [], ["x"]), ("git", [], ["status"])]),
-    ("rm x > out '>' y", [("rm", [], ["x", ">", "y"])]),  # a quoted > is an operand
-    ("cat > f <<'EOF'\nbody\nEOF", [("cat", [], []), ("body", [], []), ("EOF", [], [])]),
-    ("\\rm a\\\nb", [("rm", [], ["ab"])]),  # a backslash-newline joins, and \rm is rm
-    ("FOO=1", [("", ["FOO=1"], [])]),
-])
-def test_read_statements_reads_the_command_word_through_assignments_wrappers_and_redirections(text, expected):
-    statements = filters.read_statements(text)
-    assert [(s.name, s.assignments, s.arguments) for s in statements] == expected
+def test_read_statements_reads_the_command_word_through_wrappers_and_redirections(text, expected):
+    assert [(s.name, s.arguments) for s in filters.read_statements(text)] == expected
 
 
 @pytest.mark.parametrize("text", [
-    "echo \\'; rm x", "echo \"a \\\" b\"", "cat <(rm x)", "diff >(rm x) y", "rm a>b", "rm 'a'<b",
+    "echo \\'; rm x", "echo \"a \\\" b\"", "cat <(rm x)", "cat < <(rm x)", "diff >(rm x) y", "rm a >| b",
     "env -iu HOME rm x", "env -S 'rm x'", "env -C .. rm x", "sudo -e x", "sudo -D .. rm x", "command -x rm",
+    "cat <<'EOF'\nit's\nEOF", "cat <<< x", "echo x # y", "echo $HOME", "echo \"$HOME\"", "echo `id`", "rm \\x",
+    "rm x &", "rm x &> y", "rm x >&2", "make |& tee x", "(rm x)", "{ rm x; }", "! rm x", "FOO=1 rm x",
+    "env FOO=1 rm x", "export A=1", "declare A=1", "typeset A=1", "readonly A=1", "local A=1", "alias a=b",
+    "hash -p /bin/rm x", "enable -n cd", "if x; then y; fi", "while x; do y; done", "time rm x", "r* x", "r[m] x",
+    "rm x >", "rm x > 2>&1", "rm x 2>&-", "rm 'x", "\u00e9=1 rm x", "rm \u00e9",
 ])
 def test_read_statements_refuses_what_it_cannot_read_for_sure(text):
     with pytest.raises(filters.UnreadableCommand):

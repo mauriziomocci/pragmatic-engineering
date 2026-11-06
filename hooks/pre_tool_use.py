@@ -28,20 +28,18 @@
    looks only for that file, without git, so a setup whose <toplevel> is not
    one of those folders (core.worktree, GIT_WORK_TREE) is never held.
 4. For the same calls it reads each statement of a Bash command with
-   read_statements of lib/pe_guard/filters.py, by its command word read
-   through env, command and sudo, without the redirections; where that
-   reader is not sure of the shell's reading it raises UnreadableCommand,
-   and the hook denies the command with the reader's advice, because a
-   check by command word would otherwise let the call through. It denies
-   rm, rmdir, unlink and find -delete on a path that is not below
-   <toplevel> or that the text does not spell out (a leading ~, or $, a
-   backtick, a brace, a backslash or a glob); a cd or pushd to anything but
-   one folder at or below <toplevel>, even on its own, because the shell
-   keeps that folder for the next call and the hold is found from it; a git
-   command that -C, --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE points
-   outside <toplevel>, or that carries a configuration of its own (-c,
-   --config-env, GIT_CONFIG_*); and the git commands that change what all
-   the worktrees share, in _SHARED_STATE. Every path is read from the call's
+   read_statements of lib/pe_guard/filters.py, which accepts only a small
+   grammar that it reads for sure and raises UnreadableCommand on anything
+   else; the hook then denies the command with the reader's advice, because
+   a check by command word would let through whatever its reader misreads.
+   It denies rm, rmdir, unlink and find -delete on a path that is not below
+   <toplevel> or that the shell would still expand (a leading ~, a glob); a
+   cd or pushd to anything but one folder at or below <toplevel>, even on
+   its own, because the shell keeps that folder for the next call and the
+   hold is found from it; a git command that -C, --git-dir or --work-tree
+   points outside <toplevel>, or that carries a configuration of its own
+   (-c, --config-env); and the git commands that change what all the
+   worktrees share, in _SHARED_STATE. Every path is read from the call's
    cwd, where a cd that fails leaves the shell. Any other command word, and
    any other git subcommand, gets no decision: the READMEs list under
    "Known limits" what stays open. lib/pe_guard is imported only for a
@@ -220,10 +218,10 @@ def _worker_file_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional[st
     return _WORKER_WRITE_REASON
 
 
-# What the shell would change before using a path: a ~ to expand, a $ or a backtick to substitute, a brace to expand,
-# a backslash to drop, a glob to match (bash before 5.2 counts .. among the matches of .?). A path with any of them is
-# not the path the text spells.
-_UNSPELLED = re.compile(r"^~|[$`{\\*?\[]")
+# What the shell still changes in a word of the worker grammar before using it as a path: a leading ~ to expand, a glob
+# to match (bash before 5.2 counts .. among the matches of .?). A path with either is not the path the text spells;
+# the grammar itself keeps out $, backticks, braces and backslashes.
+_UNSPELLED = re.compile(r"^~|[*?\[]")
 
 
 def _shell_reader() -> ModuleType:
@@ -254,17 +252,15 @@ def _spelled_within(root: Optional[str], cwd: Any, path: str) -> bool:
 
 _WORKER_DELETE_REASON = (
     "a worker deletes only below the root of its own worktree, never the root itself, and only paths that the command "
-    "spells out: none that starts with ~ or holds $, a backtick, a brace, a backslash or a glob (*, ?, [); name each "
-    "path in full"
+    "spells out: none that starts with ~ or holds a glob (*, ?, [); name each path in full"
 )
 _WORKER_CD_REASON = (
     "a worker's shell stays in its own worktree: cd and pushd take one folder inside it, spelled out in full, because "
     "the shell keeps that folder for the next call and the hook finds the worktree from it"
 )
 _WORKER_GIT_PLACE_REASON = (
-    "a worker runs git only on its own worktree: no -C, --git-dir, --work-tree, GIT_DIR or GIT_WORK_TREE that "
-    "points outside it, and no configuration of its own (-c, --config-env, GIT_CONFIG_*), which can point it "
-    "elsewhere, as core.worktree does"
+    "a worker runs git only on its own worktree: no -C, --git-dir or --work-tree that points outside it, and no "
+    "configuration of its own (-c, --config-env), which can point it elsewhere, as core.worktree does"
 )
 _WORKER_GIT_SHARED_REASON = (
     "a worker leaves alone what all the worktrees share: no git stash, git worktree remove or prune, git push, git "
@@ -298,15 +294,13 @@ def _cd_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> O
 
 
 # git's options before the subcommand that take the next word as their value when no = joins it to them; those that
-# point git at another repository or working tree, with the variables that do the same; and those that give git a
-# configuration of its own, which can do the same (core.worktree).
+# point git at another repository or working tree; and those that give git a configuration of its own, which can do
+# the same (core.worktree). The variables that would do it (GIT_DIR=, GIT_CONFIG_COUNT=) never get past the grammar.
 _GIT_VALUE_OPTIONS = frozenset({
     "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source",
 })
 _GIT_PLACE_OPTIONS = frozenset({"-C", "--git-dir", "--work-tree"})
-_GIT_PLACE_VARIABLES = frozenset({"GIT_DIR", "GIT_WORK_TREE"})
 _GIT_CONFIG_OPTIONS = frozenset({"-c", "--config-env"})
-_GIT_CONFIG_VARIABLES = "GIT_CONFIG"
 # The options of git branch and git tag that delete, move or force one (branch -C is --copy --force); git takes short
 # ones bundled (-Df) and long ones shortened to a prefix (--del), so a word that could be either counts.
 _BRANCH_WRITES = ("dDfmMC", ("delete", "force", "move"))
@@ -365,11 +359,7 @@ _SHARED_STATE: Dict[str, Callable[[List[str]], bool]] = {
 
 def _git_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> Optional[str]:
     options, places, words = _git_options(statement.arguments)
-    named = [assignment.partition("=") for assignment in statement.assignments]
-    places += [value for name, _, value in named if name in _GIT_PLACE_VARIABLES]
-    configured = _GIT_CONFIG_OPTIONS.intersection(options) or any(
-        name.startswith(_GIT_CONFIG_VARIABLES) for name, _, _ in named)
-    if configured or not all(_spelled_within(root, cwd, place) for place in places):
+    if _GIT_CONFIG_OPTIONS.intersection(options) or not all(_spelled_within(root, cwd, place) for place in places):
         return _WORKER_GIT_PLACE_REASON
     shared = _SHARED_STATE.get(words[0]) if words else None
     return _WORKER_GIT_SHARED_REASON if shared and shared(words[1:]) else None
