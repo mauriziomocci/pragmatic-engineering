@@ -22,7 +22,7 @@ def test_the_temporary_worktree_is_removed_on_success_and_on_failure(tmp_path, m
 
     with temporary_worktree(tip, "pe-test-") as folder:
         assert (Path(folder) / "a.txt").read_text(encoding="utf-8") == "one\n"
-        assert Path(folder).parent == scratch and Path(folder).name.startswith("pe-test-")
+        assert Path(folder).parent.resolve() == scratch.resolve() and Path(folder).name.startswith("pe-test-")
         assert worktree_entries(repo) == 2
     assert worktree_entries(repo) == 1 and not Path(folder).exists()
 

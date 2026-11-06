@@ -28,7 +28,7 @@ jobs:
       - run: python -m pytest -q
 
   user-machine:
-    # What runs on the user's machine (the two plugin hooks and the night re-creation script) on the other two
+    # What runs on the user's machine (the two plugin hooks and the two scripts of the skills) on the other two
     # systems. The Windows runner has Git Bash, so a Windows machine without it is not exercised.
     runs-on: ${{ matrix.os }}
     strategy:
@@ -43,7 +43,7 @@ jobs:
         with:
           python-version: "3.x"
       - run: python -m pip install "pytest>=7"
-      - run: python -m pytest -q tests/test_session_start.py tests/test_pre_tool_use.py tests/test_recreate_night_commits.py
+      - run: python -m pytest -q tests/test_session_start.py tests/test_pre_tool_use.py tests/test_recreate_night_commits.py tests/test_pe_worktree.py tests/test_verify_delivery.py
 
   complexity:
     runs-on: ubuntu-24.04

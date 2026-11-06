@@ -6,7 +6,7 @@ from typing import Dict, Tuple
 import pytest
 
 from support import (
-    A1_SKILLS,
+    SKILLS,
     REPO_ROOT,
     parse_frontmatter,
     sections,
@@ -451,6 +451,15 @@ CONTRACTS: Dict[str, Contract] = {
             "Before any push four checks pass",  # the script runs the checks
         ),
     ),
+    "team-lead": Contract(
+        sections=("When to use", "Delivery"),
+        phrases=(
+            "an approved plan", "at least two disjoint file areas", "a test environment for each suite",
+            "OWNED:", "TESTS:", "exits 1", "exits 3", "--remerge-diff", "--reviewed",
+            "before the review and again after the PASS",
+        ),
+        extra_files=("verify_delivery.py",),
+    ),
     "quality-scoring": Contract(
         sections=(
             "When to use", "The lenses", "The perimeter", "Findings", "Classes", "Mechanical thresholds",
@@ -855,10 +864,10 @@ def test_configure_stays_within_its_cap():
     assert len(skill_text("configure")) <= 4000
 
 
-def test_every_a1_skill_has_a_contract():
-    assert set(CONTRACTS) == set(A1_SKILLS)
+def test_every_skill_has_a_contract():
+    assert set(CONTRACTS) == set(SKILLS)
 
 
 def test_no_skill_directory_outside_the_list():
     present = {p.name for p in SKILLS_DIR.iterdir() if p.is_dir()}
-    assert present == set(A1_SKILLS)
+    assert present == set(SKILLS)

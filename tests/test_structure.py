@@ -15,7 +15,7 @@ import pre_tool_use
 import privacy_check
 import session_start
 from support import (
-    A1_SKILLS,
+    SKILLS,
     AGENTS,
     REPO_ROOT,
     SPECKIT_TESTED_VERSION,
@@ -250,7 +250,7 @@ def test_migration_requirements_sit_in_the_right_block_and_say_it(marker, block,
 def test_rules_cite_only_existing_skills():
     text = rules_text()
     assert unknown_references(text) == []
-    known = set(A1_SKILLS) | set(AGENTS) | {"superpowers:%s" % name for name in SUPERPOWERS_SKILLS}
+    known = set(SKILLS) | set(AGENTS) | {"superpowers:%s" % name for name in SUPERPOWERS_SKILLS}
     assert [token for token in CITATION.findall(text) if token not in known] == []
 
 
@@ -415,14 +415,14 @@ def test_pinned_superpowers_names_match_the_installed_plugin():
 
 def test_reference_checker_catches_what_it_must():
     problems = unknown_references(
-        "use `superpowers:writing-plan`, `writing-plans`, `blunt-reviews`, `speckit-foo` and `team-lead`"
+        "use `superpowers:writing-plan`, `writing-plans`, `blunt-reviews`, `speckit-foo` and `memory-hygiene`"
     )
     assert problems == [
         "superpowers:writing-plan does not exist",
         "speckit-foo is not a spec-kit %s command" % SPECKIT_TESTED_VERSION,
         "`writing-plans` must be written superpowers:writing-plans",
         "`blunt-reviews` looks like a misspelt blunt-review",
-        "team-lead does not exist in this version",
+        "memory-hygiene does not exist in this version",
     ]
     assert unknown_references("use `superpowers:writing-plans`, `blunt-review` and `pre-push`") == []
 
@@ -851,7 +851,7 @@ def test_readmes_link_each_other_at_the_top():
 
 
 def test_readmes_name_every_component_and_only_existing_ones():
-    names = list(A1_SKILLS) + list(AGENTS) + ["SessionStart"]
+    names = list(SKILLS) + list(AGENTS) + ["SessionStart"]
     for path in (README, README_IT):
         text = path.read_text(encoding="utf-8")
         assert [name for name in names if "`%s`" % name not in text] == [], path.name
@@ -1752,6 +1752,14 @@ GUIDED_SENTENCES = {
          "ancora stato provato."),
     ),
     "limits": (
+        ("With `--red`, `verify_delivery.py` runs the command of the project in two temporary worktrees, one of the "
+         "integration tip and one of the delivery tip, with the resources that the brief names and no others: a "
+         "command that needs a database or a port that the brief does not give it fails for that reason, not for the "
+         "tests.",
+         "Con `--red`, `verify_delivery.py` esegue il comando del progetto in due worktree temporanei, uno della "
+         "punta d'integrazione e uno della punta della consegna, con le risorse che il brief nomina e nessun'altra: "
+         "un comando che ha bisogno di un database o di una porta che il brief non gli dà fallisce per quel motivo, "
+         "non per i test."),
         ("the autonomy (including the rule that the model sets its profile only when you ask)",
          "l'autonomia (compresa la regola per cui il modello ne imposta il profilo solo quando glielo chiedi)"),
         ("does not run when `python3` is missing, when it crashes before reading its input or when it passes its "
@@ -2010,11 +2018,22 @@ GUIDED_SENTENCES = {
          "worker, `worker` (il segnale che vincola la sessione al suo worktree, scritto dalla sessione che "
          "coordina), e"),
         ("There are no commands in this version and, besides the `SessionStart` and `PreToolUse` hooks described "
-         "below, only one script, `skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells "
-         "the model to run.",
+         "below, only two scripts: `skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells "
+         "the model to run, and `skills/team-lead/verify_delivery.py`, which `team-lead` tells the model to run.",
          "In questa versione non ci sono comandi e, oltre agli hook `SessionStart` e `PreToolUse` descritti sotto, "
-         "c'è un solo script, `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al "
-         "modello di eseguire."),
+         "ci sono due soli script: `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al "
+         "modello di eseguire, e `skills/team-lead/verify_delivery.py`, che `team-lead` dice al modello di "
+         "eseguire."),
+        ("`skills/team-lead/verify_delivery.py` checks the delivery of a worker against git and exits 0 when it is "
+         "accepted, 1 when it is refused, 2 on a usage error and 3 when a merge of the delivery needs a review. To "
+         "run it by hand: `python3 <the folder of team-lead>/verify_delivery.py --integration <rev> --branch "
+         "<branch> --tip <sha> --worktree <folder> --brief <file> [--reviewed <sha>] [--red <command>]`, from the "
+         "checkout of the repository.",
+         "`skills/team-lead/verify_delivery.py` controlla con git la consegna di un worker ed esce con 0 se è "
+         "accettata, con 1 se è rifiutata, con 2 per un errore d'uso e con 3 quando un merge della consegna ha "
+         "bisogno di una revisione. Per eseguirlo a mano: `python3 <la cartella di team-lead>/verify_delivery.py "
+         "--integration <rev> --branch <ramo> --tip <sha> --worktree <cartella> --brief <file> [--reviewed <sha>] "
+         "[--red <comando>]`, dal checkout del repository."),
         ("`PreToolUse`, registered in `hooks/hooks.json` with the matcher `Agent|Bash|Write|Edit|NotebookEdit` as "
          "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, with a timeout of 10 seconds and "
          "`\"onFailure\": \"continue\"`.",
@@ -2208,8 +2227,11 @@ def test_ci_pins_one_runner_image_and_the_node24_actions_without_a_stored_token(
     assert text.count("persist-credentials: false") == 3  # one per checkout; no step pushes
 
 
-# The tests of what runs on the user's machine: the two hooks of the plugin and the night re-creation script.
-USER_MACHINE_TESTS = "tests/test_session_start.py tests/test_pre_tool_use.py tests/test_recreate_night_commits.py"
+# The tests of what runs on the user's machine: the two hooks of the plugin and the two scripts of the skills.
+USER_MACHINE_TESTS = (
+    "tests/test_session_start.py tests/test_pre_tool_use.py tests/test_recreate_night_commits.py "
+    "tests/test_pe_worktree.py tests/test_verify_delivery.py"
+)
 
 
 def ci_job(name: str) -> str:

@@ -64,7 +64,7 @@ def run_script(
     )
 
 
-A1_SKILLS: Tuple[str, ...] = (
+SKILLS: Tuple[str, ...] = (
     "engineering-principles",
     "evidence-based-investigation",
     "blunt-review",
@@ -79,6 +79,7 @@ A1_SKILLS: Tuple[str, ...] = (
     "interface-quality",
     "documentation-quality",
     "configure",
+    "team-lead",
 )
 AGENTS: Tuple[str, ...] = ("blunt-reviewer", "worker")
 SUPERPOWERS_TESTED_VERSION = "7.0.0"
@@ -97,7 +98,7 @@ SPECKIT_COMMANDS: FrozenSet[str] = frozenset((
 # Tools a skill names that are installed apart from this plugin and from superpowers, and HTML attributes.
 EXTERNAL_NAMES: FrozenSet[str] = frozenset(("mcp-code-review", "aria-describedby", "data-label"))
 FUTURE_COMPONENTS: Tuple[str, ...] = (
-    "team-lead", "memory-hygiene", "pe-guard", "review-start", "review-show",
+    "memory-hygiene", "pe-guard", "review-start", "review-show",
     "mr-opened", "PE-REVIEW", "PE-REVIEW-RESULT",
 )
 
@@ -147,7 +148,7 @@ def _distance(a: str, b: str) -> int:
 def _backticked_problems(text: str, strict: bool) -> List[str]:
     """Problems with the backticked names of ``text``; see ``unknown_references`` for ``strict``."""
     problems: List[str] = []
-    local = set(A1_SKILLS) | set(AGENTS)
+    local = set(SKILLS) | set(AGENTS)
     for token in _BACKTICKED.findall(text):
         if token in SUPERPOWERS_SKILLS:
             problems.append("`%s` must be written superpowers:%s" % (token, token))
@@ -168,7 +169,7 @@ def unknown_references(text: str, strict: bool = False) -> List[str]:
     its siblings by bare name, so any other hyphenated backticked word is a broken reference.
     """
     problems: List[str] = []
-    local = set(A1_SKILLS) | set(AGENTS)
+    local = set(SKILLS) | set(AGENTS)
     for namespace, name in _NAMESPACED.findall(text):
         known = SUPERPOWERS_SKILLS if namespace == "superpowers" else local
         if name not in known:
