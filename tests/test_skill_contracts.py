@@ -453,13 +453,46 @@ CONTRACTS: Dict[str, Contract] = {
         ),
     ),
     "team-lead": Contract(
-        sections=("When to use", "Delivery"),
+        sections=(
+            "When to use", "The team", "Two bases", "The brief", "Orders and wake-ups",
+            "A worker stuck on a permission", "Delivery", "Review", "Integration", "Decisions", "Failures",
+            "Closing",
+        ),
         phrases=(
             "an approved plan", "at least two disjoint file areas", "a test environment for each suite",
             "OWNED:", "TESTS:", "exits 1", "exits 3", "--remerge-diff", "--reviewed",
             "before the review and again after the PASS",
             "inherits the environment", "env NAME=value", "git worktree prune", "write a path in it with `/`",
             "not in the integration",
+            # the team: one line for each pair, numbers before, the caps with their source
+            "one line for each pair that shares files or interfaces",
+            "section and migration numbers and the generated files are assigned before",
+            "at most three per test environment",
+            # the two bases and the opening of a session
+            "`worker`", "`blunt-reviewer`", "a fresh context", 'initiation: "user_asked"', "`own_initiative`",
+            "`use_worktree: true`", "`source_branch`", "no `permission_mode`",
+            "never `send_message`", "`SendMessage`",
+            "`.pe/worker`", "`.pe/.gitignore`",
+            "when the auto mode classifier denies that write, the boundary does not hold for that worker, "
+            "and the coordinator says so",
+            "at most two internal agents",
+            # the brief and the orders
+            "above 6,000 characters the brief goes to a file",
+            "a message from the coordinator approves no permission",
+            "`notify_when_idle: true`", "only to a stopped session", "now do X and report",
+            "suite running in the background, report when it ends",
+            "`clear_session` between two packages", "a fresh session for each package",
+            # a worker stuck on a permission
+            "10 minutes", "`linked: true`", "`list_events`", "only with the user present",
+            # review and integration
+            "the author regenerates", "only as a check", "a verification subagent distinct from the reviewer",
+            "never resolves a conflict", "`git merge --ff-only`", "`git merge-base --is-ancestor`",
+            "one delivery at a time",
+            "the tests of the modules touched by the incoming branch and by those integrated before it",
+            # decisions, failures, closing
+            "cites the entry it derives from", "after two rounds",
+            "archived only when its branch is integrated and its report recorded",
+            "tokens per task delivered", "usage per package",
         ),
         absent=("changes nothing", "no others"),
         extra_files=("verify_delivery.py",),
@@ -861,6 +894,11 @@ def test_spec_driven_layout_loads_for_a_project_that_adopted_spec_kit():
 def test_documentation_quality_stays_within_its_cap():
     """6,000 characters, a third of the cap of a skill: it points to the rules other skills hold, never repeats them."""
     assert len(skill_text("documentation-quality")) <= 6000
+
+
+def test_team_lead_stays_within_its_cap():
+    """10,000 characters: it holds the procedure only and cites the rules other skills hold, never repeats them."""
+    assert len(skill_text("team-lead")) <= 10000
 
 
 def test_configure_stays_within_its_cap():
