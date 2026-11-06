@@ -794,6 +794,19 @@ def test_remove_quotes_takes_off_the_quotes_and_nothing_else(word, expected):
 
 
 @pytest.mark.parametrize("text,expected", [
+    ("a && b", [["a"], ["b"]]),
+    ("x; y | z", [["x"], ["y"], ["z"]]),
+    ("a || b\nc & d", [["a"], ["b"], ["c"], ["d"]]),
+    ("echo 'a b' \"c d\"", [["echo", "a b", "c d"]]),
+    ("git commit -m 'x && y; z'", [["git", "commit", "-m", "x && y; z"]]),  # quoted separators cut nothing
+    ("rm -rf \\\n build", [["rm", "-rf", "build"]]),  # a backslash-newline continues the statement
+    ("GIT_DIR=../x git log", [["GIT_DIR=../x", "git", "log"]]),
+])
+def test_statement_words_splits_statements_and_removes_quotes(text, expected):
+    assert filters.statement_words(text) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
     ("plain words", "plain words"),
     ("'a b' \"c d\"", "a b c d"),
     ("Zorb\"\"lax", "Zorblax"),  # empty quotes vanish

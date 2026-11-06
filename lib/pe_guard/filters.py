@@ -205,6 +205,15 @@ def _api_writes_requests(text: str) -> bool:
     )
 
 
+def statement_words(text: str) -> List[List[str]]:
+    """The words of each statement of a shell text, with their quotes taken off by ``remove_quotes``.
+
+    Statements end where ``_STATEMENT`` ends them and words where ``_WORD`` does. Nothing is expanded, so a word keeps
+    its ``$``, ``~`` and backslashes, and parentheses and braces are text: ``(cd x`` is one word.
+    """
+    return [[remove_quotes(word) for word in _WORD.findall(statement)] for statement in _STATEMENT.findall(text)]
+
+
 def _api_calls(text: str) -> List[Tuple[List[str], bool]]:
     """The arguments of every gh/glab api call in a command, as the shell passes them, and whether the parser vouches
     for the call.
@@ -220,8 +229,7 @@ def _api_calls(text: str) -> List[Tuple[List[str], bool]]:
     """
     modelled = _MODELLED.fullmatch(text) is not None and _EMPTY_QUOTES_EXPANSION.search(text) is None
     calls: List[Tuple[List[str], bool]] = []
-    for statement in _STATEMENT.findall(text):
-        words = [remove_quotes(word) for word in _WORD.findall(statement)]
+    for words in statement_words(text):
         command = next((i for i, word in enumerate(words) if not _ASSIGNMENT.match(word)), len(words))
         found = _client_api_spans(words)
         for (client, api), following in zip(found, [client for client, _ in found[1:]] + [len(words)]):
