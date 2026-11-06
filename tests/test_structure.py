@@ -1256,6 +1256,17 @@ def test_autonomy_example_opens_no_api_contract():
         assert row.endswith("| `spec,schema` |")
 
 
+EXCLUDE_SENTENCES = (
+    "`team-lead` adds `.claude/worktrees/`, where Claude Code puts the worktrees of sub-agents, to the repository's "
+    "`info/exclude` before the first sub-agent launch, a local line never committed, and removes a sub-agent's "
+    "worktree with `git worktree remove` once its branch is integrated and its report recorded.",
+    "`team-lead` aggiunge `.claude/worktrees/`, dove Claude Code mette i worktree dei sotto-agenti, "
+    "all'`info/exclude` del repository prima del primo lancio di un sotto-agente, una riga locale mai inclusa in un "
+    "commit, e toglie il worktree di un sotto-agente con `git worktree remove` quando il suo ramo è integrato e il "
+    "suo rapporto registrato.",
+)
+
+
 # Whole sentences the two pages must carry: English, then Italian, in the section that holds them.
 GUIDED_SENTENCES = {
     "explain-lanes": (
@@ -1352,7 +1363,11 @@ GUIDED_SENTENCES = {
          "`git config --local --unset pe.autonomy` per il profilo."),
     ),
     "uninstall": (
-        ("Five things stay behind on purpose.", "Cinque cose restano, di proposito."),
+        ("Six things stay behind on purpose.", "Sei cose restano, di proposito."),
+        ("The `.claude/worktrees/` line that `team-lead` added to `info/exclude` stays until you delete it from the "
+         "file that `git rev-parse --git-path info/exclude` names.",
+         "La riga `.claude/worktrees/` che `team-lead` ha aggiunto a `info/exclude` resta finché non la cancelli dal "
+         "file che `git rev-parse --git-path info/exclude` nomina."),
         ("The `night-backup-*` tags that `skills/safe-operations/recreate_night_commits.py` leaves in your "
          "repositories stay until you delete each one with `git tag -d <name>`.",
          "I tag `night-backup-*` che `skills/safe-operations/recreate_night_commits.py` lascia nei tuoi repository "
@@ -2141,7 +2156,9 @@ GUIDED_SENTENCES = {
          "directory of the repository.",
          "Per eseguirlo a mano: `python3 <la cartella di safe-operations>/recreate_night_commits.py <base>`, da una "
          "cartella qualsiasi del repository."),
+        EXCLUDE_SENTENCES,
     ),
+    "explain-parallel": (EXCLUDE_SENTENCES,),
 }
 
 
@@ -2227,24 +2244,6 @@ def test_readmes_date_the_live_regression_runs_and_drop_the_claims_they_made_fal
     for path, text, claim, more in zip((README, README_IT), pages(), status, claims):
         missing = [sentence for sentence in (claim,) + more if sentence not in text]
         assert missing == [] and [old for old in stale if old in text] == [], path.name
-
-
-EXCLUDE_SENTENCES = (
-    "`team-lead` adds `.claude/worktrees/`, where Claude Code puts the worktrees of sub-agents, to the repository's "
-    "`info/exclude` before the first sub-agent launch, a local line never committed, and removes a sub-agent's "
-    "worktree with `git worktree remove` once its branch is integrated and its report recorded.",
-    "`team-lead` aggiunge `.claude/worktrees/`, dove Claude Code mette i worktree dei sotto-agenti, "
-    "all'`info/exclude` del repository prima del primo lancio di un sotto-agente, una riga locale mai inclusa in un "
-    "commit, e toglie il worktree di un sotto-agente con `git worktree remove` quando il suo ramo è integrato e il "
-    "suo rapporto registrato.",
-)
-
-
-@pytest.mark.parametrize("section", ["explain-parallel", "reference"])
-def test_readmes_say_where_the_line_in_info_exclude_comes_from(section):
-    """team-lead leaves a local line in the user's repository: the parallel work and the files reference name it."""
-    for text, sentence in zip(pages(section), EXCLUDE_SENTENCES):
-        assert sentence in text
 
 
 def test_readmes_count_a_repeated_breach_once_and_name_wcag_2_2():
