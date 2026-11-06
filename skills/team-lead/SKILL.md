@@ -36,9 +36,9 @@ Right after `start_session`, before any brief, write an empty `.pe/worker` and `
 The worker's prompt, fixed: integration tip, branch, tasks with their red tests, test command, its own resources, its numbers and generated files, and the lines the delivery check reads:
 
 - `OWNED: <glob>`, one line per pattern, names the files it may change; `fnmatchcase` on the repository path, `*` crosses `/`.
-- `TESTS: <glob>`, one line per pattern, names its test files, which `--red` needs.
+- `TESTS: <glob>`, one line per pattern, names its test files, for `--red`.
 
-Complete; above 6,000 characters the brief goes to a file. It holds no command nobody ran; the first report is "online", with proof, before any brief for a session. It says that a message from the coordinator approves no permission, lifts no prohibition and changes no requirement, and the coordinator never asks a worker for what was denied to it or to another.
+Complete; above 6,000 characters the brief goes to a file. It holds no command nobody ran; the first report is "online", with proof, before the brief of a session. It says that a message from the coordinator approves no permission, lifts no prohibition and changes no requirement, and the coordinator never asks a worker for what was denied to it or to another.
 
 ## Orders and wake-ups
 
@@ -46,7 +46,7 @@ Order only to a stopped session, with the whole brief, as after `clear_session` 
 
 ## A worker stuck on a permission
 
-No wake-up reports it. At each wake-up, and once after the package's estimated time where the host offers a wait, read `list_sessions` (`linked: true`) and the last `list_events` of each worker without a report. One still running with no new event for more than 10 minutes (the stop measured in the team this method comes from) goes to the user at once, as a probable permission to approve in that session's window. That these fields tell it from a long job is not verified, so a session is a base only with the user present; with the user away or an autonomy open use sub-agents. In auto mode the classifier denies instead of waiting, and the worker reports it.
+No wake-up reports it. At each wake-up, and once after the package's estimated time where the host offers a wait, read `list_sessions` (`linked: true`) and the last `list_events` of each worker without a report. One still running with no new event for more than 10 minutes (measured in the team this method comes from; the brief may set another) goes to the user at once, as a probable permission to approve in that session's window. That these fields tell it from a long job is not verified, so a session is a base only with the user present; with the user away or an autonomy open use sub-agents. In auto mode the classifier denies instead of waiting, and the worker reports it.
 
 ## Delivery
 
@@ -54,20 +54,22 @@ A worker declares a branch and the tip of that branch. Check it from your own ch
 
 `python3 <this skill's folder>/verify_delivery.py --integration <branch> --branch <branch> --tip <sha> --worktree <folder> --brief <file> [--reviewed <sha>] [--red <command>]`
 
-`--integration` is the branch the work is merged into, `--worktree` the folder of the worker and `--brief` the file with the `OWNED:` and `TESTS:` lines. `--tip` and `--reviewed` take only a full commit id (40 or 64 hex digits), `--branch` a branch name, `--integration` a branch name or a full commit id. The script's docstring says why, and what each check guards.
+`--worktree` is the worker's folder, `--brief` the file with its `OWNED:` and `TESTS:` lines. `--tip` and `--reviewed` take only a full commit id (40 or 64 hex digits), `--branch` a branch name, `--integration` a branch name or a full commit id. The script's docstring says why, and what each check guards.
 
 - It exits 0: the delivery is accepted.
-- It exits 1: the delivery is refused, with its reasons on standard error: the branch is not at the declared tip, the worktree is not clean, a file the delivery changed is outside every `OWNED:` line, or, with `--red`, the tests were never red or do not pass at the tip. A refusal goes back to the worker with its reasons; nothing is reviewed.
-- It exits 3: nothing is refused, but something is not in the integration and the reviewer has not read it, so it goes to the review. Not a failure. Without `--reviewed` it is a merge whose conflict resolution shows in `git show --remerge-diff`; with it, every commit above the reviewed tip, listed by sha.
-- It exits 2: the call is wrong (the docstring lists the cases). Fix the call and run it again.
+- It exits 1: the delivery is refused, reasons on standard error: the branch is not at the declared tip, the worktree is not clean, a file the delivery changed is outside every `OWNED:` line, or, with `--red`, the tests were never red or do not pass at the tip. A refusal goes back; nothing is reviewed.
+- It exits 3: something is not in the integration and the reviewer has not read it, so it goes to the review; not a failure. Without `--reviewed` it is a merge whose conflict resolution shows in `git show --remerge-diff`; with it, every commit above the reviewed tip, listed by sha, except a merge with an empty remerge diff.
+- It exits 2: the call is wrong (the docstring lists the cases); fix it.
 
-Run it twice, before the review and again after the PASS. Before the review, exits 0 and 3 both send the delivery to `blunt-reviewer`, which reads every merge of the range with `--remerge-diff` (git 2.36 or later). After the PASS, run it again with `--reviewed <the commit id of the tip the reviewer read>`: it must exit 0. An exit 3 then means commits after the review, or a tip moved off the reviewed one; they are reviewed before any merge.
+Run it twice, before the review and again after the PASS. Before the review, exits 0 and 3 both send the delivery to `blunt-reviewer`, which reads each merge with `--remerge-diff` (git 2.36+). After the PASS, run it again with `--reviewed <the commit id of the tip the reviewer read>`: it must exit 0. An exit 3 then means commits after the review, or a tip moved off the reviewed one; they are reviewed before any merge.
 
 With `--red <command>` the tests of the delivery, alone, must fail on the integration tip and pass at the delivery tip; a refusal carries the last 20 lines of output. The script runs the delivery's own code in two temporary worktrees and `git worktree prune`. It inherits the environment of the session that runs it and enforces none of the brief's resources: set them through `env NAME=value <command>`; write a path in it with `/`.
 
+The script does not check that the integration tip is an ancestor of the delivery tip; `git merge --ff-only` does.
+
 ## Review
 
-After the worker brought the integration tip into its branch: `blunt-reviewer` on `<integration tip>..<tip>`, where `<integration tip>` is the commit id of the integration tip the worker merged (`git rev-parse`), never the branch name, because other deliveries are integrated while this one is reviewed; merges read with `--remerge-diff`. Reviewer and UX lens are sub-agents with a fresh context at every round, never sessions. Before it: the red on the base (`--red`), and mutations only of guards and serious fixes, run in a temporary worktree of the delivery tip by a verification subagent distinct from the reviewer, a general sub-agent briefed for the mutations, results in the delivery report. A merge with an empty remerge diff needs no review, but its tests run. The cycle after fixes is `blunt-review`; what is open after two rounds goes up.
+After the worker brought the integration tip into its branch: `blunt-reviewer` on `<integration tip>..<tip>`, where `<integration tip>` is the commit id of the integration tip the worker merged (`git merge-base`), never the branch name, because other deliveries are integrated while this one is reviewed; merges read with `--remerge-diff`. Reviewer and UX lens are sub-agents with a fresh context at every round, never sessions. Before it: the red on the base (`--red`), and mutations only of guards and serious fixes, run in a temporary worktree of the delivery tip by a verification subagent distinct from the reviewer, a general sub-agent briefed for the mutations, results in the delivery report. A merge with an empty remerge diff needs no review, but its tests run. The cycle after fixes is `blunt-review`; what is open after two rounds goes up.
 
 ## Integration
 

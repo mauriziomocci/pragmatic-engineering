@@ -71,7 +71,7 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         phrases=(
             "superpowers:test-driven-development", "Searched", "easy to change", "N+1",
-            "`team-lead` is the procedure for parallel work with several workers",
+            "`team-lead` is the procedure for parallel work with several workers, with a `start_session` session or a `worker` sub-agent as its bases",
             "All tests pass, no known residual bugs", "it works and I do not know why",
             "property-based", "Context7", "file::function",
             "The Pragmatic Programmer", "Fundamentals of Software Engineering", "documentation-quality",
@@ -497,6 +497,8 @@ CONTRACTS: Dict[str, Contract] = {
             "tokens per task delivered", "usage per package",
             # the review base is a commit id, because deliveries are integrated while others are reviewed
             "`<integration tip>..<tip>`", "the commit id of the integration tip", "never the branch name",
+            "(`git merge-base`)", "except a merge with an empty remerge diff",
+            "does not check that the integration tip is an ancestor", "the brief may set another",
             # the signal exists before the brief is sent, so the worker's first turn is held
             'asks only for the "online" report', "only then send the brief by `SendMessage`",
             "with the user away or an autonomy open use sub-agents",

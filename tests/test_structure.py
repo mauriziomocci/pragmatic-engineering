@@ -1566,10 +1566,10 @@ GUIDED_SENTENCES = {
          "dopo)"),
     ),
     "explanation": (
-        ("Eleven of the parts below each end with a line that says what guarantees the part; two have none: the life "
+        (" of the parts below each end with a line that says what guarantees the part; two have none: the life "
          "cycle in three modes, because it only follows the others, and the note on languages and frameworks, "
          "which only says where good practices come from.",
-         "Undici delle parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte; due non "
+         " delle parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte; due non "
          "ce l'hanno: il ciclo di vita in tre modalità, perché non fa che seguire le altre, e la nota sui linguaggi "
          "e sui framework, che dice solo da dove vengono le buone pratiche."),
     ),
@@ -1830,6 +1830,9 @@ GUIDED_SENTENCES = {
          "repository della cartella di lavoro della chiamata, e fa lo stesso con una sessione la cui radice porta il "
          "segnale `.pe/worker`, un file vuoto che la sessione che coordina scrive nel worktree di una sessione worker prima di mandare il brief; "
          "anche gli agenti che una tale sessione lancia nel suo worktree sono vincolati."),
+        ("The first turn of a worker session, which only reports that it is online, runs before the signal is written.",
+         "Il primo turno di una sessione worker, che si limita a segnalare di essere online, gira prima che il "
+         "segnale sia scritto."),
         ("The signal holds only when `.pe` is a real folder, not a symlink, and git tracks nothing under `.pe` in "
          "any letter case, so a repository that commits any file there, or a `.pe` symlink, never holds a session; "
          "an untracked `.pe/worker` that something else writes holds the sessions opened in that repository just "
@@ -2085,7 +2088,16 @@ def test_readmes_state_the_guided_configuration_in_both_languages(section):
 
 
 # The words the limits sentence uses for the sizes of the hook's tables, in English and in Italian.
-COUNT_WORDS = {7: ("seven", "sette"), 8: ("eight", "otto"), 9: ("nine", "nove"), 10: ("ten", "dieci")}
+COUNT_WORDS = {
+    7: ("seven", "sette"), 8: ("eight", "otto"), 9: ("nine", "nove"), 10: ("ten", "dieci"), 11: ("eleven", "undici"),
+}
+
+
+def test_readmes_count_the_explained_parts_that_end_with_a_guarantee_line():
+    """The count follows EXPLAINED_POINTS, so a new explained point cannot leave 'Ten' standing."""
+    sentences = ("%s of the parts below each end", "%s delle parti qui sotto chiudono")
+    for intro, words, sentence in zip(pages("explanation"), COUNT_WORDS[len(EXPLAINED_POINTS)], sentences):
+        assert sentence % words.capitalize() in intro
 
 
 def test_readmes_count_the_command_words_and_git_subcommands_of_the_worker_check():
@@ -2221,13 +2233,17 @@ def test_readmes_explain_that_the_coordinator_never_resolves_a_conflict():
 def test_readmes_class_the_delivery_check_as_a_rule_for_the_model_and_say_when_the_brief_goes_out():
     """verify_delivery.py runs only when the model runs it, as the night script does: only the hook is a mechanism."""
     classed = ("a rule for the model", "una regola per il modello")
+    mechanism = ("a mechanism for one thing, the hold of a worker", "un meccanismo per una cosa, il vincolo di un worker")
+    check = ("is a check that the model is told to run", "è un controllo che il modello deve lanciare")
     sent = ("sends the brief only after", "manda il brief solo dopo")
     unmeasured = ("not measured", "non misurati")
-    for guide, explanation, label, rule, after, caps in zip(
-        pages("parallel"), pages("explain-parallel"), GUARANTEE_LABELS, classed, sent, unmeasured
+    for guide, explanation, label, rule, after, caps, first, how in zip(
+        pages("parallel"), pages("explain-parallel"), GUARANTEE_LABELS, classed, sent, unmeasured, mechanism, check
     ):
         line = guarantee_line(explanation, label)
-        assert "`team-lead`" in line and rule in line and "`PreToolUse`" in line
+        assert "`team-lead`" in line and "`PreToolUse`" in line
+        assert first in line and how in line
+        assert line.index(first) < line.lower().index(rule), "the mechanism comes first, then the rule for the rest"
         assert after in explanation and caps in guide
 
 
