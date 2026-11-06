@@ -785,7 +785,8 @@ SECTION_ID = re.compile(r"^<!-- section: ([a-z0-9-]+) -->$", re.MULTILINE)
 REQUIRED_SECTIONS = ("tutorial", "how-to", "install", "uninstall", "explanation", "lifecycle", "limits", "reference")
 EXPLAINED_POINTS = (
     "explain-lanes", "explain-gates", "explain-review", "explain-review-cycle", "explain-lenses",
-    "explain-rules-import", "explain-working-rules", "explain-continuity", "explain-office-hours",
+    "explain-rules-import", "explain-working-rules", "explain-continuity", "explain-parallel",
+    "explain-office-hours",
     "explain-communication",
 )
 GUARANTEE_LABELS = ("**Guaranteed by:**", "**Garantito da:**")  # README.md, README.it.md
@@ -2090,12 +2091,13 @@ def test_readmes_date_the_live_regression_runs_and_drop_the_claims_they_made_fal
     status = ("Proven so far: the unit and structure tests, one live run of the end-to-end test of the rules import "
               "(29 October 2026), and the live regression runs against an existing setup of 4 November 2026: nine "
               "scenarios, each with and without the plugin, with a matrix of ten languages. Not proven yet: an "
-              "install on a clean machine and real work over several days.",
+              "install on a clean machine, real work over several days and the parallel work of `team-lead` in a "
+              "live run.",
               "Provato finora: le prove di unità e di struttura, un'esecuzione dal vivo della prova da capo a fondo "
               "dell'import delle regole (29 ottobre 2026) e le esecuzioni dal vivo di regressione contro una "
               "configurazione esistente del 4 novembre 2026: nove scenari, ciascuno con e senza il plugin, con una "
-              "matrice di dieci linguaggi. Non ancora provato: l'installazione su una macchina pulita e il lavoro "
-              "vero di più giorni.")
+              "matrice di dieci linguaggi. Non ancora provato: l'installazione su una macchina pulita, il lavoro "
+              "vero di più giorni e il lavoro in parallelo di `team-lead` in una prova dal vivo.")
     stale = (
         "the live regression scenarios against an existing setup", "a run in languages other than Python",
         "are declared, not enforced", "the runs on other languages are still to come", "tried on macOS only",
@@ -2194,6 +2196,39 @@ def test_readmes_place_the_configure_section_the_tutorial_step_and_the_skill_row
         assert ids[ids.index("install") + 1] == "configure"
         assert ask in marked_blocks(text)["tutorial"]
         assert "| `configure` |" in marked_blocks(text)["reference"]
+
+
+def test_readmes_explain_that_the_coordinator_never_resolves_a_conflict():
+    """The point on parallel work names the integration, the merge read and the script, and the rule on conflicts."""
+    sentences = ("the coordinator never resolves a conflict", "il coordinatore non risolve mai un conflitto")
+    for explanation, sentence in zip(pages("explain-parallel"), sentences):
+        for needed in ("--ff-only", "--remerge-diff", "`verify_delivery.py`", sentence):
+            assert needed in explanation, needed
+
+
+def test_readmes_place_the_parallel_guide_after_autonomy_and_the_final_team_lead_row():
+    for text in pages():
+        ids = list(marked_blocks(text))
+        assert ids[ids.index("autonomy") + 1] == "parallel"
+        row = next(line for line in marked_blocks(text)["reference"].splitlines() if line.startswith("| `team-lead` |"))
+        assert "`worker`" in row and "`blunt-reviewer`" in row
+
+
+def test_readmes_say_the_coordinator_ships_with_team_lead_and_only_the_guard_is_later():
+    wording = (
+        "The merge-request guard comes in a later version.",
+        "La guardia sulle merge request arriva in una versione successiva.",
+    )
+    gone = ("multi-agent coordinator", "coordinatore a più agenti")
+    untried = (
+        "real work over several days and the parallel work of `team-lead` in a live run.",
+        "il lavoro vero di più giorni e il lavoro in parallelo di `team-lead` in una prova dal vivo.",
+    )
+    for text, sentence, old, not_proven in zip(pages(), wording, gone, untried):
+        status = text.split("<!-- section:")[0]
+        assert sentence in status
+        assert not_proven in status
+        assert old not in status
 
 
 def test_uninstall_says_the_calibration_log_goes_with_the_data_folder():

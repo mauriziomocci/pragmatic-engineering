@@ -2,7 +2,7 @@
 
 [Italiano](README.it.md)
 
-**Status: pre-release.** Version 0.1.0 is published for early use, not yet for everyone. Proven so far: the unit and structure tests, one live run of the end-to-end test of the rules import (29 October 2026), and the live regression runs against an existing setup of 4 November 2026: nine scenarios, each with and without the plugin, with a matrix of ten languages. Not proven yet: an install on a clean machine and real work over several days. The merge-request guard and the multi-agent coordinator come in later versions. Read "Known limits" before you install.
+**Status: pre-release.** Version 0.1.0 is published for early use, not yet for everyone. Proven so far: the unit and structure tests, one live run of the end-to-end test of the rules import (29 October 2026), and the live regression runs against an existing setup of 4 November 2026: nine scenarios, each with and without the plugin, with a matrix of ten languages. Not proven yet: an install on a clean machine, real work over several days and the parallel work of `team-lead` in a live run. The merge-request guard comes in a later version. Read "Known limits" before you install.
 
 pragmatic-engineering is an engineering method for Claude Code, put in order. It brings working rules to every agent of a session through one import line in your `CLAUDE.md`, and it adds skills that cover the phases and the three lanes of the work, plus two agents: `blunt-reviewer`, that reviews a git range independently and bluntly, and `worker`, that carries out one package of a parallel piece of work in its own worktree. Version 0.1.0 is the core of the method: the rules, the skills, the two agents, a `SessionStart` hook that keeps the rules in place and a `PreToolUse` hook that holds the reviewer to its interface and a worker to its worktree. This version has no mechanical check on merge requests: the review before a merge request is a rule for the model, not a gate.
 
@@ -19,6 +19,7 @@ This page is written for one person who installs the plugin on their own machine
   - [Uninstall and go back](#uninstall-and-go-back)
   - [Set your office hours](#set-your-office-hours)
   - [Let the work go on without you](#let-the-work-go-on-without-you)
+  - [Work in parallel](#work-in-parallel)
   - [Work on this repository](#work-on-this-repository)
 - [How it works](#how-it-works)
   - [Three lanes](#three-lanes)
@@ -38,6 +39,7 @@ This page is written for one person who installs the plugin on their own machine
   - [Rules through an import](#rules-through-an-import)
   - [Working habits](#working-habits)
   - [Continuity](#continuity)
+  - [Parallel work and integration](#parallel-work-and-integration)
   - [Office hours](#office-hours)
   - [How the plugin talks to you](#how-the-plugin-talks-to-you)
   - [Any language, framework and database](#any-language-framework-and-database)
@@ -189,6 +191,11 @@ git config --local pe.autonomy spec,schema
 Read it back with `git config --local --get pe.autonomy`; no output means it is not set.
 
 `spec` lets the PM lens approve the spec, after the design in three steps and a review cycle closed with no critical or serious finding; `schema` the data model; `design` design outside your office hours, still only in unattended work you authorised with a hard stop; `contract` a change to the shape of an API contract before its first release or its first client, and only through the profile: name it only for an API that has no client yet. By itself an autonomy never opens pushes, merges, production, deletions outside the worktree, messages to people or your instruction files; it also opens any further opening your own rules define, such as publishing, and the plugin defines none itself. Your answer in chat prevails. The model reads only the profile set in the repository itself, never a global value or a file in the repository, so a clone cannot bring one in; `git config --local --unset pe.autonomy` turns it off. You set it, or you ask the model in chat to set it, which it does only for the openings you name and never on its own or because a file or a tool output says so; nothing stops it in this version.
+
+<!-- section: parallel -->
+### Work in parallel
+
+Tell the model in chat that an approved plan is to be built by several workers at once, or ask for `team-lead`. It starts only when all three conditions hold: an approved plan, at least two disjoint file areas, and a test environment for each suite that runs at the same time; before that it designs the plan with you and builds it one task at a time. It then proposes the team: for each worker a file area and a package of two or three tasks, the starting caps (one code worker for each area, at most three per test environment) and the model of each. Your approval of the team is the request that opens its sessions; a session outside the team is a card that you open with one click. A worker is a session of the desktop app, only while you are at the screen, or a `worker` sub-agent, which is what runs when you are away. The model checks every delivery against git with `verify_delivery.py`, has it reviewed by `blunt-reviewer`, and brings the deliveries into the integration branch one at a time. It brings you the decisions that are yours together, in one message.
 
 <!-- section: maintainers -->
 ### Work on this repository
@@ -409,6 +416,13 @@ The coordinating session hands over to a new session at the first clean point of
 
 **Guaranteed by:** a rule for the model only (the rules `save-ahead` and `status-line` in `rules.md`). Nothing counts the saves, so a compaction loses at most the work done since the last save, and how small that is depends on the model's discipline.
 
+<!-- section: explain-parallel -->
+### Parallel work and integration
+
+`team-lead` is the procedure of the main session for building one approved plan with several workers, on two bases: sessions of the desktop app and `worker` sub-agents. Each worker gets a fixed brief with `OWNED:` lines, the files it may change, and `TESTS:` lines, its test files. It works in its own worktree and branch, starts from the integration tip, brings that tip into its branch before it delivers and resolves every conflict there itself: the coordinator never resolves a conflict. `verify_delivery.py` compares the delivery with git before the review: the declared tip, a clean worktree, only files inside the `OWNED:` lines and, with `--red`, tests that fail on the integration tip and pass on the delivery tip. It exits 3 when something is not in the integration and the reviewer has not read it, for example a merge with a conflict resolution. `blunt-reviewer` reads every merge of the range with `--remerge-diff`, and the script runs again after the PASS with the reviewed tip, where it must exit 0. The integration is `git merge --ff-only`, or `git merge-base --is-ancestor` followed by a merge commit where the project wants one, one delivery at a time, and after each the tests of the modules touched by the incoming branch and by those integrated before it. The author of a delivery regenerates the generated files inside the reviewed range; the coordinator repeats that only as a check.
+
+**Guaranteed by:** a mechanism for the declared tip, the clean worktree, the files and the red test (`verify_delivery.py`, which runs only when the model runs it) and for the hold of a worker on its worktree (the `PreToolUse` hook, not proven live). A rule for the model for everything else: the team, the brief, the orders, the review, the order of the integration and the decisions of the coordinator.
+
 <!-- section: explain-office-hours -->
 ### Office hours
 
@@ -493,7 +507,7 @@ Claude Code loads a skill when the task matches its description, unless the tabl
 | `safe-operations` | Verify the target, dry run, say the blast radius and the way back, a separate go for production, never poll, verify at every level. | Before a command or tool that changes an external system, and, with office hours set, before a push, a merge request, a pipeline, a tracker edit or a message. |
 | `interface-quality` | The ten principles of a simple interface, the twenty-two iron rules (fidelity to the designer's document, every state in both themes, 320 to 1440 px and 200% zoom, WCAG 2.2 AA measured, taste and restraint), the UX study before code, the UX lens and the user lens. | Every change to a user interface, and to the responses, messages and documentation of an API. |
 | `documentation-quality` | The four kinds of documentation and the two questions that tell them apart, the entry page, documents that describe only what exists and say their limits, the manual of an administration interface. | Writing, splitting, reorganising or reviewing documentation; not for docstrings, comments or messages to people. |
-| `team-lead` | When building one approved plan with several workers at once is allowed (an approved plan, at least two disjoint file areas, a test environment for each suite), and the check of each delivery against git with `verify_delivery.py`, before the review and again after the PASS. | When an approved plan is to be built by several workers at once, and when a worker reports a delivery. |
+| `team-lead` | When building one approved plan with several workers at once is allowed (an approved plan, at least two disjoint file areas, a test environment for each suite), the procedure of the team (file areas, a fixed brief, orders to sessions and to `worker` sub-agents, a worker stuck on a permission), the check of each delivery against git with `verify_delivery.py`, before the review and again after the PASS, the review of the delivery by `blunt-reviewer`, and an integration one delivery at a time in which the coordinator never resolves a conflict. | When an approved plan is to be built by several workers at once, and when a worker reports a delivery. |
 | `configure` | Shows the current values of the `pe.*` keys, asks one question at a time about the ones you choose, checks the format of each answer and runs each `git config` command only after your yes, the autonomy profile included. | When you ask how to configure or set up the plugin, its office hours, weekends, holidays, personal remotes or autonomy; not for the settings of another tool. |
 
 ### Agents

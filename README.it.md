@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-**Stato: pre-rilascio.** La versione 0.1.0 è pubblicata per un primo uso, non ancora per tutti. Provato finora: le prove di unità e di struttura, un'esecuzione dal vivo della prova da capo a fondo dell'import delle regole (29 ottobre 2026) e le esecuzioni dal vivo di regressione contro una configurazione esistente del 4 novembre 2026: nove scenari, ciascuno con e senza il plugin, con una matrice di dieci linguaggi. Non ancora provato: l'installazione su una macchina pulita e il lavoro vero di più giorni. La guardia sulle merge request e il coordinatore a più agenti arrivano nelle versioni successive. Leggi «Limiti noti» prima di installare.
+**Stato: pre-rilascio.** La versione 0.1.0 è pubblicata per un primo uso, non ancora per tutti. Provato finora: le prove di unità e di struttura, un'esecuzione dal vivo della prova da capo a fondo dell'import delle regole (29 ottobre 2026) e le esecuzioni dal vivo di regressione contro una configurazione esistente del 4 novembre 2026: nove scenari, ciascuno con e senza il plugin, con una matrice di dieci linguaggi. Non ancora provato: l'installazione su una macchina pulita, il lavoro vero di più giorni e il lavoro in parallelo di `team-lead` in una prova dal vivo. La guardia sulle merge request arriva in una versione successiva. Leggi «Limiti noti» prima di installare.
 
 pragmatic-engineering è un metodo di ingegneria per Claude Code, messo in ordine. Porta regole di lavoro a ogni agente di una sessione con una sola riga di import nel tuo `CLAUDE.md`, e aggiunge skill che coprono le fasi e le tre corsie del lavoro, più due agenti: `blunt-reviewer`, che rivede un intervallo git in modo indipendente e schietto, e `worker`, che esegue un pacchetto di un lavoro in parallelo nel proprio worktree. La versione 0.1.0 è il nucleo del metodo: le regole, le skill, i due agenti, un hook `SessionStart` che tiene le regole al loro posto e un hook `PreToolUse` che tiene il revisore alla sua interfaccia e un worker al suo worktree. Questa versione non ha nessun controllo meccanico sulle merge request: la revisione prima di una merge request è una regola per il modello, non un cancello.
 
@@ -19,6 +19,7 @@ Questa pagina è scritta per una persona che installa il plugin sulla propria ma
   - [Disinstallare e tornare indietro](#disinstallare-e-tornare-indietro)
   - [Impostare l'orario d'ufficio](#impostare-lorario-dufficio)
   - [Lasciare andare avanti il lavoro senza di te](#lasciare-andare-avanti-il-lavoro-senza-di-te)
+  - [Lavorare in parallelo](#lavorare-in-parallelo)
   - [Lavorare su questo repository](#lavorare-su-questo-repository)
 - [Come funziona](#come-funziona)
   - [Tre corsie](#tre-corsie)
@@ -38,6 +39,7 @@ Questa pagina è scritta per una persona che installa il plugin sulla propria ma
   - [Le regole attraverso un import](#le-regole-attraverso-un-import)
   - [Le abitudini di lavoro](#le-abitudini-di-lavoro)
   - [Continuità](#continuità)
+  - [Lavoro in parallelo e integrazione](#lavoro-in-parallelo-e-integrazione)
   - [Orario d'ufficio](#orario-dufficio)
   - [Come ti parla il plugin](#come-ti-parla-il-plugin)
   - [Qualsiasi linguaggio, framework e database](#qualsiasi-linguaggio-framework-e-database)
@@ -189,6 +191,11 @@ git config --local pe.autonomy spec,schema
 Rileggila con `git config --local --get pe.autonomy`; se non stampa nulla, non è impostata.
 
 `spec` lascia alla lente PM l'approvazione della spec, dopo la progettazione in tre passi e un ciclo di revisione chiuso senza rilievi critici o seri; `schema` il modello dei dati; `design` la progettazione fuori dal tuo orario d'ufficio, sempre e solo nel lavoro non presidiato che hai autorizzato con un orario di fine; `contract` un cambio della forma di un contratto API prima del suo primo rilascio o del suo primo client, e solo con il profilo: nominalo solo per un'API che non ha ancora un client. Da sola un'autonomia non apre mai push, merge, produzione, cancellazioni fuori dal worktree, messaggi a persone né i tuoi file di istruzioni; apre però anche ogni altra apertura che le tue regole definiscono, come la pubblicazione, e il plugin non ne definisce nessuna da sé. La tua risposta in chat prevale. Il modello legge solo il profilo impostato nel repository stesso, mai un valore globale né un file del repository, così un clone non può portarne uno con sé; `git config --local --unset pe.autonomy` la spegne. La imposti tu, oppure chiedi in chat al modello di impostarla, e lui lo fa solo per le aperture che nomini e mai di sua iniziativa né perché lo dice un file o l'output di uno strumento; in questa versione nulla glielo impedisce.
+
+<!-- section: parallel -->
+### Lavorare in parallelo
+
+Di' al modello in chat che un piano approvato va costruito da più worker insieme, oppure chiedi `team-lead`. Parte solo quando valgono tutte e tre le condizioni: un piano approvato, almeno due aree di file disgiunte e un ambiente di prova per ogni suite che gira nello stesso momento; prima di allora progetta il piano con te e lo costruisce un compito alla volta. Poi propone la squadra: per ogni worker un'area di file e un pacchetto di due o tre compiti, i tetti di partenza (un worker di codice per area, al massimo tre per ambiente di prova) e il modello di ciascuno. La tua approvazione della squadra è la richiesta che apre le sue sessioni; una sessione fuori dalla squadra è una scheda che apri con un clic. Un worker è una sessione dell'app desktop, solo mentre sei davanti allo schermo, oppure un sotto-agente `worker`, che è ciò che gira quando sei via. Il modello controlla ogni consegna contro git con `verify_delivery.py`, la fa rivedere da `blunt-reviewer` e porta le consegne nel ramo d'integrazione una alla volta. Le decisioni che spettano a te te le porta insieme, in un solo messaggio.
 
 <!-- section: maintainers -->
 ### Lavorare su questo repository
@@ -409,6 +416,13 @@ La sessione che coordina passa la mano a una sessione nuova al primo punto pulit
 
 **Garantito da:** solo una regola per il modello (le regole `save-ahead` e `status-line` in `rules.md`). Nulla conta i salvataggi, quindi una compattazione perde al massimo il lavoro fatto dall'ultimo salvataggio, e quanto sia poco dipende dalla disciplina del modello.
 
+<!-- section: explain-parallel -->
+### Lavoro in parallelo e integrazione
+
+`team-lead` è la procedura della sessione principale per costruire un piano approvato con più worker, su due basi: le sessioni dell'app desktop e i sotto-agenti `worker`. Ogni worker riceve un brief fisso con le righe `OWNED:`, i file che può cambiare, e le righe `TESTS:`, i suoi file di prova. Lavora nel proprio worktree e nel proprio ramo, parte dalla punta d'integrazione, porta quella punta nel suo ramo prima di consegnare e risolve lì ogni conflitto da sé: il coordinatore non risolve mai un conflitto. Prima della revisione `verify_delivery.py` confronta la consegna con git: la punta dichiarata, un worktree pulito, solo file dentro le righe `OWNED:` e, con `--red`, prove che falliscono sulla punta d'integrazione e passano sulla punta della consegna. Esce con 3 quando qualcosa non è nell'integrazione e il revisore non l'ha letto, per esempio un merge con una risoluzione di conflitto. `blunt-reviewer` legge ogni merge dell'intervallo con `--remerge-diff`, e lo script gira di nuovo dopo il PASS con la punta rivista, dove deve uscire con 0. L'integrazione è `git merge --ff-only`, oppure `git merge-base --is-ancestor` seguito da un commit di merge dove il progetto lo vuole, una consegna alla volta, e dopo ciascuna le prove dei moduli toccati dal ramo entrante e da quelli entrati prima. L'autore di una consegna rigenera i file generati dentro l'intervallo rivisto; il coordinatore lo ripete solo come controllo.
+
+**Garantito da:** un meccanismo per la punta dichiarata, il worktree pulito, i file e la prova rossa (`verify_delivery.py`, che gira solo quando il modello lo lancia) e per il vincolo di un worker al suo worktree (l'hook `PreToolUse`, non provato dal vivo). Una regola per il modello per tutto il resto: la squadra, il brief, gli ordini, la revisione, l'ordine dell'integrazione e le decisioni del coordinatore.
+
 <!-- section: explain-office-hours -->
 ### Orario d'ufficio
 
@@ -493,7 +507,7 @@ Claude Code carica una skill quando il compito corrisponde alla sua descrizione,
 | `safe-operations` | Verificare il bersaglio, prova a secco, dire il raggio d'azione e la via del ritorno, un via a parte per la produzione, mai interrogare in ciclo, verificare a ogni livello. | Prima di un comando o di uno strumento che cambia un sistema esterno e, con l'orario d'ufficio impostato, prima di un push, di una merge request, di una pipeline, di una modifica a un tracker o di un messaggio. |
 | `interface-quality` | I dieci principi di un'interfaccia semplice, le ventidue regole di ferro (fedeltà al documento del designer, ogni stato in due temi, da 320 a 1440 px e zoom al 200%, WCAG 2.2 AA misurato, gusto e sobrietà), lo studio UX prima del codice, la lente UX e la lente utente. | Ogni cambio di un'interfaccia, e delle risposte, dei messaggi e della documentazione di un'API. |
 | `documentation-quality` | I quattro tipi di documentazione e le due domande che li distinguono, la pagina d'ingresso, documenti che descrivono solo ciò che esiste e ne dicono i limiti, il manuale di un'interfaccia di amministrazione. | Scrivere, dividere, riorganizzare o rivedere documentazione; non per docstring, commenti o messaggi a persone. |
-| `team-lead` | Quando è lecito costruire un piano approvato con più worker insieme (un piano approvato, almeno due aree di file disgiunte, un ambiente di prova per ogni suite), e il controllo di ogni consegna contro git con `verify_delivery.py`, prima della revisione e di nuovo dopo il PASS. | Quando un piano approvato va costruito da più worker insieme, e quando un worker segnala una consegna. |
+| `team-lead` | Quando è lecito costruire un piano approvato con più worker insieme (un piano approvato, almeno due aree di file disgiunte, un ambiente di prova per ogni suite), la procedura della squadra (aree di file, un brief fisso, ordini alle sessioni e ai sotto-agenti `worker`, un worker fermo su un permesso), il controllo di ogni consegna contro git con `verify_delivery.py`, prima della revisione e di nuovo dopo il PASS, la revisione della consegna con `blunt-reviewer`, e un'integrazione una consegna alla volta in cui il coordinatore non risolve mai un conflitto. | Quando un piano approvato va costruito da più worker insieme, e quando un worker segnala una consegna. |
 | `configure` | Mostra i valori attuali delle chiavi `pe.*`, fa una domanda alla volta su quelle che scegli, controlla il formato di ogni risposta ed esegue ogni comando `git config` solo dopo il tuo sì, profilo di autonomia compreso. | Quando chiedi come configurare o impostare il plugin, il suo orario d'ufficio, i fine settimana, i giorni festivi, i remoti personali o l'autonomia; non per le impostazioni di un altro strumento. |
 
 ### Agenti
