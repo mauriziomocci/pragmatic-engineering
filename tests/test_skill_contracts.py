@@ -71,6 +71,7 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         phrases=(
             "superpowers:test-driven-development", "Searched", "easy to change", "N+1",
+            "for parallel work with several workers, `team-lead` is the procedure",
             "All tests pass, no known residual bugs", "it works and I do not know why",
             "property-based", "Context7", "file::function",
             "The Pragmatic Programmer", "Fundamentals of Software Engineering", "documentation-quality",
@@ -219,6 +220,7 @@ CONTRACTS: Dict[str, Contract] = {
             # the superpowers skills of the phases; the others need no word here (their own descriptions say when)
             "superpowers:brainstorming", "superpowers:writing-plans", "superpowers:subagent-driven-development",
             "superpowers:test-driven-development", "superpowers:verification-before-completion",
+            "or in parallel with `team-lead` when its entry conditions hold",
             # with users hurt right now, the way back comes before the search for the cause
             "When users are hurt right now and the signal of a recent change's way back has fired, mitigation comes "
             "before diagnosis: the first proposal is that way back, under `safe-operations` and with its own go, and "
