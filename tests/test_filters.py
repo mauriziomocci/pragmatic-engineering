@@ -801,9 +801,36 @@ def test_remove_quotes_takes_off_the_quotes_and_nothing_else(word, expected):
     ("git commit -m 'x && y; z'", [["git", "commit", "-m", "x && y; z"]]),  # quoted separators cut nothing
     ("rm -rf \\\n build", [["rm", "-rf", "build"]]),  # a backslash-newline continues the statement
     ("GIT_DIR=../x git log", [["GIT_DIR=../x", "git", "log"]]),
+    ("a 2>&1 b", [["a", "2>&1", "b"]]),  # the & of a redirection ends no statement
+    ("a >&2 b <&0 c &>x d", [["a", ">&2", "b", "<&0", "c", "&>x", "d"]]),
+    ("a & b", [["a"], ["b"]]),
 ])
 def test_statement_words_splits_statements_and_removes_quotes(text, expected):
     assert filters.statement_words(text) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("rm -rf x", [("rm", [], ["-rf", "x"])]),
+    ("FOO=1 env -i -u HOME BAR=2 sudo -u bob -- /bin/rm -rf 'a b' 2>&1 >/dev/null c", [
+        ("rm", ["FOO=1", "BAR=2"], ["-rf", "a b", "c"])]),
+    ("env --unset=HOME rm x; command -p git status", [("rm", [], ["x"]), ("git", [], ["status"])]),
+    ("rm x > out '>' y", [("rm", [], ["x", ">", "y"])]),  # a quoted > is an operand
+    ("cat > f <<'EOF'\nbody\nEOF", [("cat", [], []), ("body", [], []), ("EOF", [], [])]),
+    ("\\rm a\\\nb", [("rm", [], ["ab"])]),  # a backslash-newline joins, and \rm is rm
+    ("FOO=1", [("", ["FOO=1"], [])]),
+])
+def test_read_statements_reads_the_command_word_through_assignments_wrappers_and_redirections(text, expected):
+    statements = filters.read_statements(text)
+    assert [(s.name, s.assignments, s.arguments) for s in statements] == expected
+
+
+@pytest.mark.parametrize("text", [
+    "echo \\'; rm x", "echo \"a \\\" b\"", "cat <(rm x)", "diff >(rm x) y", "rm a>b", "rm 'a'<b",
+    "env -iu HOME rm x", "env -S 'rm x'", "env -C .. rm x", "sudo -e x", "sudo -D .. rm x", "command -x rm",
+])
+def test_read_statements_refuses_what_it_cannot_read_for_sure(text):
+    with pytest.raises(filters.UnreadableCommand):
+        filters.read_statements(text)
 
 
 @pytest.mark.parametrize("text,expected", [

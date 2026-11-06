@@ -1839,41 +1839,69 @@ GUIDED_SENTENCES = {
          "because such a session is known only from its signal.",
          "Un guasto dell'hook nega una chiamata dell'agente worker, ma lascia passare una chiamata di una sessione "
          "worker, perché una tale sessione si riconosce solo dal suo segnale."),
-        # the Bash part of the worker boundary: what it reads, what it denies, and what the text does not show
-        ("The Bash part of the worker boundary is not proven live either, and it reads the text of a command, not what "
-         "the shell runs.",
+        # the Bash part of the worker boundary: what it reads, what it refuses to guess, what it denies, and what stays open
+        ("The Bash part of the worker boundary is not proven live either, and it reads the text of a command, not "
+         "what the shell runs.",
          "Anche la parte Bash del confine del worker non è provata dal vivo, e legge il testo di un comando, non ciò "
          "che la shell esegue."),
+        ("For the same calls as the file writes, the hook cuts the command into statements at `&&`, `||`, `;`, `|`, "
+         "`&` and newlines outside quotes, keeping inside a statement the `&` of a redirection such as `2>&1`, and "
+         "reads each one by its command word, by the name after its last `/` and through `env`, `command` and "
+         "`sudo`, leaving out the redirections and their targets.",
+         "Per le stesse chiamate delle scritture di file, l'hook taglia il comando in istruzioni a `&&`, `||`, `;`, "
+         "`|`, `&` e agli a capo fuori dagli apici, tenendo dentro un'istruzione la `&` di una redirezione come "
+         "`2>&1`, e legge ciascuna dalla sua parola di comando, dal nome dopo la sua ultima `/` e attraverso `env`, "
+         "`command` e `sudo`, lasciando fuori le redirezioni e i loro bersagli."),
+        ("It denies the whole command when it cannot read it for sure, and says what to write instead: a backslash "
+         "before a quote, a `<( ... )` or `>( ... )`, a `<` or `>` inside a word, or an option of `env`, `command` "
+         "or `sudo` that it does not know, such as a bundle (`-iu`), `env -C`, `env -S`, `sudo -D` or `sudo -e`.",
+         "Nega il comando intero quando non riesce a leggerlo con certezza, e dice che cosa scrivere al suo posto: "
+         "una barra rovesciata prima di un apice, un `<( ... )` o un `>( ... )`, un `<` o un `>` dentro una parola, "
+         "o un'opzione di `env`, `command` o `sudo` che non conosce, come un gruppo di opzioni (`-iu`), `env -C`, "
+         "`env -S`, `sudo -D` o `sudo -e`."),
         ("It denies `rm`, `rmdir`, `unlink` and `find ... -delete` on a path that does not lie below the worktree "
          "root, so the root itself is denied too, or that the text does not spell out, because it starts with `~` or "
-         "holds `$`, a backtick, a brace or a backslash; a `cd` or `pushd` to anything but one folder inside the "
-         "worktree, even on its own, because the shell keeps that folder for the next call and from there the hook "
-         "would no longer find the worktree; a git command that `-C`, `--git-dir`, `--work-tree`, `GIT_DIR` or "
-         "`GIT_WORK_TREE` points outside it; and `git stash`, `git worktree remove` and `prune`, and a `git branch` "
-         "that deletes, moves or forces a branch, because all the worktrees share them.",
+         "holds `$`, a backtick, a brace, a backslash or a glob (`*`, `?`, `[`); a `cd` or `pushd` to anything but "
+         "one folder inside the worktree, spelled out in the same way, even on its own, because the shell keeps that "
+         "folder for the next call and from there the hook would no longer find the worktree; a git command that "
+         "`-C`, `--git-dir`, `--work-tree`, `GIT_DIR` or `GIT_WORK_TREE` points outside it, or that carries a "
+         "configuration of its own (`-c`, `--config-env`, `GIT_CONFIG_*`); and, because all the worktrees share what "
+         "they change, `git stash`, `git worktree remove` and `prune`, `git push`, `git update-ref`, a `git config` "
+         "that does more than read, a `git branch` or `git tag` that deletes, moves or forces one, and a `git fetch` "
+         "or `git pull` whose refspec names a destination.",
          "Nega `rm`, `rmdir`, `unlink` e `find ... -delete` su un percorso che non sta sotto la radice del worktree, "
          "quindi anche sulla radice stessa, o che il testo non scrive per esteso, perché comincia con `~` o contiene "
-         "`$`, un apice inverso, una graffa o una barra rovesciata; un `cd` o un `pushd` verso qualunque cosa che non "
-         "sia una sola cartella dentro il worktree, anche da solo, perché la shell tiene quella cartella per la "
-         "chiamata dopo e da lì l'hook non troverebbe più il worktree; un comando git che `-C`, `--git-dir`, "
-         "`--work-tree`, `GIT_DIR` o `GIT_WORK_TREE` puntano fuori da esso; e `git stash`, `git worktree remove` e "
-         "`prune`, e un `git branch` che cancella, sposta o forza un ramo, perché tutti i worktree li condividono."),
-        ("Every path is read from the call's working directory, where a `cd` that fails leaves the shell, so "
-         "`cd docs; cd ..` at the root is denied too.",
+         "`$`, un apice inverso, una graffa, una barra rovesciata o un carattere jolly (`*`, `?`, `[`); un `cd` o un "
+         "`pushd` verso qualunque cosa che non sia una sola cartella dentro il worktree, scritta per esteso allo "
+         "stesso modo, anche da solo, perché la shell tiene quella cartella per la chiamata dopo e da lì l'hook non "
+         "troverebbe più il worktree; un comando git che `-C`, `--git-dir`, `--work-tree`, `GIT_DIR` o "
+         "`GIT_WORK_TREE` puntano fuori da esso, o che porta una configurazione propria (`-c`, `--config-env`, "
+         "`GIT_CONFIG_*`); e, perché tutti i worktree condividono ciò che cambiano, `git stash`, `git worktree "
+         "remove` e `prune`, `git push`, `git update-ref`, un `git config` che non si limita a leggere, un `git "
+         "branch` o un `git tag` che cancella, sposta o forza un ramo o un tag, e un `git fetch` o un `git pull` il "
+         "cui refspec nomina una destinazione."),
+        ("Every path is read from the call's working directory, where a `cd` that fails leaves the shell, so `cd "
+         "docs; cd ..` at the root is denied too.",
          "Ogni percorso si legge dalla cartella di lavoro della chiamata, dove un `cd` che fallisce lascia la shell, "
          "quindi anche `cd docs; cd ..` alla radice è negato."),
-        ("The check does not see what the text does not show, and these stay open: variables and aliases, the scripts "
-         "a command runs, `sh -c` and `eval`, `xargs` and `find -exec`, the folder options of `env` and `sudo` "
-         "(`env -C`, `sudo -D`), other wrappers such as `nohup`, `time` and `exec`, subshells `( ... )`, groups "
-         "`{ ...; }`, `if`, `for` and `while`, `$( ... )`, redirections, `mv` and `cp`, `git worktree add` and `move`, "
-         "and `git update-ref` and `git push .` towards the integration branch. Inside its worktree a worker can "
-         "still delete `.pe/worker`, and so turn off the hold of its own session.",
-         "Il controllo non vede ciò che il testo non mostra, e restano aperti: variabili e alias, gli script che un "
-         "comando lancia, `sh -c` ed `eval`, `xargs` e `find -exec`, le opzioni di cartella di `env` e `sudo` "
-         "(`env -C`, `sudo -D`), altri involucri come `nohup`, `time` ed `exec`, le sottoshell `( ... )`, i gruppi "
-         "`{ ...; }`, `if`, `for` e `while`, `$( ... )`, le redirezioni, `mv` e `cp`, `git worktree add` e `move`, e "
-         "`git update-ref` e `git push .` verso il ramo d'integrazione. Dentro il suo worktree un worker può ancora "
-         "cancellare `.pe/worker`, e spegnere così il vincolo della propria sessione."),
+        ("Everything else stays open, because the check reads only those seven command words, and of git only the "
+         "options before the subcommand and those nine subcommands: any other command that writes or deletes, such "
+         "as `mv`, `cp`, `ln`, `tee` or `python3`; any other git subcommand that moves what the worktrees share, "
+         "such as `git switch -C` and `git checkout -B`, which the worker's own resumption uses, `git symbolic-ref`, "
+         "`git reflog` and `git remote`; a command that another program runs, such as `sh -c`, `eval`, `xargs`, "
+         "`find -exec`, `nohup`, `time`, `exec` or a script; a command word held in a variable, an alias or a "
+         "function; the first command of a subshell `( ... )`, a group `{ ...; }`, an `if`, `for` or `while`, or a "
+         "`$( ... )`; and the targets of redirections. Inside its worktree a worker can still delete `.pe/worker`, "
+         "and so turn off the hold of its own session.",
+         "Tutto il resto resta aperto, perché il controllo legge solo quelle sette parole di comando, e di git solo "
+         "le opzioni prima del sottocomando e quei nove sottocomandi: ogni altro comando che scrive o cancella, come "
+         "`mv`, `cp`, `ln`, `tee` o `python3`; ogni altro sottocomando di git che sposta ciò che i worktree "
+         "condividono, come `git switch -C` e `git checkout -B`, che la ripresa del worker stesso usa, `git "
+         "symbolic-ref`, `git reflog` e `git remote`; un comando che un altro programma esegue, come `sh -c`, "
+         "`eval`, `xargs`, `find -exec`, `nohup`, `time`, `exec` o uno script; una parola di comando tenuta in una "
+         "variabile, un alias o una funzione; il primo comando di una sottoshell `( ... )`, di un gruppo `{ ...; }`, "
+         "di un `if`, `for` o `while`, o di un `$( ... )`; e i bersagli delle redirezioni. Dentro il suo worktree un "
+         "worker può ancora cancellare `.pe/worker`, e spegnere così il vincolo della propria sessione."),
         ("(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documents another "
          "route, a `SubagentStart` hook that adds the rules as context, and the plugin does not take it: it would "
          "add about 9,500 characters to each of the most frequent subagents.",

@@ -1,4 +1,4 @@
-"""Text filters shared by the project hook of step zero and the PreToolUse guard of A2.
+"""Text filters shared by the project hook of step zero, the PreToolUse guard of A2 and the plugin's PreToolUse hook.
 
 Both checks are deliberately textual and apply to the whole command, with no
 prefix exemption: ``echo ok && git push --no-verify`` is caught like
@@ -110,10 +110,11 @@ _MODELLED = re.compile(r"(?:[\w\-.,/=:@+% \t\n;|]|&&|'[^']*'|\"[^\"$`\\]*\")*", 
 # folder) as it does without the quotes. The start of a word is the start of the text, a blank or a separator.
 EMPTY_QUOTES_BEFORE_EXPANSION = r"(?<![^\s;&|])(?:''|\"\")+[=~]"
 _EMPTY_QUOTES_EXPANSION = re.compile(EMPTY_QUOTES_BEFORE_EXPANSION)
-# Statements end at && || ; | & and newline outside quotes, but not at a backslash-newline continuation; words end at
-# blanks outside quotes, and lose their quotes. A command outside the model is cut the same way, approximately: there
-# its calls can only add blocks to the whole-text verdict.
-_STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[^|;&\n])+")
+# Statements end at && || ; | & and newline outside quotes, but not at a backslash-newline continuation nor at the &
+# of a redirection (2>&1, >&2, <&0, &>file); words end at blanks outside quotes, and lose their quotes. A command
+# outside the model is cut the same way, approximately: there its calls can only add blocks to the whole-text verdict,
+# and read_statements refuses what it cannot read for sure.
+_STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[<>]&|&>|[^|;&\n])+")
 _WORD = re.compile(r"(?:[^\s\"'\\]|\\(?!\r?\n)|\"[^\"]*\"|'[^']*')+")
 _QUOTES = re.compile(r"\"([^\"]*)\"|'([^']*)'")
 _CLIENT = re.compile(r"(?:.*\W)?(gh|glab)", _I | re.DOTALL)  # also /usr/local/bin/gh, zsh's =gh, GH on macOS
@@ -205,13 +206,130 @@ def _api_writes_requests(text: str) -> bool:
     )
 
 
+def _raw_statements(text: str) -> List[List[str]]:
+    """The words of each statement of a shell text as written, quotes included: statements end where ``_STATEMENT``
+    ends them and words where ``_WORD`` does."""
+    return [_WORD.findall(statement) for statement in _STATEMENT.findall(text)]
+
+
 def statement_words(text: str) -> List[List[str]]:
     """The words of each statement of a shell text, with their quotes taken off by ``remove_quotes``.
 
-    Statements end where ``_STATEMENT`` ends them and words where ``_WORD`` does. Nothing is expanded, so a word keeps
-    its ``$``, ``~`` and backslashes, and parentheses and braces are text: ``(cd x`` is one word.
+    Nothing is expanded, so a word keeps its ``$``, ``~`` and backslashes, and parentheses and braces are text:
+    ``(cd x`` is one word.
     """
-    return [[remove_quotes(word) for word in _WORD.findall(statement)] for statement in _STATEMENT.findall(text)]
+    return [[remove_quotes(word) for word in words] for words in _raw_statements(text)]
+
+
+def _after_assignments(words: List[str], start: int) -> int:
+    """The index of the first word from ``start`` on that is not a NAME=value assignment: the command word."""
+    return next((i for i in range(start, len(words)) if not _ASSIGNMENT.match(words[i])), len(words))
+
+
+class UnreadableCommand(ValueError):
+    """A shell text that ``read_statements`` cannot read for sure; the message says what to write instead."""
+
+
+class ShellStatement(NamedTuple):
+    """One statement as ``read_statements`` reads it: its NAME=value words, the name of its command word after the
+    last /, and the words after it, without quotes and without redirections."""
+
+    assignments: List[str]
+    name: str
+    arguments: List[str]
+
+
+# The options of each wrapper that the reader knows, with how many words each takes after it. Any other option makes
+# the statement unreadable: a bundle (-iu), a folder option (env -C, sudo -D), env -S, which runs the string it
+# splits, sudo -e, which edits the file it names.
+_WRAPPER_OPTIONS: Dict[str, Dict[str, int]] = {
+    "env": {"-": 0, "-i": 0, "--ignore-environment": 0, "-0": 0, "--null": 0, "-v": 0, "--debug": 0, "-u": 1,
+            "--unset": 1},
+    "command": {"-p": 0, "-v": 0, "-V": 0},
+    "sudo": {
+        "-A": 0, "--askpass": 0, "-b": 0, "--background": 0, "-E": 0, "--preserve-env": 0, "-H": 0, "--set-home": 0,
+        "-i": 0, "--login": 0, "-k": 0, "--reset-timestamp": 0, "-n": 0, "--non-interactive": 0, "-P": 0,
+        "--preserve-groups": 0, "-S": 0, "--stdin": 0, "-s": 0, "--shell": 0, "-u": 1, "--user": 1, "-g": 1,
+        "--group": 1, "-h": 1, "--host": 1, "-p": 1, "--prompt": 1, "-C": 1, "--close-from": 1, "-r": 1, "--role": 1,
+        "-t": 1, "--type": 1, "-T": 1, "--command-timeout": 1, "-U": 1, "--other-user": 1,
+    },
+}
+# A redirection written as its own word: digits, the operator, then its target, or nothing when the target is the next
+# word. A quote before the operator makes the word an operand, so the pattern is matched on the word as written.
+_REDIRECTION = re.compile(r"[0-9]*(?:&>>?|<<<|<<-?|<>|<&|>&|>>|[<>])(.*)", re.DOTALL)
+_ESCAPED_QUOTE = re.compile(r"\\[\"']")
+_ESCAPED_QUOTE_HINT = (
+    "a backslash before a quote changes where the shell's quoted text ends, which the reader does not follow; write "
+    "the text in single quotes or in a file"
+)
+_SUBSTITUTION_HINT = "<( ... ) and >( ... ) run a command the reader does not see; run it as a statement of its own"
+_INNER_OPERATOR_HINT = "a < or > inside a word is a redirection the reader does not cut; write it after a space"
+_WRAPPER_HINT = (
+    "env, command and sudo are read only with the options the reader knows, each as a word of its own (env -i, "
+    "env -u NAME, sudo -u USER); write them so, or run the command without the wrapper"
+)
+
+
+def read_statements(text: str) -> List[ShellStatement]:
+    """Read each statement of a shell text by its command word, for a check that must fail closed.
+
+    Unlike the filters above, which can only add blocks where the model is approximate, a check that denies by command
+    word would let a call through there, so this raises ``UnreadableCommand`` instead: on a backslash before a quote,
+    on a process substitution, on a < or > inside a word, and on a wrapper option it does not know. Backslash-newlines
+    go first, as the shell removes them. Redirections and their targets are left out, and the command word is read
+    after its assignments and through env, command and sudo; the arguments keep ``$``, ``~``, globs and backslashes.
+    """
+    joined = without_line_continuations(text)
+    if _ESCAPED_QUOTE.search(joined):
+        raise UnreadableCommand(_ESCAPED_QUOTE_HINT)
+    return [_read_statement(_without_redirections(words)) for words in _raw_statements(joined)]
+
+
+def _without_redirections(raw_words: List[str]) -> List[str]:
+    """The words without their quotes, leaving out each redirection and its target."""
+    kept: List[str] = []
+    remaining = iter(raw_words)
+    for word in remaining:
+        redirection = _REDIRECTION.fullmatch(word)
+        if redirection is None:
+            kept.append(_unquoted_word(word))
+        elif redirection.group(1).startswith("("):
+            raise UnreadableCommand(_SUBSTITUTION_HINT)
+        elif not redirection.group(1):
+            next(remaining, None)
+    return kept
+
+
+def _unquoted_word(word: str) -> str:
+    outside_quotes = _QUOTES.sub("", word)
+    if "<" in outside_quotes or ">" in outside_quotes:
+        raise UnreadableCommand(_INNER_OPERATOR_HINT)
+    return remove_quotes(word)
+
+
+def _read_statement(words: List[str]) -> ShellStatement:
+    assignments: List[str] = []
+    position = 0
+    while True:
+        command = _after_assignments(words, position)
+        assignments += words[position:command]
+        name = words[command].replace("\\", "").rsplit("/", 1)[-1] if command < len(words) else ""
+        options = _WRAPPER_OPTIONS.get(name)
+        if options is None:
+            return ShellStatement(assignments, name, words[command + 1:])
+        position = _after_wrapper_options(words, command + 1, options)
+
+
+def _after_wrapper_options(words: List[str], position: int, options: Dict[str, int]) -> int:
+    """The index of the first word after a wrapper's options, each with the words it takes."""
+    while position < len(words) and words[position].startswith("-"):
+        if words[position] == "--":
+            return position + 1
+        option, joined, _ = words[position].partition("=")
+        if option not in options:
+            raise UnreadableCommand(_WRAPPER_HINT)
+        position += 1 if joined else 1 + options[option]
+    return position
 
 
 def _api_calls(text: str) -> List[Tuple[List[str], bool]]:
@@ -230,7 +348,7 @@ def _api_calls(text: str) -> List[Tuple[List[str], bool]]:
     modelled = _MODELLED.fullmatch(text) is not None and _EMPTY_QUOTES_EXPANSION.search(text) is None
     calls: List[Tuple[List[str], bool]] = []
     for words in statement_words(text):
-        command = next((i for i, word in enumerate(words) if not _ASSIGNMENT.match(word)), len(words))
+        command = _after_assignments(words, 0)
         found = _client_api_spans(words)
         for (client, api), following in zip(found, [client for client, _ in found[1:]] + [len(words)]):
             plain = modelled and client == command and api == client + 1

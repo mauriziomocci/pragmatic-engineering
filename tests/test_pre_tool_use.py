@@ -652,6 +652,70 @@ def test_a_worker_git_command_on_state_shared_by_the_worktrees_is_denied(worker_
     assert reason and "all the worktrees share" in reason
 
 
+UNREADABLE = "cannot read"
+# Texts where a reader that only approximates the shell would miss ../main; each must be denied, for the reason given.
+APPROXIMATIONS = [
+    ("rm -rf build 2>&1 ../main", "deletes only"),  # the & of a redirection ends no statement
+    ("rm -rf build &>/dev/null ../main", "deletes only"),
+    ("rm -rf build >&2 ../main", "deletes only"),
+    ("rm -rf '>' ../main", "deletes only"),  # a quoted > is an operand, not a redirection
+    ("rm -rf \">\" ../main", "deletes only"),
+    ("env -iu HOME rm -rf ../main", UNREADABLE),  # a bundle of a wrapper's options, one of which takes a value
+    ("sudo -iu bob rm -rf ../main", UNREADABLE),
+    ("rm -rf .?/main", "deletes only"),  # a glob: bash before 5.2 counts .. among the matches of .?
+    ("rm -rf build/*", "deletes only"),
+    ("cd l*", "cd and pushd"),
+    ("r\\\nm -rf ../main", "deletes only"),  # a backslash-newline joins the two halves of the command word
+    ("echo \\'; rm -rf ../main; echo \\'", UNREADABLE),  # an escaped quote opens no quoted text
+    ("cat <(rm -rf ../main)", UNREADABLE),  # a process substitution runs a command of its own
+    ("rm -rf ../main>../w/x", UNREADABLE),  # a > inside a word ends the operand there: rm gets ../main
+    ("env -S 'rm -rf ../main'", UNREADABLE),  # env runs the string it splits
+    ("env --split-string='rm -rf ../main'", UNREADABLE),
+    ("env -C ../main rm -rf x", UNREADABLE),  # the wrappers' own folder options
+    ("sudo -D ../main rm -rf x", UNREADABLE),
+    ("sudo -e ../main/x", UNREADABLE),  # sudoedit writes the file it names
+]
+
+
+@pytest.mark.parametrize("command,because", APPROXIMATIONS)
+def test_a_worker_command_the_reader_cannot_read_for_sure_is_denied(worker_worktree, command, because):
+    reason = hook.decide(bash_call(command, worker_worktree))
+    assert reason and because in reason
+
+
+@pytest.mark.parametrize("command", [
+    "git -c core.worktree=../main status", "git -c user.name=x commit -m x", "git --config-env=core.pager=PAGER log",
+    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.worktree GIT_CONFIG_VALUE_0=../main git status",
+])
+def test_a_worker_git_command_with_its_own_configuration_is_denied(worker_worktree, command):
+    reason = hook.decide(bash_call(command, worker_worktree))
+    assert reason and HELD in reason
+
+
+@pytest.mark.parametrize("command", [
+    "git tag -d v1", "git tag -f v1", "git tag --delete v1", "git tag -fa v1 -m x",
+    "git fetch . HEAD:integration", "git fetch origin main:main", "git pull . w:integration",
+    "git push", "git push . HEAD:integration", "git push origin w",
+    "git update-ref refs/heads/integration HEAD",
+    "git config core.worktree ../main", "git config --unset user.name", "git config set user.name x",
+])
+def test_a_worker_git_write_that_it_never_needs_is_denied(worker_worktree, command):
+    reason = hook.decide(bash_call(command, worker_worktree))
+    assert reason and "all the worktrees share" in reason
+
+
+@pytest.mark.parametrize("command", [
+    "python3 -m pytest -q 2>&1 | tail -5", "rm -rf build 2>/dev/null", "rm -f build.log >> /tmp/log 2>&1",
+    "rm -rf build 2>&-", "env -i PATH=/usr/bin python3 x.py", "env -u HOME rm -rf build", "sudo -u bob ls",
+    "GIT_EDITOR=true git merge --continue", "git tag v1", "git tag -l", "git tag -a v1 -m x", "git fetch",
+    "git fetch origin", "git config --get user.name", "git config --list", "git config get user.name",
+    "git switch -C w-sync HEAD", "git checkout -B w2", "rm -rf 'build dir'", "cat > notes.txt <<'EOF'\nx\nEOF",
+    "git commit -m \"$(cat <<'EOF'\nfix: x\nEOF\n)\"",
+])
+def test_worker_commands_the_reader_reads_for_sure_get_no_decision(worker_worktree, command):
+    assert hook.decide(bash_call(command, worker_worktree)) is None
+
+
 @pytest.mark.parametrize("command", [
     "/bin/rm -rf %(outside)s", "env rm -rf %(outside)s", "command rm -rf %(outside)s", "sudo rm -rf %(outside)s",
     "env -u HOME FOO=1 rm -rf %(outside)s", "sudo -u bob rm -rf %(outside)s", "sudo env rm -rf %(outside)s",
