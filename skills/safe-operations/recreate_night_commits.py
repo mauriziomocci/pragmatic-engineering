@@ -19,14 +19,15 @@ Every day uses the hours of ``pe.officeHours``, weekends and ``pe.holidays`` inc
 weekend morning carries a date inside the weekday hours, which the date check accepts.
 """
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Iterator, List, Sequence, Tuple
+from pathlib import Path
+from typing import Callable, List, Sequence, Tuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+from pe_worktree import WorktreeError, temporary_worktree  # noqa: E402  (the plugin's shared code, found from this file)
 
 WINDOW = re.compile(r"(\d\d)-(\d\d)")
 
@@ -135,22 +136,6 @@ def branch_is_unchanged(tag: str) -> Tuple[str]:
     return ("the branch is unchanged; delete the tag with `git tag -d %s` if you do not want it" % tag,)
 
 
-@contextmanager
-def temporary_worktree(tag: str) -> Iterator[str]:
-    """A detached worktree of ``tag`` in a folder of the script's own, removed on success and on every failure."""
-    try:
-        folder = tempfile.mkdtemp(prefix="recreate-night-commits-")
-    except OSError as error:
-        raise Refusal("worktree", "the temporary folder cannot be made: %s" % error) from error
-    try:
-        git("worktree", "add", "--detach", folder, tag)
-        yield folder
-    finally:
-        _run("worktree", "remove", "--force", folder)
-        _run("worktree", "prune")
-        shutil.rmtree(folder, ignore_errors=True)  # what is left when `worktree add` failed before it took over
-
-
 def rebase(base: str, folder: str) -> str:
     """Replay the range inside ``folder`` and return the new tip. ``rebase.updateRefs`` is pinned off because it would
     move every other local branch that points into the range, before the checks."""
@@ -241,12 +226,14 @@ def recreate(base: str, now: datetime) -> str:
     tip = git("rev-parse", "HEAD").strip()
     tag = create_backup_tag(now, tip)
     try:
-        with temporary_worktree(tag) as folder:
+        with temporary_worktree(tag, "recreate-night-commits-") as folder:
             recreation = Recreation(base, tag, rebase(base, folder), window)
             verify(recreation)
         move_branch(tip, recreation)
     except Refusal as refusal:  # the one home of the way back: whatever fails after the tag leaves the branch alone
         raise Refusal(refusal.check, refusal.detail, branch_is_unchanged(tag)) from refusal
+    except WorktreeError as error:
+        raise Refusal("worktree", str(error), branch_is_unchanged(tag)) from error
     return tag
 
 

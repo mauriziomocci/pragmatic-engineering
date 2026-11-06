@@ -7,6 +7,7 @@ that both dates of every commit come back inside the window.
 """
 import importlib.util
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -553,7 +554,7 @@ def test_a_temporary_folder_that_cannot_be_made_still_tells_how_to_delete_the_ta
     def not_writable(prefix):
         raise PermissionError(13, "Permission denied", prefix)
 
-    monkeypatch.setattr(night.tempfile, "mkdtemp", not_writable)
+    monkeypatch.setattr(tempfile, "mkdtemp", not_writable)
     old_tip = head(repo)
     assert night.main([base]) == 1
     error = capsys.readouterr().err
