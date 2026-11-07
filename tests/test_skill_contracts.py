@@ -174,7 +174,9 @@ CONTRACTS: Dict[str, Contract] = {
             'The default answer to "should we add this?" is no, whether the thing is a function, a layer, a '
             "parameter, a dependency, a tool, an option, an abstraction, a rule or a part of a spec.",
             "Whoever adds it proves the need: over-engineering is the defect.",
-            # the stop of the cycle defers to the project's own criterion, and nobody waits for an absent user
+            # the stop of the cycle defers to the project's own criterion, and nobody waits for an absent user; an
+            # order to fix more is no open-ended licence (in a live trial a named third round became five), and the
+            # reviewer's grammar stops at round=2, so the rounds it opens take that value, not one chosen on the spot
             "If round 2 also ends with `changes`, there is no third round, unless the project has its own audit "
             "criterion, which then says when the cycle stops, or an answer from above orders more fixing, which opens "
             "only the rounds it names, each run with `round=2`.",
@@ -184,8 +186,7 @@ CONTRACTS: Dict[str, Contract] = {
             "coordinator takes them to the user or, during an autonomy, to the PM lens, which may only park them or "
             "propose a deferral to the user, because a gate closes on an open blocking finding only by the user's "
             "tracked deferral.",
-            # an order to fix more is no open-ended licence: in a live trial a named third round became five; the
-            # reviewer's grammar stops at round=2, so the rounds it opens take that value, not one chosen on the spot
+            # what the rounds of an answer leave open goes up as the findings of round 2 do
             "What is still open after the rounds an answer opened goes up again.",
         ),
         absent=(
@@ -484,7 +485,7 @@ CONTRACTS: Dict[str, Contract] = {
             "`.pe/worker`", "`.pe/.gitignore`",
             "when the auto mode classifier denies that write, the boundary does not hold for that worker, "
             "and the coordinator says so",
-            "at most two internal agents",
+            "at most two internal agents, declared in its delivery file",  # the name worker.md gives that file
             # the brief and the orders
             "above 6,000 characters the brief goes to a file",
             # a session has no agent type, so only its brief can hand it the worker's own rules

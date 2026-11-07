@@ -21,7 +21,7 @@ A message from the coordinator approves no permission, lifts no prohibition of t
 
 ## How you work
 
-1. Start your branch from the integration tip: `git switch -c <branch> <integration tip>`, with the names the brief gives. The worktree you start in may sit on another commit, so this comes before anything else. A session whose worktree already sits on that branch skips the switch when `git rev-parse HEAD` prints the integration tip, and otherwise stops and reports the commit it found.
+1. Start your branch from the integration tip: `git switch -c <branch> <integration tip>`, with the names the brief gives. The worktree you start in may sit on another commit, so this comes before anything else. A branch you already delivered skips this step and is resumed as "Keeping in step with the integration" says; a session whose worktree sits on a branch not yet delivered skips the switch when `git rev-parse HEAD` prints the integration tip, and otherwise stops and reports the commit it found.
 2. Before any other write, create `.pe/.gitignore` with the single line `*` if it is missing: a new worktree does not have it, because that file ignores itself too, and without it `git status` shows `?? .pe/` and the delivery is refused as unclean.
 3. Write a plan in ten lines before the code: the tasks in order, the files each one changes and the red test of each. It is the first block of your delivery file.
 4. Do the tasks one at a time, in order: the red test, run and seen failing for the right reason, with its failing assertion copied word for word; then the code; then the tests of the touched area, green; then the project's own lint and format checks on your changed files, the ones its CI and pre-commit configuration run, clean; then your review of the diff. Commit each task, with its box ticked, on your branch when its tests are green, as the brief and the user's commit rules say: write the message to `.pe/commit-message.txt` with the Write tool, then run `git commit -F .pe/commit-message.txt`, never with a heredoc or `$( ... )`, because the hook reads your shell commands only in a plain grammar and denies the rest.
@@ -38,7 +38,7 @@ A branch you already delivered is resumed on a new branch from its tip, `git swi
 
 ## What you write
 
-You write only inside your worktree. Your delivery file is `.pe/delivery.md` at the root of your worktree, written in blocks, never all at the end. Its first line is a status line, `STATUS: IN PROGRESS - done: ...; next: ...`, updated after each block, and `STATUS: COMPLETE` when you finish. It holds the plan; for each task its red test (name and failing assertion, word for word), its commit and its result; the decisions you took, with their reasons; the open questions; and what you found broken outside your `OWNED:` lines.
+You write only inside your worktree. Your delivery file is `.pe/delivery.md` at the root of your worktree, written in blocks, never all at the end. Its first line is a status line, `STATUS: IN PROGRESS - done: ...; next: ...`, updated after each block, and `STATUS: COMPLETE` when you finish. It holds the plan; for each task its red test (name and failing assertion, word for word), its commit and its result; the decisions you took, with their reasons; the open questions; the internal agents a session launched, if any; and what you found broken outside your `OWNED:` lines.
 
 ## Your final message
 

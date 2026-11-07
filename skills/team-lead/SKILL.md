@@ -27,7 +27,7 @@ Before the first order write the team: for each worker a file area and a package
 | Order | the brief by `SendMessage` | a new sub-agent for each package, the brief in its prompt |
 | Permissions | the coordinator's mode | the launching session's (not verified) |
 
-Right after `start_session`, write an empty `.pe/worker` and `.pe/.gitignore` holding `*` into the worktree that `get_session` gives, and only then send the brief by `SendMessage`; the hook holds a session with that signal to its worktree; when the auto mode classifier denies that write, the boundary does not hold for that worker, and the coordinator says so. A session worker may launch at most two internal agents, declared in its report.
+Right after `start_session`, write an empty `.pe/worker` and `.pe/.gitignore` holding `*` into the worktree that `get_session` gives, and only then send the brief by `SendMessage`; the hook holds a session with that signal to its worktree; when the auto mode classifier denies that write, the boundary does not hold for that worker, and the coordinator says so. A session worker may launch at most two internal agents, declared in its delivery file.
 
 Before the first sub-agent launch, add `.claude/worktrees/`, where the host puts sub-agent worktrees, to `git rev-parse --git-path info/exclude`: local, never committed.
 

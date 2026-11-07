@@ -707,6 +707,12 @@ WORKER_FINAL_LINES = (
 )
 
 
+def worker_step(body: str, number: int) -> str:
+    """The line of step ``number`` under "How you work" in the body of the worker definition."""
+    (step,) = [line for line in sections(body)["How you work"].splitlines() if line.startswith("%d. " % number)]
+    return step
+
+
 def test_worker_frontmatter():
     fields, _ = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
     # No model field: the coordinator passes one at every launch, because an omitted model inherits the session's.
@@ -724,8 +730,7 @@ def test_worker_body_states_its_contract():
     _, body = parse_frontmatter(text)
     parts = sections(body)
     assert list(parts) == WORKER_SECTIONS
-    (first_step,) = [line for line in parts["How you work"].splitlines() if line.startswith("1. ")]
-    assert "`git switch -c <branch> <integration tip>`" in first_step
+    assert "`git switch -c <branch> <integration tip>`" in worker_step(body, 1)
     # the hook reads a worker's commands only in a plain grammar, where a heredoc or $( ... ) has no place
     for needed in ("`git commit -F .pe/commit-message.txt`", "with the Write tool", "never with a heredoc"):
         assert needed in parts["How you work"], needed
@@ -743,7 +748,10 @@ def test_worker_body_states_its_contract():
         assert needed in parts["Keeping in step with the integration"], needed
     assert IGNORE_FIRST in body and ".pe/delivery.md" in body
     assert body.index(IGNORE_FIRST) < body.index(".pe/delivery.md")
-    for needed in ("`.pe/delivery.md`", "STATUS: IN PROGRESS", "STATUS: COMPLETE"):
+    what_you_write = (
+        "`.pe/delivery.md`", "STATUS: IN PROGRESS", "STATUS: COMPLETE", "the internal agents a session launched",
+    )
+    for needed in what_you_write:
         assert needed in parts["What you write"], needed
     assert WORKER_FINAL_LINES in parts["Your final message"]
     # read from the coordinator's checkout, a bare .pe/delivery.md would name that checkout's own file
@@ -760,8 +768,8 @@ WORKER_SESSION_CLAUSES = (
     "A sub-agent launches no one; a session launches at most two internal agents, declared in its delivery file.",
 )
 WORKER_SESSION_FIRST_STEP = (
-    "A session whose worktree already sits on that branch skips the switch when `git rev-parse HEAD` prints the "
-    "integration tip, and otherwise stops and reports the commit it found."
+    "a session whose worktree sits on a branch not yet delivered skips the switch when `git rev-parse HEAD` prints "
+    "the integration tip, and otherwise stops and reports the commit it found."
 )
 
 
@@ -769,10 +777,19 @@ def test_worker_definition_holds_for_a_session_worker_too():
     """A rule true only for the sub-agent contradicts team-lead, which lets a session launch two agents and opens it
     on its branch already."""
     _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
-    (first_step,) = [line for line in sections(body)["How you work"].splitlines() if line.startswith("1. ")]
     assert [clause for clause in WORKER_SESSION_CLAUSES if clause not in body] == []
-    assert WORKER_SESSION_FIRST_STEP in first_step
+    assert WORKER_SESSION_FIRST_STEP in worker_step(body, 1)
     assert "You launch no one" not in body and "loaded with you" not in body
+
+
+def test_worker_first_step_gives_way_to_the_resumption_of_a_delivered_branch():
+    """A worker sent back to fix its delivery sits on its delivered tip, never on the integration tip: step 1 hands it
+    to the section that resumes a delivered branch instead of stopping it."""
+    _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
+    (resumption,) = [title for title, text in sections(body).items() if "`git switch -C <branch>-sync <tip>`" in text]
+    assert 'A branch you already delivered skips this step and is resumed as "%s" says;' % resumption in worker_step(
+        body, 1
+    )
 
 
 WORKER_STEP_FOUR_IN_ORDER = (
@@ -788,8 +805,7 @@ def test_worker_runs_the_project_checks_before_its_review_and_ticks_its_own_task
     """In a live trial no worker ran the formatter of the project's pre-commit, and the coordinator ticked the tasks
     in commits outside every reviewed range: both are steps of the worker, in this order."""
     _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
-    (fourth_step,) = [line for line in sections(body)["How you work"].splitlines() if line.startswith("4. ")]
-    positions = [fourth_step.find(phrase) for phrase in WORKER_STEP_FOUR_IN_ORDER]
+    positions = [worker_step(body, 4).find(phrase) for phrase in WORKER_STEP_FOUR_IN_ORDER]
     assert -1 not in positions and positions == sorted(positions), positions
 
 
