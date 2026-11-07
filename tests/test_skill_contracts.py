@@ -541,12 +541,16 @@ CONTRACTS: Dict[str, Contract] = {
             # the three steps that had no referent
             "a general sub-agent briefed for the mutations", "in a temporary worktree of the delivery tip",
             # tests copied onto the base pass there, since the code they cover is there: in a live trial a delivery
-            # that only tightened tests was refused by --red, and the coordinator had to decide alone
-            "A delivery that changes only tests has no red by `--red`, since the code they cover is already on the "
+            # that only tightened tests was refused by --red, and the coordinator had to decide alone; "no code",
+            # not "only tests", because every delivery also ticks the task file
+            "A delivery that changes no code has no red by `--red`, since the code its tests cover is already on the "
             "base: check it without `--red`; its red is the mutations of that code, run the same way.",
+            # exit 3 means one thing before the review and another after it
+            "before the review a merge with a conflict resolution, after it every commit above the reviewed tip",
+            "The delivery goes back; nothing is reviewed.",
             "in the delivery report", "the session log",
         ),
-        absent=("changes nothing", "no others"),
+        absent=("changes nothing", "no others", "changes only tests"),
         extra_files=("verify_delivery.py",),
     ),
     "quality-scoring": Contract(

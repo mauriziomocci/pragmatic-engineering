@@ -422,22 +422,26 @@ def test_a_test_that_passes_on_the_integration_tip_exits_1(delivery):
     refused(delivery.run(("--red", delivery.red_command())), "passes on the integration tip")
 
 
-# A delivery that changes only tests is never red by construction: the code they cover is on the base already.
-ONLY_TESTS = "the delivery changes only test files"
+# A delivery that changes no code is never red by construction: the code its tests cover is on the base already.
+# The script cannot tell a ticked task file from code, so the pointer carries its condition.
+NO_CODE_POINTER = "if the delivery changes no code, "
+TEAM_BRIEF = BRIEF + "OWNED: tasks.md\n"  # every worker ticks its own tasks in its delivery
 
 
-def test_a_delivery_of_only_tests_is_told_why_it_has_no_red_and_where_the_rule_is(delivery):
-    add_test_that_passes_on_the_base(delivery)
+def test_a_delivery_that_changes_no_code_is_told_how_its_red_is_proven(delivery):
+    delivery.brief.write_text(TEAM_BRIEF, encoding="utf-8")
+    delivery.integrate({"tasks.md": "- [ ] T1 tighten the test of a\n"})
+    git(delivery.worktree, "merge", "-q", "--no-edit", "integration")
+    delivery.work({"tests/test_a.py": "assert True\n", "tasks.md": "- [x] T1 tighten the test of a\n"})
     proc = delivery.run(("--red", delivery.red_command()))
-    refused(proc, ONLY_TESTS)
+    refused(proc, NO_CODE_POINTER)
     assert "without --red" in proc.stderr and "team-lead" in proc.stderr, proc.stderr
 
 
-def test_a_delivery_with_code_whose_tests_were_never_red_gets_no_such_hint(delivery):
+def test_the_pointer_of_a_never_red_refusal_states_its_condition(delivery):
+    """A delivery with code whose tests were never red lacks its red: the pointer must not read as leave to skip it."""
     delivery.work({"src/a/new.py": "x = 1\n", "tests/test_a.py": "assert True\n"})
-    proc = delivery.run(("--red", delivery.red_command()))
-    refused(proc, "they were never red")
-    assert ONLY_TESTS not in proc.stderr, proc.stderr
+    refused(delivery.run(("--red", delivery.red_command())), "they were never red; " + NO_CODE_POINTER)
 
 
 def test_a_test_that_fails_at_the_tip_exits_1(delivery):

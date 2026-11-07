@@ -29,7 +29,7 @@ without a shell, from the root of two temporary worktrees; a path in it is writt
 escape. The test files are the files of that diff (``--diff-filter=d``, so none that the delivery deleted) that match a
 ``TESTS: <glob>`` line of the brief. The command must exit 0 at the delivery tip and non-zero at the integration tip
 once only those test files of the tip are copied to it: that is the red the worker saw. A refusal carries the last 20
-lines of the command's output; when every file the delivery changed is a test file, it also says that such a delivery
+lines of the command's output, and a refusal for tests that were never red says that a delivery that changes no code
 cannot be red here and points to the rule of team-lead. This is the one place where the script writes: it adds the two
 temporary worktrees and removes them, and runs ``git worktree prune``, which drops the records of every worktree of the
 repository whose folder is gone. The command runs the delivery's own code and inherits the environment of the session
@@ -71,6 +71,14 @@ READ_FLAGS = ("--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "
 OBJECT_ID = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 HEADS = "refs/heads/"
 OUTPUT_LINES = 20
+# Tests copied onto the integration tip pass there when the code they cover is already on it, so a delivery that
+# changes no code is never red here. Every delivery also ticks its task file, which the script cannot tell from code:
+# the pointer carries its condition and the coordinator, who knows the package, applies it.
+NEVER_RED = (
+    "the test command passes on the integration tip with the delivery's test files: they were never red; if the "
+    "delivery changes no code, the code its tests cover is already there: check it without --red and prove its red "
+    "by mutations, as team-lead says"
+)
 
 
 class UsageError(Exception):
@@ -227,17 +235,6 @@ def with_output_tail(reason: str, proc: subprocess.CompletedProcess) -> str:
     return "%s; the last %d lines of its output:\n%s" % (reason, OUTPUT_LINES, tail) if tail else reason
 
 
-def never_red_reason(request: Request) -> str:
-    """A delivery that changes only test files can never be red here, because the code they cover is already on the
-    integration tip; the reason says so and points to the rule of team-lead, so the refusal is not read as a missing
-    red test."""
-    reason = "the test command passes on the integration tip with the delivery's test files: they were never red"
-    if all(matches(path, request.tests) for path in own_changes(request)):
-        reason += ("; the delivery changes only test files, whose code is already on the integration tip: check it "
-                   "without --red and prove its red by mutations, as team-lead says")
-    return reason
-
-
 def red_problems(request: Request) -> List[str]:
     if request.red is None:
         return []
@@ -247,7 +244,7 @@ def red_problems(request: Request) -> List[str]:
     problems = []
     on_base = run_test_command(request, request.integration, test_files)
     if on_base.returncode == 0:
-        problems.append(with_output_tail(never_red_reason(request), on_base))
+        problems.append(with_output_tail(NEVER_RED, on_base))
     at_tip = run_test_command(request, request.tip, ())
     if at_tip.returncode != 0:
         problems.append(with_output_tail("the test command fails at the delivery tip", at_tip))

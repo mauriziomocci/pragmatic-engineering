@@ -793,6 +793,24 @@ def test_worker_first_step_gives_way_to_the_resumption_of_a_delivered_branch():
     ) in worker_step(body, 1)
 
 
+# A package that changes no code cannot be red on the integration tip: team-lead proves its red by mutations.
+WORKER_NO_CODE_TESTS_LINE = (
+    "For a package that changes code, the coordinator checks that these files alone fail on the integration tip",
+    "a package that changes no code has its red proven by the coordinator's mutations of the code its tests cover.",
+)
+WORKER_NO_CODE_STEP = (
+    "A task that changes no code cannot be red before the code: in place of its red, name in the delivery file the "
+    "code its tests cover, for the coordinator's mutations."
+)
+
+
+def test_worker_knows_that_a_package_with_no_code_gets_its_red_from_the_mutations_of_the_coordinator():
+    _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
+    brief = sections(body)["The brief you receive"]
+    assert [phrase for phrase in WORKER_NO_CODE_TESTS_LINE if phrase not in brief] == []
+    assert WORKER_NO_CODE_STEP in worker_step(body, 4)
+
+
 WORKER_STEP_FOUR_IN_ORDER = (
     "then the tests of the touched area, green;",
     "then the project's own lint and format checks on your changed files, the ones its CI and pre-commit "
@@ -2223,13 +2241,16 @@ GUIDED_SENTENCES = {
     ),
     "explain-parallel": (
         EXCLUDE_SENTENCES,
-        # the red of a delivery that changes only tests, as team-lead decides it
-        ("A delivery that changes only tests has no such red, because the code they cover is already on the "
+        # the red of a delivery that changes no code, as team-lead decides it
+        ("A delivery that changes no code has no such red, because the code its tests cover is already on the "
          "integration tip: it is checked without `--red`, and its red is the mutations of that code, run by a "
          "verification sub-agent distinct from the reviewer.",
-         "Una consegna che cambia solo test non può fallire così, perché il codice che coprono è già sulla punta "
-         "d'integrazione: si controlla senza `--red`, e il fallimento dei suoi test si vede con le mutazioni di "
-         "quel codice, eseguite da un sotto-agente di verifica distinto dal revisore."),
+         "Una consegna che non cambia codice non può fallire così, perché il codice che i suoi test coprono è già "
+         "sulla punta d'integrazione: si controlla senza `--red`, e il fallimento dei suoi test si vede con le "
+         "mutazioni di quel codice, eseguite da un sotto-agente di verifica distinto dal revisore."),
+        # the subject of the exit code is the script, not the delivery of the sentence before
+        ("The script exits 3 when something is not in the integration",
+         "Lo script esce con 3 quando qualcosa non è nell'integrazione"),
     ),
     # the one file every worker edits has no first owner, as in the entry conditions of team-lead
     "parallel": (
@@ -2275,21 +2296,21 @@ def test_readmes_count_the_command_words_and_git_subcommands_of_the_worker_check
 # work and in its guarantee line.
 EN_STATUS = (
     "Not proven yet: an install on a clean machine, real work over several days and the parallel work of `team-lead` "
-    "on a real project and with session workers, which so far has had one live run on a small test repository, with "
-    "two sub-agent workers, on 6 November 2026."
+    "with session workers; with two to five sub-agent workers it had two live runs on a copy of a real Django "
+    "project on 7 November 2026."
 )
 IT_STATUS = (
     "Non ancora provato: l'installazione su una macchina pulita, il lavoro vero di più giorni e il lavoro in "
-    "parallelo di `team-lead` su un progetto vero e con worker in sessione, che finora ha avuto un'esecuzione dal "
-    "vivo su un piccolo repository di prova, con due worker sotto-agenti, il 6 novembre 2026."
+    "parallelo di `team-lead` con worker in sessione; con da due a cinque worker sotto-agenti ha avuto due "
+    "esecuzioni dal vivo su una copia di un vero progetto Django il 7 novembre 2026."
 )
 EN_PARALLEL = (
-    "Parallel work is not proven on a real project nor with session workers: it has had one live run on a small test "
-    "repository, with two sub-agent workers, on 6 November 2026; see [Known limits](#known-limits)."
+    "Parallel work is not proven with session workers: with two to five sub-agent workers it had two live runs on a "
+    "copy of a real Django project on 7 November 2026; see [Known limits](#known-limits)."
 )
 IT_PARALLEL = (
-    "Il lavoro in parallelo non è provato su un progetto vero né con worker in sessione: ha avuto un'esecuzione dal "
-    "vivo su un piccolo repository di prova, con due worker sotto-agenti, il 6 novembre 2026; vedi [Limiti "
+    "Il lavoro in parallelo non è provato con worker in sessione: con da due a cinque worker sotto-agenti ha avuto "
+    "due esecuzioni dal vivo su una copia di un vero progetto Django il 7 novembre 2026; vedi [Limiti "
     "noti](#limiti-noti)."
 )
 EN_GUARANTEE = (
@@ -2319,6 +2340,8 @@ def test_readmes_date_the_live_regression_runs_and_drop_the_claims_they_made_fal
     )
     stale += ("Parallel work is not proven live", "hook, not proven live)", "in a live run.",
               "Il lavoro in parallelo non è provato dal vivo", "non provato dal vivo)", "in una prova dal vivo.")
+    # the runs of 7 November 2026 on a copy of a real project replace the one run on a test repository
+    stale += ("has had one live run on a small test repository", "ha avuto un'esecuzione dal vivo su un piccolo")
     claims = ((EN_PARALLEL, EN_GUARANTEE), (IT_PARALLEL, IT_GUARANTEE))
     for path, text, claim, more in zip((README, README_IT), pages(), status, claims):
         missing = [sentence for sentence in (claim,) + more if sentence not in text]
@@ -2429,9 +2452,9 @@ def test_readmes_integrate_the_commit_id_the_check_accepted_and_the_guide_answer
                  "l'id di commit che l'esecuzione dopo il PASS ha accettato, mai il nome del ramo")
     guide = (
         ("its own database, port and cache index", "nothing is asked of you", "more than 10 minutes", "terminal",
-         "stays yours", "(#known-limits)", "not proven on a real project"),
+         "stays yours", "(#known-limits)", "not proven with session workers"),
         ("il suo database, la sua porta e il suo indice di cache", "non ti viene chiesto nulla", "più di 10 minuti",
-         "terminale", "resta tuo", "(#limiti-noti)", "non è provato su un progetto vero"),
+         "terminale", "resta tuo", "(#limiti-noti)", "non è provato con worker in sessione"),
     )
     for explanation, text, sentence, needed in zip(pages("explain-parallel"), pages("parallel"), integrate, guide):
         assert sentence in explanation
