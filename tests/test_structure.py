@@ -2221,7 +2221,16 @@ GUIDED_SENTENCES = {
          "cartella qualsiasi del repository."),
         EXCLUDE_SENTENCES,
     ),
-    "explain-parallel": (EXCLUDE_SENTENCES,),
+    "explain-parallel": (
+        EXCLUDE_SENTENCES,
+        # the red of a delivery that changes only tests, as team-lead decides it
+        ("A delivery that changes only tests has no such red, because the code they cover is already on the "
+         "integration tip: it is checked without `--red`, and its red is the mutations of that code, run by a "
+         "verification sub-agent distinct from the reviewer.",
+         "Una consegna che cambia solo test non può fallire così, perché il codice che coprono è già sulla punta "
+         "d'integrazione: si controlla senza `--red`, e il fallimento dei suoi test si vede con le mutazioni di "
+         "quel codice, eseguite da un sotto-agente di verifica distinto dal revisore."),
+    ),
     # the one file every worker edits has no first owner, as in the entry conditions of team-lead
     "parallel": (
         ("The task file, which every worker edits, is the exception: each ticks only its own boxes there, and a "

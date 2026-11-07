@@ -540,6 +540,10 @@ CONTRACTS: Dict[str, Contract] = {
             "with the user away or an autonomy open use sub-agents",
             # the three steps that had no referent
             "a general sub-agent briefed for the mutations", "in a temporary worktree of the delivery tip",
+            # tests copied onto the base pass there, since the code they cover is there: in a live trial a delivery
+            # that only tightened tests was refused by --red, and the coordinator had to decide alone
+            "A delivery that changes only tests has no red by `--red`, since the code they cover is already on the "
+            "base: check it without `--red`; its red is the mutations of that code, run the same way.",
             "in the delivery report", "the session log",
         ),
         absent=("changes nothing", "no others"),

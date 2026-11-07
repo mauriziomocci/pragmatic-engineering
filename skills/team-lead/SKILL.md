@@ -13,7 +13,7 @@ Use it only when all three conditions hold:
 - at least two disjoint file areas in that plan, so that no two workers edit the same file, except the shared task file, where each worker ticks only its own boxes and a conflict is the worker's, like any other;
 - a test environment for each suite that runs at the same time: its own database, port and cache index, so that two suites never share a resource.
 
-Until all three hold, no parallel work: design the plan with the user, then build it task by task here.
+Until then, no parallel work: design the plan with the user, then build it task by task here.
 
 ## The team
 
@@ -56,8 +56,8 @@ A worker declares a branch and its tip. Check it from your own checkout, never t
 The script's docstring says what each argument is and what each check guards.
 
 - It exits 0: the delivery is accepted.
-- It exits 1: the delivery is refused, reasons on standard error: the branch is not at the declared tip, the worktree is not clean, a changed file is outside every `OWNED:` line, or the `--red` check below fails. A refusal goes back; nothing is reviewed.
-- It exits 3: something is not in the integration and the reviewer has not read it. Without `--reviewed` it is a merge with a conflict resolution; with it, every commit above the reviewed tip, listed by sha, except a merge with an empty remerge diff.
+- It exits 1, a refusal, with its reasons: the branch is not at the declared tip, the worktree is not clean, a changed file is outside every `OWNED:` line, or the `--red` check below fails. It goes back; nothing is reviewed.
+- It exits 3: something is not in the integration and the reviewer has not read it, listed by sha, except a merge with an empty remerge diff.
 - It exits 2: the call is wrong; fix it.
 
 Run it twice, before the review and again after the PASS. Before the review, exits 0 and 3 both send the delivery to `blunt-reviewer`, which reads each merge with `--remerge-diff` (git 2.36+). After the PASS, with `--reviewed <the commit id of the tip the reviewer read>`, it must exit 0. An exit 3 then means commits after the review, or a tip moved off the reviewed one; they are reviewed before any merge.
@@ -68,7 +68,7 @@ The script does not check that the integration tip is an ancestor of the deliver
 
 ## Review
 
-After the worker brought the integration tip into its branch: `blunt-reviewer` on `<integration tip>..<tip>`, where `<integration tip>` is the commit id of the integration tip the worker merged (`git merge-base`), never the branch name, because other deliveries are integrated while this one is reviewed. Reviewer and UX lens are sub-agents with a fresh context at every round, never sessions. Before it: the red on the base (`--red`), and mutations only of guards and serious fixes, run in a temporary worktree of the delivery tip by a verification subagent distinct from the reviewer, a general sub-agent briefed for the mutations, results in the delivery report. A merge with an empty remerge diff needs no review, but its tests run. The cycle after fixes is `blunt-review`; what is open after two rounds goes up.
+After the worker brought the integration tip into its branch: `blunt-reviewer` on `<integration tip>..<tip>`, where `<integration tip>` is the commit id of the integration tip the worker merged (`git merge-base`), never the branch name, because other deliveries are integrated while this one is reviewed. Reviewer and UX lens are sub-agents with a fresh context at every round, never sessions. Before it: the red on the base (`--red`), and mutations only of guards and serious fixes, run in a temporary worktree of the delivery tip by a verification subagent distinct from the reviewer, a general sub-agent briefed for the mutations, results in the delivery report. A delivery that changes only tests has no red by `--red`, since the code they cover is already on the base: check it without `--red`; its red is the mutations of that code, run the same way. A merge with an empty remerge diff needs no review, but its tests run. The cycle after fixes is `blunt-review`; what is open after two rounds goes up.
 
 ## Integration
 
@@ -76,7 +76,7 @@ The coordinator never resolves a conflict: the worker does, in its worktree, and
 
 ## Decisions
 
-A decision of the coordinator holds only if it cites the entry it derives from (a spec line, a plan task, a decision-log entry, an answer from above) and changes no requirement, interface, data model or contract; any other goes up by the escalation of `development-workflow`. A general rule is not such an entry: the entry must decide that case. A technical decision inside a task is the worker's, in its report. Check a report against git and tests; bring the user's decisions together.
+A decision of the coordinator holds only if it cites the entry it derives from (a spec line, a plan task, a decision-log entry, an answer from above) and changes no requirement, interface, data model or contract; any other goes up by the escalation of `development-workflow`. A general rule is not such an entry: the entry must decide that case. A technical decision inside a task is the worker's, in its report. Bring the user's decisions together.
 
 ## Failures
 

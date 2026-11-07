@@ -422,6 +422,24 @@ def test_a_test_that_passes_on_the_integration_tip_exits_1(delivery):
     refused(delivery.run(("--red", delivery.red_command())), "passes on the integration tip")
 
 
+# A delivery that changes only tests is never red by construction: the code they cover is on the base already.
+ONLY_TESTS = "the delivery changes only test files"
+
+
+def test_a_delivery_of_only_tests_is_told_why_it_has_no_red_and_where_the_rule_is(delivery):
+    add_test_that_passes_on_the_base(delivery)
+    proc = delivery.run(("--red", delivery.red_command()))
+    refused(proc, ONLY_TESTS)
+    assert "without --red" in proc.stderr and "team-lead" in proc.stderr, proc.stderr
+
+
+def test_a_delivery_with_code_whose_tests_were_never_red_gets_no_such_hint(delivery):
+    delivery.work({"src/a/new.py": "x = 1\n", "tests/test_a.py": "assert True\n"})
+    proc = delivery.run(("--red", delivery.red_command()))
+    refused(proc, "they were never red")
+    assert ONLY_TESTS not in proc.stderr, proc.stderr
+
+
 def test_a_test_that_fails_at_the_tip_exits_1(delivery):
     add_test_without_its_feature(delivery)
     refused(delivery.run(("--red", delivery.red_command())), "fails at the delivery tip")
