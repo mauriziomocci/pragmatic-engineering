@@ -352,6 +352,11 @@ CONTRACTS: Dict[str, Contract] = {
             "git 2.38", "git rev-parse -q --verify MERGE_HEAD",
             "Outside the office hours of `safe-operations` the invocation does not push",
             "the decision log entry of an autonomy that opens `spec`", "the gate of phase 2 has no other exception",
+            # the run starts only on an entry whose quoted closing round was read in full
+            "That entry counts only when it quotes `VERDICT: pass` with `COVERAGE: full`.",
+            # a partial review is never a reason to push
+            "or any review of this closure ends with `COVERAGE: partial`, which nobody present can accept "
+            "(`blunt-review`)",
             # the one rewrite safe-operations asks for, so that the two skills can both be followed
             "published history is never rewritten",
             SAME_NAME,
