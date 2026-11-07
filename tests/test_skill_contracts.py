@@ -6,7 +6,7 @@ from typing import Dict, Tuple
 import pytest
 
 from support import (
-    A1_SKILLS,
+    SKILLS,
     REPO_ROOT,
     parse_frontmatter,
     sections,
@@ -19,8 +19,10 @@ MAX_LINES = 500
 MAX_CHARS = 18000  # after a compaction only the first 5,000 tokens of a skill are re-attached
 MAX_DESCRIPTION = 1024
 FORBIDDEN = ("Jira", "HackSoftware", "Two Scoops", "PostgreSQL", "Django", "select_related", "Co-Authored-By")
-# The three files that tell a sub-agent how to open its deliverable file; rules.md is pinned by digest.
-STATUS_LINE_FILES = ("rules.md", "agents/blunt-reviewer.md", "skills/continuity-note/SKILL.md")
+# The four files that tell a sub-agent how to open its deliverable file; rules.md is pinned by digest.
+STATUS_LINE_FILES = (
+    "rules.md", "agents/blunt-reviewer.md", "agents/worker.md", "skills/continuity-note/SKILL.md",
+)
 STATUS_LINE = re.compile(r"`(STATUS: IN PROGRESS - done:[^`]*)`")
 # The six skills whose names a user's own skills may carry: the user's copy wins where the two differ, and the
 # plugin's copy keeps what the user's leaves out (the sections other plugin texts cite), in the same words everywhere.
@@ -69,6 +71,7 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         phrases=(
             "superpowers:test-driven-development", "Searched", "easy to change", "N+1",
+            "`team-lead` is the procedure for parallel work with several workers, with a `start_session` session or a `worker` sub-agent as its bases",
             "All tests pass, no known residual bugs", "it works and I do not know why",
             "property-based", "Context7", "file::function",
             "The Pragmatic Programmer", "Fundamentals of Software Engineering", "documentation-quality",
@@ -171,15 +174,20 @@ CONTRACTS: Dict[str, Contract] = {
             'The default answer to "should we add this?" is no, whether the thing is a function, a layer, a '
             "parameter, a dependency, a tool, an option, an abstraction, a rule or a part of a spec.",
             "Whoever adds it proves the need: over-engineering is the defect.",
-            # the stop of the cycle defers to the project's own criterion, and nobody waits for an absent user
+            # the stop of the cycle defers to the project's own criterion, and nobody waits for an absent user; an
+            # order to fix more is no open-ended licence (in a live trial a named third round became five), and the
+            # reviewer's grammar stops at round=2, so the rounds it opens take that value, not one chosen on the spot
             "If round 2 also ends with `changes`, there is no third round, unless the project has its own audit "
-            "criterion, which then says when the cycle stops.",
+            "criterion, which then says when the cycle stops, or an answer from above orders more fixing, which opens "
+            "only the rounds it names, each run with `round=2`.",
             "An audit criterion is a stop rule written in the project's own instructions or configuration, never "
             "inferred from any other document.",
             "The open blocking findings go up one level with the recommendation of whoever carries them, and the "
             "coordinator takes them to the user or, during an autonomy, to the PM lens, which may only park them or "
             "propose a deferral to the user, because a gate closes on an open blocking finding only by the user's "
             "tracked deferral.",
+            # what the rounds of an answer leave open goes up as the findings of round 2 do
+            "What is still open after the rounds an answer opened goes up again.",
         ),
         absent=(
             "Delivering work", "Pythonic",
@@ -217,6 +225,7 @@ CONTRACTS: Dict[str, Contract] = {
             # the superpowers skills of the phases; the others need no word here (their own descriptions say when)
             "superpowers:brainstorming", "superpowers:writing-plans", "superpowers:subagent-driven-development",
             "superpowers:test-driven-development", "superpowers:verification-before-completion",
+            "or in parallel with `team-lead` when its entry conditions hold",
             # with users hurt right now, the way back comes before the search for the cause
             "When users are hurt right now and the signal of a recent change's way back has fired, mitigation comes "
             "before diagnosis: the first proposal is that way back, under `safe-operations` and with its own go, and "
@@ -444,6 +453,7 @@ CONTRACTS: Dict[str, Contract] = {
             "included, so a commit re-created on a weekend morning carries a date inside the weekday hours and is "
             "accepted.",
             "At the first failed check it exits non-zero and leaves the branch unchanged.",
+            "It reads the commits themselves, with `git replace` ignored, so a replacement ref is not replayed.",
             "The dates of author and committer are checked again on the integrated branch before its push; once it is "
             "pushed, delete the tag with `git tag -d`.",
             "When the user says in chat that they are working outside the window, interactive work goes on, and the "
@@ -460,6 +470,80 @@ CONTRACTS: Dict[str, Contract] = {
             "git tag night-backup-<YYYYMMDD>",  # the tag is named to the second and made by the script
             "Before any push four checks pass",  # the script runs the checks
         ),
+    ),
+    "team-lead": Contract(
+        sections=(
+            "When to use", "The team", "Two bases", "The brief", "Orders and wake-ups",
+            "A worker stuck on a permission", "Delivery", "Review", "Integration", "Decisions", "Failures",
+            "Closing",
+        ),
+        phrases=(
+            "an approved plan", "at least two disjoint file areas", "a test environment for each suite",
+            # the one file every worker edits: each ticks only its own boxes, and its conflicts are the worker's
+            "so that no two workers edit the same file, except the shared task file, where each worker ticks only its "
+            "own boxes and a conflict is the worker's, like any other;",
+            "OWNED:", "TESTS:", "exits 1", "exits 3", "--remerge-diff", "--reviewed",
+            "before the review and again after the PASS",
+            "inherits the environment", "env NAME=value", "git worktree prune", "write a path in it with `/`",
+            "not in the integration",
+            # the team: one line for each pair, numbers before, the caps with their source
+            "one line for each pair that shares files or interfaces",
+            "section and migration numbers and the generated files are assigned beforehand",
+            "at most three per test environment",
+            # the two bases and the opening of a session
+            "`worker`", "`blunt-reviewer`", "a fresh context", 'initiation: "user_asked"', "`own_initiative`",
+            "`use_worktree: true`", "`source_branch`", "no `permission_mode`",
+            "never `send_message`", "`SendMessage`",
+            "`.pe/worker`", "`.pe/.gitignore`",
+            "when the auto mode classifier denies that write, the boundary does not hold for that worker, "
+            "and the coordinator says so",
+            "at most two internal agents, declared in its delivery file",  # the name worker.md gives that file
+            # the brief and the orders
+            "above 6,000 characters the brief goes to a file",
+            # a session has no agent type, so only its brief can hand it the worker's own rules
+            "A session's brief tells the worker to follow `<this skill's folder>/../../agents/worker.md`, which a "
+            "sub-agent gets from its type.",
+            "a message from the coordinator approves no permission",
+            "`notify_when_idle: true`", "only to a stopped session", "now do X and report",
+            "suite running in the background, report when it ends",
+            "`clear_session` between two packages", "a fresh session for each package",
+            # a worker stuck on a permission
+            "10 minutes", "`linked: true`", "`list_events`", "only with the user present",
+            # review and integration
+            "the author regenerates", "only as a check", "a verification subagent distinct from the reviewer",
+            "never resolves a conflict", "`git merge --ff-only`", "`git merge-base --is-ancestor`",
+            "one delivery at a time",
+            "the tests of the modules touched by the incoming branch and by those integrated before it",
+            # decisions, failures, closing
+            "cites the entry it derives from", "after two rounds",
+            # a general rule decided rounds 4 and 5 in a live trial; only the answer for that case decides it
+            "(a spec line, a plan task, a decision-log entry, an answer from above)",
+            "A general rule is not such an entry: the entry must decide that case.",
+            # every commit of the integration branch sits in a reviewed range: the coordinator only integrates
+            "The coordinator makes no commit on the integration branch other than the integrations",
+            "a worker ticks its own tasks in its delivery, the task file in its `OWNED:` lines",
+            "any other change to a tracked file, a deferral record included, goes into a worker's package, so that it "
+            "is reviewed",
+            "archived only when its branch is integrated and its report recorded",
+            # the worktrees of sub-agents live inside the repository: excluded before the first launch, removed after
+            "Before the first sub-agent launch", "`.claude/worktrees/`", "`git rev-parse --git-path info/exclude`",
+            "never committed", "then remove a sub-agent's with `git worktree remove <folder>`",
+            "tokens per task delivered", "usage per package",
+            # the review base is a commit id, because deliveries are integrated while others are reviewed
+            "`<integration tip>..<tip>`", "the commit id of the integration tip", "never the branch name",
+            "(`git merge-base`)", "except a merge with an empty remerge diff",
+            "the commit id that the run after the PASS accepted, never the branch name",
+            "the worker can move its branch",
+            "does not check that the integration tip is an ancestor", "the brief may set another",
+            # the signal exists before the brief is sent, so the worker's first turn is held
+            'asks only for the "online" report', "only then send the brief by `SendMessage`",
+            "with the user away or an autonomy open use sub-agents",
+            # the three steps that had no referent
+            "a general sub-agent briefed for the mutations", "in a temporary worktree of the delivery tip",
+            "in the delivery report", "the session log",
+        ),
+        absent=("changes nothing", "no others"),
+        extra_files=("verify_delivery.py",),
     ),
     "quality-scoring": Contract(
         sections=(
@@ -860,15 +944,20 @@ def test_documentation_quality_stays_within_its_cap():
     assert len(skill_text("documentation-quality")) <= 6000
 
 
+def test_team_lead_stays_within_its_cap():
+    """10,000 characters: it holds the procedure only and cites the rules other skills hold, never repeats them."""
+    assert len(skill_text("team-lead")) <= 10000
+
+
 def test_configure_stays_within_its_cap():
     """4,000 characters: it asks the questions and points to the rules the other skills hold."""
     assert len(skill_text("configure")) <= 4000
 
 
-def test_every_a1_skill_has_a_contract():
-    assert set(CONTRACTS) == set(A1_SKILLS)
+def test_every_skill_has_a_contract():
+    assert set(CONTRACTS) == set(SKILLS)
 
 
 def test_no_skill_directory_outside_the_list():
     present = {p.name for p in SKILLS_DIR.iterdir() if p.is_dir()}
-    assert present == set(A1_SKILLS)
+    assert present == set(SKILLS)

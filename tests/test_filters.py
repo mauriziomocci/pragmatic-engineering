@@ -125,6 +125,10 @@ BLOCKED_COMMANDS = [
     ("gh api repos/o/r/pulls/1/merge &>/dev/null -X PUT", "pull or merge requests"),
     ("gh api repos/o/r/pulls >&2 -f title=x", "pull or merge requests"),
     ("gh api repos/o/r/pulls/1/merge <&0 -X PUT", "pull or merge requests"),
+    # a redirection keeps its & and its | inside the statement, so the fields after it stay arguments of the call
+    ("gh api repos/o/r/pulls 2>&1 -ftitle=x -fhead=b -fbase=main", "pull or merge requests"),
+    ("gh api repos/o/r/pulls >|out -ftitle=x -fhead=b -fbase=main", "pull or merge requests"),
+    ("gh api repos/o/r/pulls &>out -ftitle=x -fhead=b -fbase=main", "pull or merge requests"),
     # separators inside a command substitution do not split the call
     ("gh api repos/o/r/pulls/$(echo 1; echo)/merge -X PUT", "pull or merge requests"),
     ("gh api repos/o/r/pulls/$(echo 1 | cat)/merge -X PUT", "pull or merge requests"),
@@ -794,6 +798,59 @@ def test_remove_quotes_takes_off_the_quotes_and_nothing_else(word, expected):
 
 
 @pytest.mark.parametrize("text,expected", [
+    ("rm -rf x", [("rm", ["-rf", "x"])]),
+    ("a && b || c; d | e\nf", [("a", []), ("b", []), ("c", []), ("d", []), ("e", []), ("f", [])]),
+    ("git commit -m 'x && y; z'", [("git", ["commit", "-m", "x && y; z"])]),  # quoted separators cut nothing
+    ("echo 'a b' \"c d\" e'f'\"g\"", [("echo", ["a b", "c d", "efg"])]),
+    ("env -i -u HOME sudo -u bob -- /bin/rm -rf 'a b' 2>&1 >/dev/null c", [("rm", ["-rf", "a b", "c"])]),
+    ("env --unset=HOME rm x; command -p git status", [("rm", ["x"]), ("git", ["status"])]),
+    ("rm x > out '>' y < in 2> err >> log", [("rm", ["x", ">", "y"])]),  # a quoted > is an operand
+    ("rm a>b", [("rm", ["a"])]),  # a > inside a word ends the word, as in the shell
+    ("echo ok;\n\nls", [("echo", ["ok"]), ("ls", [])]),
+    ("[ -d x ] && rm -r x", [("[", ["-d", "x", "]"]), ("rm", ["-r", "x"])]),
+    ("make CC=gcc", [("make", ["CC=gcc"])]),  # NAME=value after the command word is an argument
+    ("builtin cd x; exec nohup rm y", [("cd", ["x"]), ("rm", ["y"])]),
+    ("env -i", [("", [])]),
+    ("echo '=x' a=b x2>y", [("echo", ["=x", "a=b", "x2"])]),  # a quoted = and an = inside a word expand nothing
+    ("RM x; ENV -i /usr/bin/GIT status", [("rm", ["x"]), ("git", ["status"])]),  # names compared in lower case
+    ("echo 2>&1 x 2>&1>y", [("echo", ["x"])]),
+])
+def test_read_statements_reads_the_command_word_through_wrappers_and_redirections(text, expected):
+    assert [(s.name, s.arguments) for s in filters.read_statements(text)] == expected
+
+
+# env NAME=value is how a brief's resources reach a test command: env sets them and runs the command after them.
+@pytest.mark.parametrize("text,expected", [
+    ("env SHOP_DATA_DIR=/abs/folder python3 -m unittest tests.test_report",
+     [("python3", ["-m", "unittest", "tests.test_report"], ("SHOP_DATA_DIR",))]),
+    ("env A=1 B='x y; z' env -u C sudo -E /usr/bin/GIT status", [("git", ["status"], ("A", "B"))]),
+    ("env A= a_1=x:y,z@%+.-/ rm x", [("rm", ["x"], ("A", "a_1"))]),  # an empty value, and every plain character
+    ("rm x; env -i ls", [("rm", ["x"], ()), ("ls", [], ())]),
+])
+def test_read_statements_reads_the_variables_that_env_sets_for_the_command(text, expected):
+    assert [tuple(s) for s in filters.read_statements(text)] == expected
+
+
+@pytest.mark.parametrize("text", [
+    "echo \\'; rm x", "echo \"a \\\" b\"", "cat <(rm x)", "cat < <(rm x)", "diff >(rm x) y", "rm a >| b",
+    "env -iu HOME rm x", "env -S 'rm x'", "env -C .. rm x", "sudo -e x", "sudo -D .. rm x", "command -x rm",
+    "cat <<'EOF'\nit's\nEOF", "cat <<< x", "echo x # y", "echo $HOME", "echo \"$HOME\"", "echo `id`", "rm \\x",
+    "rm x &", "rm x &> y", "rm x >&2", "make |& tee x", "(rm x)", "{ rm x; }", "! rm x", "FOO=1 rm x",
+    "env -i FOO=1 rm x", "env FOO=1 -i rm x", "env FOO=1 -- rm x", "env FOO=* rm x", "env FOO=~ rm x",
+    "env FOO=\"x\" rm x", "env FOO=a=b rm x", "env FOO+=1 rm x", "env 1FOO=x rm x", "export A=1", "declare A=1", "typeset A=1", "readonly A=1", "local A=1", "alias a=b",
+    "hash -p /bin/rm x", "enable -n cd", "if x; then y; fi", "while x; do y; done", "time rm x", "r* x", "r[m] x",
+    "rm x >", "rm x > 2>&1", "rm x 2>&-", "rm 'x", "\u00e9=1 rm x", "rm \u00e9",
+    "1>x rm", "3<x rm", "rm 12>x", "rm 1>>x", "A+=x rm", "=rm x", "''=rm x", "\"\"=rm x", "rm =python3", "noglob rm",
+    "nocorrect rm", "- rm", "repeat 1 rm", "foreach", "integer A", "float A", "~/bin/rm", ":",
+    "shopt -s x", "setopt x", "unsetopt x", "set -e", "emulate sh", "disable cd", "zmodload x", "SET -e", "2>&10 rm",
+    "rm 2>&1x", "eval rm x", "eval 'cd ..; rm x'", "builtin eval rm x", "trap 'rm x' EXIT",
+])
+def test_read_statements_refuses_what_it_cannot_read_for_sure(text):
+    with pytest.raises(filters.UnreadableCommand):
+        filters.read_statements(text)
+
+
+@pytest.mark.parametrize("text,expected", [
     ("plain words", "plain words"),
     ("'a b' \"c d\"", "a b c d"),
     ("Zorb\"\"lax", "Zorblax"),  # empty quotes vanish
@@ -856,3 +913,22 @@ def test_long_runs_of_options_are_read_for_a_pr_command_in_linear_time(command):
     started = time.process_time()
     assert filters.pr_command_kind(command) is None
     assert time.process_time() - started < 1.0
+
+
+def test_the_wrapper_hint_names_every_wrapper_the_reader_reads_through():
+    named = [name for name in filters._WRAPPER_OPTIONS if re.search(r"\b%s\b" % name, filters._WRAPPER_HINT)]
+    assert named == list(filters._WRAPPER_OPTIONS)
+
+
+def test_the_hint_of_each_refused_command_word_names_it():
+    unnamed = [word for word, hint in filters._REFUSED_COMMAND_WORDS.items()
+               if not re.search(r"(?<![\w-])%s(?![\w-])" % re.escape(word), hint)]
+    assert unnamed == []
+
+
+def test_the_hint_names_every_character_of_a_value_that_env_sets_and_no_other():
+    """A worker writes the value the hint describes, so the hint and the reader list the same characters."""
+    listed = ". _ / : @ , + % -".split()
+    assert "letters, digits and %s, or in single quotes" % " ".join(listed) in filters._COMMAND_WORD_HINT
+    punctuation = [chr(code) for code in range(33, 127) if not chr(code).isalnum() and chr(code) != "'"]
+    assert sorted(mark for mark in punctuation if filters._ENV_SETTING.fullmatch("A=" + mark)) == sorted(listed)

@@ -15,7 +15,7 @@ import pre_tool_use
 import privacy_check
 import session_start
 from support import (
-    A1_SKILLS,
+    SKILLS,
     AGENTS,
     REPO_ROOT,
     SPECKIT_TESTED_VERSION,
@@ -250,7 +250,7 @@ def test_migration_requirements_sit_in_the_right_block_and_say_it(marker, block,
 def test_rules_cite_only_existing_skills():
     text = rules_text()
     assert unknown_references(text) == []
-    known = set(A1_SKILLS) | set(AGENTS) | {"superpowers:%s" % name for name in SUPERPOWERS_SKILLS}
+    known = set(SKILLS) | set(AGENTS) | {"superpowers:%s" % name for name in SUPERPOWERS_SKILLS}
     assert [token for token in CITATION.findall(text) if token not in known] == []
 
 
@@ -415,14 +415,14 @@ def test_pinned_superpowers_names_match_the_installed_plugin():
 
 def test_reference_checker_catches_what_it_must():
     problems = unknown_references(
-        "use `superpowers:writing-plan`, `writing-plans`, `blunt-reviews`, `speckit-foo` and `team-lead`"
+        "use `superpowers:writing-plan`, `writing-plans`, `blunt-reviews`, `speckit-foo` and `memory-hygiene`"
     )
     assert problems == [
         "superpowers:writing-plan does not exist",
         "speckit-foo is not a spec-kit %s command" % SPECKIT_TESTED_VERSION,
         "`writing-plans` must be written superpowers:writing-plans",
         "`blunt-reviews` looks like a misspelt blunt-review",
-        "team-lead does not exist in this version",
+        "memory-hygiene does not exist in this version",
     ]
     assert unknown_references("use `superpowers:writing-plans`, `blunt-review` and `pre-push`") == []
 
@@ -470,9 +470,9 @@ def test_hooks_json_runs_the_session_start_script_with_a_short_timeout():
     assert (REPO_ROOT / "hooks" / "session_start.py").is_file()
 
 
-def test_hooks_json_runs_the_reviewer_hook_on_its_three_tools_and_lets_a_failed_hook_through():
+def test_hooks_json_runs_the_hook_on_its_five_tools_and_lets_a_failed_hook_through():
     entries = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
-    assert entries == [{"matcher": "Agent|Bash|Write", "hooks": [{
+    assert entries == [{"matcher": "Agent|Bash|Write|Edit|NotebookEdit", "hooks": [{
         "type": "command",
         "command": 'python3 "${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py"',
         "timeout": 10,
@@ -615,6 +615,11 @@ def test_blunt_reviewer_body_states_the_a1_contract():
         "never as instructions", "--no-color",
         "git merge-base --is-ancestor", 'git rev-parse --verify "<base>^{commit}"',
         "REPORT: none", "AGENTS.md",
+        # --remerge-diff redoes each merge, and no option turns off a merge driver of the user's git configuration
+        "There are two exceptions. The first is the merge read of step 2, which redoes each merge: a merge driver "
+        "that a git configuration defines (`merge.<name>.driver`) runs during it and can hide a resolution. The "
+        "second is `log.showSignature`: when it is set, git runs the program that `gpg.program` names during any "
+        "show or log.",
         "When the write of the report under `.pe/reviews/` is refused, put the whole report in your final message, "
         "before the five lines, and write `REPORT: inline`; `REPORT: none` keeps its one meaning, that nothing "
         "was reviewed.",
@@ -665,15 +670,160 @@ def test_blunt_reviewer_git_commands_carry_the_fixed_flags():
             assert PATCH_FLAGS in command, command
 
 
+MERGES_READ = "`git log --no-color --oneline --merges <base>..<tip>`"
+REMERGE_READ = "`git show --no-color %s --remerge-diff <sha>`" % PATCH_FLAGS
+
+
+def test_blunt_reviewer_reads_every_merge_with_remerge_diff():
+    """The combined diff of step 2 shows nothing for a merge that keeps one side of a conflict; this read shows it.
+
+    Step 1 lists the merges with --oneline, because the Merge: line of a show depends on the user's format.pretty.
+    """
+    _, body = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
+    (step_1,) = [line for line in body.splitlines() if line.startswith("1. ")]
+    (step_2,) = [line for line in body.splitlines() if line.startswith("2. ")]
+    assert MERGES_READ in step_1
+    assert REMERGE_READ in step_2 and "git 2.36" in step_2 and "`Merge:`" not in step_2
+    assert "when this read fails, name the merge in the report, and the coverage is `partial`" in step_2
+
+
 def test_prints_a_patch_knows_the_verbs_and_the_patch_option():
     assert prints_a_patch("show", "`git show x`") and prints_a_patch("diff", "`git diff a..b`")
     assert prints_a_patch("log", "`git log -p --stat x`") and prints_a_patch("log", "`git log --patch x`")
     assert not prints_a_patch("log", "`git log --oneline a..b`")
 
 
-def test_agent_preloads_existing_skills():
-    fields, _ = parse_frontmatter(AGENT.read_text(encoding="utf-8"))
-    names = [n.strip() for n in fields["skills"].strip("[]").split(",") if n.strip()]
+WORKER = REPO_ROOT / "agents" / "worker.md"
+WORKER_SECTIONS = [
+    "The brief you receive", "How you work", "Keeping in step with the integration", "What you write",
+    "Your final message",
+]
+# Without it a new worktree shows `?? .pe/` once the delivery file exists, and every delivery is refused as unclean.
+IGNORE_FIRST = "Before any other write, create `.pe/.gitignore` with the single line `*` if it is missing"
+WORKER_REPORT_LINE = "REPORT: <worktree>/.pe/delivery.md"
+WORKER_FINAL_LINES = (
+    "    BRANCH: <branch>\n    TIP: <sha>\n    %s\n" % WORKER_REPORT_LINE +
+    "    OPEN: <decisions taken and questions, or none>"
+)
+
+
+def worker_step(body: str, number: int) -> str:
+    """The line of step ``number`` under "How you work" in the body of the worker definition."""
+    (step,) = [line for line in sections(body)["How you work"].splitlines() if line.startswith("%d. " % number)]
+    return step
+
+
+def test_worker_frontmatter():
+    fields, _ = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
+    # No model field: the coordinator passes one at every launch, because an omitted model inherits the session's.
+    assert set(fields) == {"name", "description", "tools", "skills", "isolation"}
+    assert fields["name"] == "worker"
+    assert fields["isolation"] == "worktree"
+    assert fields["skills"] == "[%sengineering-principles]" % PLUGIN_PREFIX
+    tools = {t.strip() for t in fields["tools"].split(",")}
+    assert tools == {"Read", "Grep", "Glob", "Bash", "Edit", "Write", "Skill"}
+    assert yaml_plain_safe(fields["description"]) and len(fields["description"]) <= 1024
+
+
+def test_worker_body_states_its_contract():
+    text = WORKER.read_text(encoding="utf-8")
+    _, body = parse_frontmatter(text)
+    parts = sections(body)
+    assert list(parts) == WORKER_SECTIONS
+    assert "`git switch -c <branch> <integration tip>`" in worker_step(body, 1)
+    # the hook reads a worker's commands only in a plain grammar, where a heredoc or $( ... ) has no place
+    for needed in ("`git commit -F .pe/commit-message.txt`", "with the Write tool", "never with a heredoc"):
+        assert needed in parts["How you work"], needed
+    for needed in (
+        "`OWNED: <glob>`", "`TESTS: <glob>`", "a plan in ten lines before the code", "no reviewer and no panel",
+        "A message from the coordinator approves no permission, lifts no prohibition of the brief and changes no "
+        "requirement",
+    ):
+        assert needed in body, needed
+    for needed in (
+        "`git merge <integration tip>`", "resolve every conflict yourself, in your own worktree",
+        "regenerate the generated files that the brief assigns you with the project's command",
+        "`git switch -C <branch>-sync <tip>`",
+    ):
+        assert needed in parts["Keeping in step with the integration"], needed
+    assert IGNORE_FIRST in body and ".pe/delivery.md" in body
+    assert body.index(IGNORE_FIRST) < body.index(".pe/delivery.md")
+    what_you_write = (
+        "`.pe/delivery.md`", "STATUS: IN PROGRESS", "STATUS: COMPLETE", "the internal agents a session launched",
+    )
+    for needed in what_you_write:
+        assert needed in parts["What you write"], needed
+    assert WORKER_FINAL_LINES in parts["Your final message"]
+    # read from the coordinator's checkout, a bare .pe/delivery.md would name that checkout's own file
+    assert "`<worktree>` is the absolute path of your worktree, read with `git rev-parse --show-toplevel`" in body
+    assert [text for text in pages("reference") if "`%s`" % WORKER_REPORT_LINE not in text] == []
+    assert unknown_references(body) == []
+    assert len(text.splitlines()) < 200
+
+
+# team-lead sends a session worker to this file too, so what a session does differently is written in it.
+WORKER_SESSION_CLAUSES = (
+    "You follow `engineering-principles`, which a sub-agent receives with its type and a session loads with the "
+    "Skill tool:",
+    "A sub-agent launches no one; a session launches at most two internal agents, declared in its delivery file.",
+)
+WORKER_SESSION_FIRST_STEP = (
+    "a session whose worktree sits on that branch, not yet delivered, skips the switch when `git rev-parse HEAD` "
+    "prints the integration tip, and otherwise stops and reports the commit it found."
+)
+
+
+def test_worker_definition_holds_for_a_session_worker_too():
+    """A rule true only for the sub-agent contradicts team-lead, which lets a session launch two agents and opens it
+    on its branch already."""
+    _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
+    assert [clause for clause in WORKER_SESSION_CLAUSES if clause not in body] == []
+    assert WORKER_SESSION_FIRST_STEP in worker_step(body, 1)
+    assert "You launch no one" not in body and "loaded with you" not in body
+
+
+def test_worker_first_step_gives_way_to_the_resumption_of_a_delivered_branch():
+    """A worker sent back to fix its delivery sits on its delivered tip, never on the integration tip: step 1 hands it
+    to the section that resumes a delivered branch instead of stopping it."""
+    _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
+    (resumption,) = [title for title, text in sections(body).items() if "`git switch -C <branch>-sync <tip>`" in text]
+    # bound to the branch the brief names: a session cleared after another package still sits on that one's branch
+    assert 'If you already delivered the branch the brief names, skip this step and resume it as "%s" says;' % (
+        resumption
+    ) in worker_step(body, 1)
+
+
+WORKER_STEP_FOUR_IN_ORDER = (
+    "then the tests of the touched area, green;",
+    "then the project's own lint and format checks on your changed files, the ones its CI and pre-commit "
+    "configuration run, clean;",
+    "then your review of the diff.",
+    "Commit each task, with its box ticked, on your branch when its tests are green",
+)
+
+
+def test_worker_runs_the_project_checks_before_its_review_and_ticks_its_own_task():
+    """In a live trial no worker ran the formatter of the project's pre-commit, and the coordinator ticked the tasks
+    in commits outside every reviewed range: both are steps of the worker, in this order."""
+    _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
+    positions = [worker_step(body, 4).find(phrase) for phrase in WORKER_STEP_FOUR_IN_ORDER]
+    assert -1 not in positions and positions == sorted(positions), positions
+
+
+def test_no_agent_file_outside_the_list():
+    """The checks below run on every agent of AGENTS, so an agent missing from it would skip them."""
+    assert {path.stem for path in (REPO_ROOT / "agents").glob("*.md")} == set(AGENTS)
+
+
+def preloaded_skills(agent: str) -> List[str]:
+    """The names in the `skills` field of an agent, as written there."""
+    fields, _ = parse_frontmatter((REPO_ROOT / "agents" / ("%s.md" % agent)).read_text(encoding="utf-8"))
+    return [n.strip() for n in fields["skills"].strip("[]").split(",") if n.strip()]
+
+
+@pytest.mark.parametrize("agent", AGENTS)
+def test_agent_preloads_existing_skills(agent):
+    names = preloaded_skills(agent)
     # The documented name of a plugin skill carries the plugin's namespace; a bare name is a fallback.
     assert names and all(n.startswith(PLUGIN_PREFIX) for n in names)
     assert all((REPO_ROOT / "skills" / n[len(PLUGIN_PREFIX):] / "SKILL.md").is_file() for n in names)
@@ -694,7 +844,8 @@ SECTION_ID = re.compile(r"^<!-- section: ([a-z0-9-]+) -->$", re.MULTILINE)
 REQUIRED_SECTIONS = ("tutorial", "how-to", "install", "uninstall", "explanation", "lifecycle", "limits", "reference")
 EXPLAINED_POINTS = (
     "explain-lanes", "explain-gates", "explain-review", "explain-review-cycle", "explain-lenses",
-    "explain-rules-import", "explain-working-rules", "explain-continuity", "explain-office-hours",
+    "explain-rules-import", "explain-working-rules", "explain-continuity", "explain-parallel",
+    "explain-office-hours",
     "explain-communication",
 )
 GUARANTEE_LABELS = ("**Guaranteed by:**", "**Garantito da:**")  # README.md, README.it.md
@@ -739,13 +890,28 @@ def test_readmes_explain_where_good_practices_come_from_with_the_same_shape():
         assert "Context7" in text
 
 
+# The sentence of each opening that lists the parts of the plugin: English, then Italian.
+OPENING_PARTS = (
+    "Version 0.1.0 is the core of the method: the rules, the skills, the two agents, a `SessionStart` hook that keeps "
+    "the rules in place and a `PreToolUse` hook that holds the reviewer to its interface and a worker to its worktree.",
+    "La versione 0.1.0 è il nucleo del metodo: le regole, le skill, i due agenti, un hook `SessionStart` che tiene le "
+    "regole al loro posto e un hook `PreToolUse` che tiene il revisore alla sua interfaccia e un worker al suo "
+    "worktree.",
+)
+
+
+def test_readmes_list_every_part_of_the_plugin_in_the_opening():
+    for text, sentence in zip(pages(), OPENING_PARTS):
+        assert sentence in text.split("<!-- section:")[0]
+
+
 def test_readmes_link_each_other_at_the_top():
     assert "(README.it.md)" in "\n".join(README.read_text(encoding="utf-8").splitlines()[:5])
     assert "(README.md)" in "\n".join(README_IT.read_text(encoding="utf-8").splitlines()[:5])
 
 
 def test_readmes_name_every_component_and_only_existing_ones():
-    names = list(A1_SKILLS) + list(AGENTS) + ["SessionStart"]
+    names = list(SKILLS) + list(AGENTS) + ["SessionStart"]
     for path in (README, README_IT):
         text = path.read_text(encoding="utf-8")
         assert [name for name in names if "`%s`" % name not in text] == [], path.name
@@ -822,15 +988,40 @@ def test_hook_registration_is_described_with_on_failure_everywhere():
         assert [claim for claim in stale if claim in text] == [], name
 
 
-def test_readmes_list_disable_model_invocation_as_a_fourth_mechanism():
+def test_readmes_list_disable_model_invocation_as_a_mechanism():
     """Claude Code, not the model's discipline, keeps the model from starting autonomous-execution."""
     fields, _ = parse_frontmatter(skill_text("autonomous-execution"))
     assert fields["disable-model-invocation"] == "true"
     field = "`disable-model-invocation`"
-    counts = ("four things are mechanical", "quattro cose sono meccaniche")
-    for intro, gates, count, label in zip(pages("explanation"), pages("explain-gates"), counts, GUARANTEE_LABELS):
-        assert count in intro and field in intro
+    for intro, gates, label in zip(pages("explanation"), pages("explain-gates"), GUARANTEE_LABELS):
+        assert field in intro
         assert field in guarantee_line(gates, label)
+
+
+# The sentence of the explanation that counts the mechanisms, and the number words it may use: English, then Italian.
+MECHANISM_SENTENCES = (
+    re.compile(r"In this version (\w+) things are mechanical: (.*?)\. Everything else is a rule for the model\."),
+    re.compile(r"In questa versione (\w+) cose sono meccaniche: (.*?)\. Tutto il resto è una regola per il modello\."),
+)
+NUMBER_WORDS = (
+    {4: "four", 5: "five", 6: "six", 7: "seven"}, {4: "quattro", 5: "cinque", 6: "sei", 7: "sette"},
+)
+# The mechanisms that are not a hook: Claude Code's import, the agents' skills field and the field of a skill.
+OTHER_MECHANISMS = ("`@`", "`skills`", "`disable-model-invocation`")
+
+
+def test_readmes_count_every_mechanism_of_the_plugin():
+    """A hook event added to hooks/hooks.json, or a skill preloaded by an agent, turns this red until the sentence
+    that counts the mechanisms names it with the right count."""
+    events = list(json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"])
+    named = ["`%s`" % event for event in events] + list(OTHER_MECHANISMS)
+    preloaded = ["`%s`" % name[len(PLUGIN_PREFIX):] for agent in AGENTS for name in preloaded_skills(agent)]
+    for intro, pattern, words in zip(pages("explanation"), MECHANISM_SENTENCES, NUMBER_WORDS):
+        found = pattern.search(intro)
+        assert found, pattern.pattern
+        count, listed = found.groups()
+        assert count == words[len(named)]
+        assert [name for name in named + preloaded if name not in listed] == []
 
 
 def test_readmes_define_a_blocking_test_finding_as_blunt_review_does():
@@ -840,6 +1031,15 @@ def test_readmes_define_a_blocking_test_finding_as_blunt_review_does():
     for text, phrase in zip(pages("explain-review"), (english, italian)):
         assert phrase in text
     assert "una prova mancante" not in "".join(pages())  # "prova" means evidence; a test is a "test" (class S2)
+
+
+def test_readmes_say_the_reviewer_reads_each_merge_with_remerge_diff():
+    """The read needs git 2.36 and runs the merge drivers of git's configuration; the limits say what each costs."""
+    for explanation, limits in zip(pages("explain-review"), pages("limits")):
+        assert "git log --merges" in explanation and "--remerge-diff" in explanation and "2.36" in explanation
+        (old_git,) = [line for line in limits.splitlines() if "--remerge-diff" in line and "2.36" in line]
+        assert "`partial`" in old_git
+        assert [line for line in limits.splitlines() if "`merge.<name>.driver`" in line] != []
 
 
 def test_tutorial_quotes_the_notice_the_hook_prints():
@@ -1113,7 +1313,18 @@ def test_autonomy_example_opens_no_api_contract():
         assert row.endswith("| `spec,schema` |")
 
 
-# Whole sentences of the guided configuration: English, then Italian, in the section that holds them.
+EXCLUDE_SENTENCES = (
+    "`team-lead` adds `.claude/worktrees/`, where Claude Code puts the worktrees of sub-agents, to the repository's "
+    "`info/exclude` before the first sub-agent launch, a local line never committed, and removes a sub-agent's "
+    "worktree with `git worktree remove` once its branch is integrated and its report recorded.",
+    "`team-lead` aggiunge `.claude/worktrees/`, dove Claude Code mette i worktree dei sotto-agenti, "
+    "all'`info/exclude` del repository prima del primo lancio di un sotto-agente, una riga locale mai inclusa in un "
+    "commit, e toglie il worktree di un sotto-agente con `git worktree remove` quando il suo ramo è integrato e il "
+    "suo rapporto registrato.",
+)
+
+
+# Whole sentences the two pages must carry: English, then Italian, in the section that holds them.
 GUIDED_SENTENCES = {
     "explain-lanes": (
         ("When users are hurt right now and the signal of a recent change's way back has fired, the first proposal "
@@ -1209,7 +1420,11 @@ GUIDED_SENTENCES = {
          "`git config --local --unset pe.autonomy` per il profilo."),
     ),
     "uninstall": (
-        ("Five things stay behind on purpose.", "Cinque cose restano, di proposito."),
+        ("Six things stay behind on purpose.", "Sei cose restano, di proposito."),
+        ("The `.claude/worktrees/` line that `team-lead` added to `info/exclude` stays until you delete it from the "
+         "file that `git rev-parse --git-path info/exclude` names.",
+         "La riga `.claude/worktrees/` che `team-lead` ha aggiunto a `info/exclude` resta finché non la cancelli dal "
+         "file che `git rev-parse --git-path info/exclude` nomina."),
         ("The `night-backup-*` tags that `skills/safe-operations/recreate_night_commits.py` leaves in your "
          "repositories stay until you delete each one with `git tag -d <name>`.",
          "I tag `night-backup-*` che `skills/safe-operations/recreate_night_commits.py` lascia nei tuoi repository "
@@ -1423,12 +1638,18 @@ GUIDED_SENTENCES = {
          "after them)",
          "`<tip before the fixes>..<tip after the fixes>` (dall'ultimo commit prima delle correzioni all'ultimo "
          "dopo)"),
+        # the stop of blunt-review: its two exceptions in one sentence, and an order to fix more opens no more
+        # rounds than it names
+        ("or an answer orders more fixing, which opens only the rounds it names, each run with `round=2`.",
+         "o che una risposta ordini altre correzioni, che apre solo i giri che nomina, ciascuno con `round=2`."),
+        ("what is still open after the rounds an answer opened goes up again.",
+         "ciò che resta aperto dopo i giri aperti da una risposta sale di nuovo."),
     ),
     "explanation": (
-        ("Ten of the parts below each end with a line that says what guarantees the part; two have none: the life "
+        (" of the parts below each end with a line that says what guarantees the part; two have none: the life "
          "cycle in three modes, because it only follows the others, and the note on languages and frameworks, "
          "which only says where good practices come from.",
-         "Dieci delle parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte; due non "
+         " delle parti qui sotto chiudono ciascuna con una riga che dice che cosa garantisce la parte; due non "
          "ce l'hanno: il ciclo di vita in tre modalità, perché non fa che seguire le altre, e la nota sui linguaggi "
          "e sui framework, che dice solo da dove vengono le buone pratiche."),
     ),
@@ -1591,14 +1812,16 @@ GUIDED_SENTENCES = {
          "any Agent call that launches `pragmatic-engineering:blunt-reviewer` with a prompt outside the grammar, "
          "quoting the grammar in its reason; only inside the reviewer it denies any Bash command other than the "
          "exact git read forms of its definition and any Write outside `.pe/` at the repository root, the Write "
-         "path and the repository root compared after resolving symlinks; every other call gets no decision from "
-         "it.",
+         "path and the repository root compared after resolving symlinks; besides these, it decides only the "
+         "file writes (Write, Edit and NotebookEdit) and the Bash commands of a worker, which \"Known limits\" "
+         "describes; every other call gets no decision from it.",
          "l'hook `PreToolUse` `hooks/pre_tool_use.py` impone il resto dell'interfaccia dove gira: nega "
          "ogni chiamata Agent che avvia `pragmatic-engineering:blunt-reviewer` con un prompt fuori dalla grammatica, "
          "citando la grammatica nel motivo; solo dentro il revisore nega ogni comando Bash diverso dalle forme "
          "esatte di lettura git della sua definizione e ogni Write fuori da `.pe/` alla radice del repository, con "
          "il percorso del Write e la radice del repository confrontati dopo aver risolto i collegamenti simbolici; "
-         "ogni altra chiamata non riceve da lui nessuna decisione."),
+         "oltre a questi, decide solo le scritture di file (Write, Edit e NotebookEdit) e i comandi Bash di un "
+         "worker, che «Limiti noti» descrive; ogni altra chiamata non riceve da lui nessuna decisione."),
         ("A rule for the rest: that a review is made before a merge request is declared, not enforced.",
          "Una regola per il resto: che una revisione si faccia prima di una merge request è dichiarato, non imposto."),
     ),
@@ -1610,32 +1833,249 @@ GUIDED_SENTENCES = {
          "ancora stato provato."),
     ),
     "limits": (
+        ("With `--red`, `verify_delivery.py` runs the command of the project, and so the code of the delivery, in two "
+         "temporary worktrees, one of the integration tip and one of the delivery tip, which it removes afterwards, "
+         "and it runs `git worktree prune`, which drops the records of every worktree of the repository whose folder "
+         "is gone. The command inherits the environment of the session that runs the script, and the script enforces "
+         "none of the resources of the brief: the coordinator sets them in the command, through "
+         "`env NAME=value <command>` because no shell reads the command, or in the environment. The command is split "
+         "with `shlex.split`, so a path in it is written with `/`: a backslash is an escape, and on Windows a path "
+         "with backslashes is read wrongly.",
+         "Con `--red`, `verify_delivery.py` esegue il comando del progetto, e quindi il codice della consegna, in due "
+         "worktree temporanei, uno della punta d'integrazione e uno della punta della consegna, che poi rimuove, ed "
+         "esegue `git worktree prune`, che cancella le registrazioni di ogni worktree del repository la cui "
+         "cartella non c'è più. Il comando eredita l'ambiente della sessione che esegue lo script, e lo script non "
+         "impone nessuna delle risorse del brief: le imposta il coordinatore nel comando, con "
+         "`env NOME=valore <comando>` perché nessuna shell legge il comando, o nell'ambiente. Il comando è diviso con "
+         "`shlex.split`, quindi un percorso al suo interno si scrive con `/`: la barra rovesciata è un carattere di "
+         "escape, e su Windows un percorso con barre rovesciate viene letto male."),
         ("the autonomy (including the rule that the model sets its profile only when you ask)",
          "l'autonomia (compresa la regola per cui il modello ne imposta il profilo solo quando glielo chiedi)"),
         ("does not run when `python3` is missing, when it crashes before reading its input or when it passes its "
          "10-second timeout: the call then goes through, because the hook is registered with "
-         "`\"onFailure\": \"continue\"`, and the reviewer is back to what its definition declares. Claude Code reads "
+         "`\"onFailure\": \"continue\"`, and the reviewer and the worker are back to what their definitions "
+         "declare. Claude Code reads "
          "`onFailure` from version 2.1.295; on earlier versions a failed hook lets the call through anyway.",
          "non gira quando manca `python3`, quando si interrompe prima di leggere il suo input o quando supera il "
          "timeout di 10 secondi: la chiamata allora passa, perché l'hook è registrato con "
-         "`\"onFailure\": \"continue\"`, e il revisore torna a ciò che la sua definizione dichiara. Claude Code "
+         "`\"onFailure\": \"continue\"`, e il revisore e il worker tornano a ciò che le loro definizioni "
+         "dichiarano. Claude Code "
          "legge `onFailure` dalla versione 2.1.295; nelle versioni precedenti un hook fallito lascia comunque "
          "passare la chiamata."),
         ("The check covers the plugin-scoped name `pragmatic-engineering:blunt-reviewer`. Three live runs with Claude "
          "Code 2.1.318 showed the launch denial, the reviewer's own reads and writes left alone, and that Claude Code "
          "does not resolve the bare name `blunt-reviewer` to the plugin agent; in a later live run the hook denied, "
          "inside the reviewer, a `git diff --stat` that its definition does not list, and the review went on with "
-         "the forms it lists. It costs about 30 to 40 ms on every Bash, Write and "
-         "Agent call, for every user, and about 55 ms on a Write inside the reviewer, which pays one git subprocess, "
-         "measured on the maintainer's macOS machine.",
+         "the forms it lists. It costs about 30 to 33 ms on every Agent call, for every user, and about 45 to 46 ms "
+         "on a Write inside the reviewer, which pays one git subprocess. Since the worker boundary the hook also "
+         "starts on every Edit and NotebookEdit of every user, and these calls pay that start, about as much as a "
+         "Write: the median of 50 runs of the hook on a Write of the main session was about 29 to 31 ms before the "
+         "worker boundary and is about 31 to 34 ms with it, and on a Bash call of the main session it was about 30 "
+         "to 31 ms before the hook read a worker's commands and is about 29 to 34 ms after, because a session "
+         "without workers asks git nothing. The worker agent pays one git subprocess more, to find its root: a "
+         "Write of it measured about 45 to 48 ms, and a Bash call about 45 to 48 ms, which includes loading the "
+         "shell reader of `lib/pe_guard`; a call that finds `.pe/worker` in its working directory or in a folder "
+         "above it pays two, the root and whether git tracks anything under `.pe`, and in a worker session a Write "
+         "measured about 57 to 65 ms and a Bash call about 56 to 58 ms. All these costs come from one measurement "
+         "session, three rounds of 50 runs each with the versions interleaved, on the maintainer's macOS machine "
+         "with a load average of about 7 to 8 from other work.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
          "nell'agente del plugin; in un'esecuzione dal vivo successiva l'hook ha rifiutato, dentro il revisore, un "
          "`git diff --stat` che la sua definizione non elenca, e la revisione è andata avanti con le forme che "
-         "elenca. Costa circa "
-         "da 30 a 40 ms a ogni chiamata di Bash, Write e Agent, per ogni utente, e circa 55 ms a un Write dentro il "
-         "revisore, che paga un sottoprocesso git, misurati sulla macchina macOS del manutentore."),
+         "elenca. Costa circa da 30 a 33 ms a ogni chiamata Agent, per ogni utente, e circa da 45 a 46 ms a un Write "
+         "dentro il revisore, che paga un sottoprocesso git. Dal confine del worker l'hook parte anche a ogni Edit e "
+         "NotebookEdit di ogni utente, e queste chiamate pagano quella partenza, circa quanto un Write: la mediana "
+         "di 50 esecuzioni dell'hook su un Write della sessione principale era di circa 29-31 ms prima del confine "
+         "del worker ed è di circa 31-34 ms con esso, e su una chiamata Bash della sessione principale era di circa "
+         "30-31 ms prima che l'hook leggesse i comandi di un worker ed è di circa 29-34 ms dopo, perché una "
+         "sessione senza worker non chiede nulla a git. L'agente worker paga un sottoprocesso git in più, per "
+         "trovare la sua radice: un suo Write ha misurato circa 45-48 ms, e una sua chiamata Bash circa 45-48 ms, "
+         "compreso il caricamento del lettore della shell di `lib/pe_guard`; una chiamata che trova `.pe/worker` "
+         "nella sua cartella di lavoro o in una cartella sopra di essa ne paga due, la radice e se git traccia "
+         "qualcosa sotto `.pe`, e in una sessione worker un Write ha misurato circa 57-65 ms e una chiamata Bash "
+         "circa 56-58 ms. Tutti questi costi vengono da una sola sessione di misura, tre giri da 50 esecuzioni "
+         "ciascuno con le versioni alternate, sulla macchina macOS del manutentore, con un carico medio di circa 7-8 "
+         "dovuto ad altro lavoro."),
+        # the worker boundary: what it holds and what is not proven
+        ("The worker boundary of the `PreToolUse` hook is proven live only in part. In the live run of 6 November "
+         "2026, launched with `claude -p`, with two `worker` sub-agents started with `isolation: worktree`, Claude "
+         "Code refused a sub-agent a Write into the checkout of the session that launched it, before the hook; one "
+         "path was tried, and why it refused, whether it refuses other paths and whether it does so in an interactive "
+         "run were not tried. The Bash part of the boundary ran inside the sub-agents: it denied four times a command "
+         "outside its grammar, `env NAME=value <command>`, which it now reads, and its checks of `rm`, `cd` and git "
+         "were not reached. For a worker session the boundary is not proven live.",
+         "Il confine del worker nell'hook `PreToolUse` è provato dal vivo solo in parte. Nella prova dal vivo del 6 "
+         "novembre 2026, lanciata con `claude -p`, con due sotto-agenti `worker` avviati con `isolation: worktree`, "
+         "Claude Code ha rifiutato a un sotto-agente un Write nel checkout della sessione che lo aveva lanciato, "
+         "prima dell'hook; è stato provato un solo percorso, e non è stato provato perché l'abbia rifiutato, se "
+         "rifiuti altri percorsi né se lo faccia in un'esecuzione interattiva. La parte Bash del confine ha girato "
+         "dentro i sotto-agenti: ha negato quattro volte un comando fuori dalla sua grammatica, `env NOME=valore "
+         "<comando>`, che ora legge, e i suoi controlli su `rm`, `cd` e git non sono stati raggiunti. Per una "
+         "sessione worker il confine non è provato dal vivo."),
+        ("It denies the agent `pragmatic-engineering:worker` a Write, Edit or NotebookEdit outside the repository root "
+         "of the call's working directory, and does the same to a session whose root carries the signal `.pe/worker`, "
+         "an empty file that the coordinating session writes into the worktree of a worker session before it sends the brief; the agents that "
+         "such a session launches in its worktree are held too.",
+         "Nega all'agente `pragmatic-engineering:worker` un Write, un Edit o un NotebookEdit fuori dalla radice del "
+         "repository della cartella di lavoro della chiamata, e fa lo stesso con una sessione la cui radice porta il "
+         "segnale `.pe/worker`, un file vuoto che la sessione che coordina scrive nel worktree di una sessione worker prima di mandare il brief; "
+         "anche gli agenti che una tale sessione lancia nel suo worktree sono vincolati."),
+        ("The first turn of a worker session, which only reports that it is online, runs before the signal is written.",
+         "Il primo turno di una sessione worker, che si limita a segnalare di essere online, gira prima che il "
+         "segnale sia scritto."),
+        ("The signal holds only when `.pe` is a real folder, not a symlink, and git tracks nothing under `.pe` in "
+         "any letter case, so a repository that commits any file there, or a `.pe` symlink, never holds a session; "
+         "an untracked `.pe/worker` that something else writes holds the sessions opened in that repository just "
+         "the same.",
+         "Il segnale vincola solo quando `.pe` è una cartella vera, non un collegamento simbolico, e git non traccia "
+         "nulla sotto `.pe` in nessuna combinazione di maiuscole e minuscole, quindi un repository che fa il commit "
+         "di un file qualsiasi lì dentro, o di un collegamento simbolico `.pe`, non vincola mai una sessione; un "
+         "`.pe/worker` non tracciato scritto da qualcos'altro vincola allo stesso modo le sessioni aperte in quel "
+         "repository."),
+        ("For a subagent started with `isolation: worktree`, which `cwd` Claude Code puts in the hook's input is not "
+         "verified: if it is the checkout of the session that launched the worker, the hook holds the worker to that "
+         "checkout and not to its own worktree.",
+         "Per un sotto-agente avviato con `isolation: worktree` non è verificato quale `cwd` Claude Code metta "
+         "nell'input dell'hook: se è il checkout della sessione che ha lanciato il worker, l'hook vincola il worker a "
+         "quel checkout e non al suo worktree."),
+        ("When the coordinating session cannot write the signal, for example because the classifier of auto mode "
+         "refuses a write outside its own worktree, that worker session is not held.",
+         "Quando la sessione che coordina non riesce a scrivere il segnale, per esempio perché il classificatore della "
+         "modalità auto rifiuta una scrittura fuori dal suo worktree, quella sessione worker non è vincolata."),
+        ("A session whose repository root is neither its working directory nor a folder above it, as with "
+         "`core.worktree` or `GIT_WORK_TREE`, is never held, even with the signal, because the hook looks for "
+         "`.pe/worker` only in those folders before it asks git.",
+         "Una sessione la cui radice del repository non è né la sua cartella di lavoro né una cartella sopra di essa, "
+         "come con `core.worktree` o `GIT_WORK_TREE`, non è mai vincolata, nemmeno con il segnale, perché l'hook "
+         "cerca `.pe/worker` solo in quelle cartelle prima di chiedere a git."),
+        ("A failure of the hook denies a call of the worker agent, but lets a call of a worker session through, "
+         "because such a session is known only from its signal.",
+         "Un guasto dell'hook nega una chiamata dell'agente worker, ma lascia passare una chiamata di una sessione "
+         "worker, perché una tale sessione si riconosce solo dal suo segnale."),
+        # the Bash part of the worker boundary: the grammar it accepts, what it denies, what stays open
+        ("The Bash part of the worker boundary reads the text of a command, not what the shell runs.",
+         "La parte Bash del confine del worker legge il testo di un comando, non ciò che la shell esegue."),
+        ("For the same calls as the file writes, the hook accepts a command only in a plain grammar: words of plain "
+         "characters, text in single quotes, and text in double quotes without `$`, backtick or backslash; the "
+         "operators `&&`, `||`, `;`, `|` and newlines; and the redirections `>`, `>>`, `<` and `2>`, each with one "
+         "target written out, and `2>&1`.",
+         "Per le stesse chiamate delle scritture di file, l'hook accetta un comando solo in una grammatica semplice: "
+         "parole di caratteri semplici, testo fra apici singoli e testo fra apici doppi senza `$`, apice inverso o "
+         "barra rovesciata; gli operatori `&&`, `||`, `;`, `|` e gli a capo; e le redirezioni `>`, `>>`, `<` e `2>`, "
+         "ciascuna con un bersaglio scritto per esteso, e `2>&1`."),
+        ("It denies any other command as a whole, and its reason says what to write instead: a heredoc, a comment, "
+         "`$`, a backtick, `$( ... )`, `<( ... )`, `>|`, an `&` that is not part of `2>&1`, a backslash, a number "
+         "glued to `<` or `>` (`1>`), a word that starts with `=`, which zsh turns into the path of a command, a "
+         "command word that is not a plain name with a plain path before it (a NAME=value or NAME+=value, a glob, a "
+         "`~`, zsh's `-`), `export`, `declare`, `typeset`, `readonly`, `local`, `alias`, `hash`, `enable`, `float`, "
+         "`integer`, `set`, `shopt`, `setopt`, `unsetopt`, `emulate`, `disable`, `zmodload`, `eval` and `trap`, which "
+         "run their words as shell text, a reserved word of bash or zsh such as `if`, `for`, `time` or `repeat` (`[` "
+         "and `[[` pass, because they run no command of their own), zsh's `noglob` and `nocorrect`, and an option of a "
+         "wrapper that it does not know, such as `-iu`, `env -C`, `env -S`, `sudo -D` or `sudo -e`; for this reason "
+         "the worker commits with `git commit -F` and a message file.",
+         "Nega per intero ogni altro comando, e il suo motivo dice che cosa scrivere al suo posto: un heredoc, un "
+         "commento, `$`, un apice inverso, `$( ... )`, `<( ... )`, `>|`, una `&` che non fa parte di `2>&1`, una barra "
+         "rovesciata, un numero attaccato a `<` o a `>` (`1>`), una parola che comincia con `=`, che zsh trasforma nel "
+         "percorso di un comando, una parola di comando che non è un nome semplice con davanti un percorso semplice "
+         "(un NAME=value o un NAME+=value, un carattere jolly, una `~`, il `-` di zsh), `export`, `declare`, "
+         "`typeset`, `readonly`, `local`, `alias`, `hash`, `enable`, `float`, `integer`, `set`, `shopt`, `setopt`, "
+         "`unsetopt`, `emulate`, `disable`, `zmodload`, `eval` e `trap`, che eseguono le loro parole come testo di "
+         "shell, una parola riservata di bash o di zsh come `if`, `for`, `time` o `repeat` (`[` e `[[` passano, perché "
+         "non eseguono un comando proprio), `noglob` e `nocorrect` di zsh, e un'opzione di un involucro che non "
+         "conosce, come `-iu`, `env -C`, `env -S`, `sudo -D` o `sudo -e`; per questo il worker fa i commit con `git "
+         "commit -F` e un file del messaggio."),
+        ("In that grammar it reads each statement by its command word, by the name after its last `/` in lower case, "
+         "because a case-insensitive file system runs `RM` as `rm`, and through `env`, `command`, `sudo`, `builtin`, "
+         "`exec` and `nohup`, leaving out the redirections and their targets.",
+         "In quella grammatica legge ciascuna istruzione dalla sua parola di comando, dal nome dopo la sua ultima "
+         "`/` in minuscolo, perché un file system che non distingue maiuscole e minuscole esegue `RM` come `rm`, e "
+         "attraverso `env`, `command`, `sudo`, `builtin`, `exec` e `nohup`, lasciando fuori le redirezioni e i loro "
+         "bersagli."),
+        ("Right after `env`, before any option of it, it reads `NAME=value` words, each NAME a plain name and each "
+         "value made of letters, digits and `. _ / : @ , + % -`, or text in single quotes, as the variables that "
+         "`env` sets for the command after "
+         "them, which it reads as any other; this is the form for the resources of a brief, `env NAME=value "
+         "<command>`.",
+         "Subito dopo `env`, prima di ogni sua opzione, legge le parole `NOME=valore`, ciascun NOME un nome semplice "
+         "e ciascun valore fatto di lettere, cifre e `. _ / : @ , + % -`, o testo fra apici singoli, come le "
+         "variabili che `env` imposta per il "
+         "comando che le segue, che legge come ogni altro; è la forma per le risorse di un brief, `env NOME=valore "
+         "<comando>`."),
+        ("`env -i <command>` and `env -u NAME <command>` pass too, but after an option of `env` a `NAME=value` word "
+         "is denied.",
+         "Passano anche `env -i <comando>` e `env -u NOME <comando>`, ma dopo un'opzione di `env` una parola "
+         "`NOME=valore` è negata."),
+        ("It denies `rm`, `rmdir`, `unlink` and `find ... -delete` on a path that does not lie below the worktree "
+         "root, so the root itself is denied too, or that the shell would still expand, because it starts with `~` or "
+         "holds a glob (`*`, `?`, `[`), and a `find ... -delete` with `-files0-from`, which reads its start paths from "
+         "a file; a `cd`, zsh's `chdir` or a `pushd` to anything but one folder inside the worktree, spelled out in "
+         "the same way, not `-`, `+N` or `-N`, and of the worktree's own repository, not of a submodule or a nested "
+         "worktree, because the shell keeps that folder for the next call and from there the hook would no longer find "
+         "the worktree, and a `popd` with any word; a git command with a glob in any of its words, which the shell "
+         "could turn into another subcommand or option, a git command that `-C`, `--git-dir` or `--work-tree` points "
+         "outside the worktree, or that carries a configuration of its own (`-c`, `--config-env`, or a variable that "
+         "`env` sets for it); and, because all "
+         "the worktrees share what they change, `git stash`, `git worktree remove` and `prune`, `git push`, `git "
+         "update-ref`, a `git config` that does more than read, a `git branch` or `git tag` that deletes, moves or "
+         "forces one, and a `git fetch` or `git pull` with a `:` in any of its words, operand or option value "
+         "(`--refmap=a:b`), which is how a refspec names a destination, so a remote written as a URL is denied too.",
+         "Nega `rm`, `rmdir`, `unlink` e `find ... -delete` su un percorso che non sta sotto la radice del worktree, "
+         "quindi anche sulla radice stessa, o che la shell espanderebbe ancora, perché comincia con `~` o contiene un "
+         "carattere jolly (`*`, `?`, `[`), e un `find ... -delete` con `-files0-from`, che legge da un file i suoi "
+         "percorsi di partenza; un `cd`, il `chdir` di zsh o un `pushd` verso qualunque cosa che non sia una sola "
+         "cartella dentro il worktree, scritta per esteso allo stesso modo, che non sia `-`, `+N` o `-N` e che sia del "
+         "repository stesso del worktree, non di un submodule o di un worktree annidato, perché la shell tiene quella "
+         "cartella per la chiamata dopo e da lì l'hook non troverebbe più il worktree, e un `popd` con una parola "
+         "qualsiasi; un comando git con un carattere jolly in una qualsiasi delle sue parole, che la shell potrebbe "
+         "trasformare in un altro sottocomando o in un'altra opzione, un comando git che `-C`, `--git-dir` o "
+         "`--work-tree` puntano fuori dal worktree, o che porta una configurazione propria (`-c`, `--config-env`, o "
+         "una variabile che `env` gli imposta); e, "
+         "perché tutti i worktree condividono ciò che cambiano, `git stash`, `git worktree remove` e `prune`, `git "
+         "push`, `git update-ref`, un `git config` che non si limita a leggere, un `git branch` o un `git tag` che "
+         "cancella, sposta o forza un ramo o un tag, e un `git fetch` o un `git pull` con un `:` in una qualsiasi "
+         "delle sue parole, operando o valore di un'opzione (`--refmap=a:b`), che è il modo in cui un refspec nomina "
+         "una destinazione, quindi è negato anche un remoto scritto come URL."),
+        ("Every path is read from the call's working directory, which is why a `cd`, `chdir`, `pushd` or `popd` passes "
+         "only alone, as the whole command (a statement made only of redirections does not count), and `cd docs; cd "
+         "..` is denied too. The options of a command are read as getopt reads them: they end at `--` or at the first "
+         "word that is not an option, and every word after is a path that is checked; of `find`, the word after each "
+         "`-f` is checked as a path as well.",
+         "Ogni percorso si legge dalla cartella di lavoro della chiamata, ed è per questo che un `cd`, un `chdir`, un "
+         "`pushd` o un `popd` passa solo da solo, come intero comando (un'istruzione fatta solo di redirezioni non "
+         "conta), e anche `cd docs; cd ..` è negato. Le opzioni di un comando si leggono come le legge getopt: "
+         "finiscono a `--` o alla prima parola che non è un'opzione, e ogni parola dopo è un percorso che viene "
+         "controllato; di `find`, anche la parola dopo ogni `-f` è controllata come percorso."),
+        ("Everything else stays open, because the check reads only those nine command words, and of git only the "
+         "options before the subcommand and those nine subcommands: any other command that writes or deletes, such as "
+         "`mv`, `cp`, `ln`, `tee`, `python3` or `make`; any other git subcommand that changes what the worktrees "
+         "share, such as `git switch -C` and `git checkout -B`, which the worker's own resumption uses, `git worktree "
+         "add` and `move`, `git symbolic-ref`, `git reflog` and `git remote`; a command that another program runs, "
+         "such as `sh -c`, `bash -c`, `source`, `xargs`, `find -exec`, `nice`, `timeout` or a script; a builtin that "
+         "reads a word as arithmetic, and so runs a `$( ... )` written in single quotes inside it, such as `let`, `[[ "
+         "... -eq ... ]]`, `[ ... -eq ... ]`, `unset`, `shift`, `exit`, `printf -v` and `read`, in bash and in zsh; a "
+         "command word that an alias or a function defined before the call stands for; a variable that `env` sets "
+         "for a command other than git, such as `PATH`, which chooses the program that a command word runs; a "
+         "variable or a shell option "
+         "set before the call, such as `CDPATH` for `cd`, `GIT_DIR` for git, or zsh's `extended_glob` and "
+         "`cdable_vars` from the shell configuration; and the targets of redirections. Inside its worktree a worker "
+         "can still delete `.pe/worker`, and so turn off the hold of its own session.",
+         "Tutto il resto resta aperto, perché il controllo legge solo quelle nove parole di comando, e di git solo le "
+         "opzioni prima del sottocomando e quei nove sottocomandi: ogni altro comando che scrive o cancella, come "
+         "`mv`, `cp`, `ln`, `tee`, `python3` o `make`; ogni altro sottocomando di git che cambia ciò che i worktree "
+         "condividono, come `git switch -C` e `git checkout -B`, che la ripresa del worker stesso usa, `git worktree "
+         "add` e `move`, `git symbolic-ref`, `git reflog` e `git remote`; un comando che un altro programma esegue, "
+         "come `sh -c`, `bash -c`, `source`, `xargs`, `find -exec`, `nice`, `timeout` o uno script; un comando interno "
+         "della shell che legge una parola come aritmetica, e così esegue un `$( ... )` scritto fra apici singoli al "
+         "suo interno, come `let`, `[[ ... -eq ... ]]`, `[ ... -eq ... ]`, `unset`, `shift`, `exit`, `printf -v` e "
+         "`read`, in bash e in zsh; una parola di comando al posto della quale sta un alias o una funzione definiti "
+         "prima della chiamata; una variabile che `env` imposta per un comando diverso da git, come `PATH`, che "
+         "sceglie il programma che una parola di comando esegue; una variabile o un'opzione della shell impostate "
+         "prima della chiamata, come `CDPATH` "
+         "per `cd`, `GIT_DIR` per git, o `extended_glob` e `cdable_vars` di zsh dalla configurazione della shell; e i "
+         "bersagli delle redirezioni. Dentro il suo worktree un worker può ancora cancellare `.pe/worker`, e spegnere "
+         "così il vincolo della propria sessione."),
         ("(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documents another "
          "route, a `SubagentStart` hook that adds the rules as context, and the plugin does not take it: it would "
          "add about 9,500 characters to each of the most frequent subagents.",
@@ -1724,11 +2164,51 @@ GUIDED_SENTENCES = {
          "(<https://code.claude.com/docs/en/env-vars>)."),
     ),
     "reference": (
-        ("There are no commands in this version and, besides the `SessionStart` hook described below, only one script, "
-         "`skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells the model to run.",
-         "In questa versione non ci sono comandi e, oltre all'hook `SessionStart` descritto sotto, c'è un solo "
-         "script, `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al modello di "
+        ("in the worktree of a `worker` also `delivery.md` (its delivery file) and, in that of a worker session, "
+         "`worker` (the signal that holds the session to its worktree, written by the coordinating session), and",
+         "nel worktree di un `worker` anche `delivery.md` (il suo file di consegna) e, in quello di una sessione "
+         "worker, `worker` (il segnale che vincola la sessione al suo worktree, scritto dalla sessione che "
+         "coordina), e"),
+        ("There are no commands in this version and, besides the `SessionStart` and `PreToolUse` hooks described "
+         "below, only two scripts: `skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells "
+         "the model to run, and `skills/team-lead/verify_delivery.py`, which `team-lead` tells the model to run.",
+         "In questa versione non ci sono comandi e, oltre agli hook `SessionStart` e `PreToolUse` descritti sotto, "
+         "ci sono due soli script: `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al "
+         "modello di eseguire, e `skills/team-lead/verify_delivery.py`, che `team-lead` dice al modello di "
          "eseguire."),
+        ("`skills/team-lead/verify_delivery.py` checks the delivery of a worker against git and exits 0 when it is "
+         "accepted, 1 when it is refused, 2 on a usage error and 3 when it holds something the reviewer has not read. To "
+         "run it by hand: `python3 <the folder of team-lead>/verify_delivery.py --integration <branch> --branch "
+         "<branch> --tip <sha> --worktree <folder> --brief <file> [--reviewed <sha>] [--red <command>]`, from the "
+         "checkout of the repository.",
+         "`skills/team-lead/verify_delivery.py` controlla con git la consegna di un worker ed esce con 0 se è "
+         "accettata, con 1 se è rifiutata, con 2 per un errore d'uso e con 3 quando contiene qualcosa che il revisore "
+         "non ha letto. Per eseguirlo a mano: `python3 <la cartella di team-lead>/verify_delivery.py "
+         "--integration <ramo> --branch <ramo> --tip <sha> --worktree <cartella> --brief <file> [--reviewed <sha>] "
+         "[--red <comando>]`, dal checkout del repository."),
+        ("`PreToolUse`, registered in `hooks/hooks.json` with the matcher `Agent|Bash|Write|Edit|NotebookEdit` as "
+         "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, with a timeout of 10 seconds and "
+         "`\"onFailure\": \"continue\"`.",
+         "`PreToolUse`, registrato in `hooks/hooks.json` con il matcher `Agent|Bash|Write|Edit|NotebookEdit` come "
+         "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, con un timeout di 10 secondi e "
+         "`\"onFailure\": \"continue\"`."),
+        ("the file writes of a worker outside its worktree, every Bash command of a worker outside the plain grammar "
+         "that Known limits describes, and, in that grammar, a statement whose `rm`, `rmdir`, `unlink` or `find "
+         "-delete` reaches outside the worktree, a `cd`, `chdir` or `pushd` to anything but one folder inside the "
+         "worktree and of its own repository, a `popd` with any word, any of those four that is not the whole command, "
+         "a git command that points outside the worktree, holds a glob or carries a configuration of its own (`-c`, "
+         "`--config-env`, or a variable that `env` sets for it), and a git command that changes what all the "
+         "worktrees share, each with its reason; Known "
+         "limits lists what it does not read.",
+         "fuori dalla sua definizione, le scritture di file di un worker fuori dal suo worktree, ogni comando Bash di "
+         "un worker fuori dalla grammatica semplice che i limiti noti descrivono e, dentro quella grammatica, "
+         "un'istruzione il cui `rm`, `rmdir`, `unlink` o `find -delete` esce dal worktree, un `cd`, un `chdir` o un "
+         "`pushd` verso qualunque cosa che non sia una sola cartella dentro il worktree e del suo stesso repository, "
+         "un `popd` con una parola qualsiasi, ciascuno di quei quattro che non sia l'intero comando, un comando git "
+         "che punta fuori dal worktree, contiene un carattere jolly o porta una configurazione propria (`-c`, "
+         "`--config-env`, o una variabile che `env` gli imposta), e un comando git che cambia ciò che tutti i "
+         "worktree condividono, ciascuna con il suo "
+         "motivo; i limiti noti elencano ciò che non legge."),
         ("`skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made "
          "outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository.",
          "`skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori "
@@ -1739,6 +2219,15 @@ GUIDED_SENTENCES = {
          "directory of the repository.",
          "Per eseguirlo a mano: `python3 <la cartella di safe-operations>/recreate_night_commits.py <base>`, da una "
          "cartella qualsiasi del repository."),
+        EXCLUDE_SENTENCES,
+    ),
+    "explain-parallel": (EXCLUDE_SENTENCES,),
+    # the one file every worker edits has no first owner, as in the entry conditions of team-lead
+    "parallel": (
+        ("The task file, which every worker edits, is the exception: each ticks only its own boxes there, and a "
+         "conflict on it is the worker's to resolve, like any other.",
+         "Il file dei compiti, che ogni worker modifica, è l'eccezione: ciascuno spunta lì solo le proprie caselle, "
+         "e un conflitto su di esso lo risolve il worker, come ogni altro."),
     ),
 }
 
@@ -1749,16 +2238,69 @@ def test_readmes_state_the_guided_configuration_in_both_languages(section):
         assert [pair[language] for pair in GUIDED_SENTENCES[section] if pair[language] not in text] == []
 
 
+# The words the limits sentence uses for the sizes of the hook's tables, in English and in Italian.
+COUNT_WORDS = {
+    7: ("seven", "sette"), 8: ("eight", "otto"), 9: ("nine", "nove"), 10: ("ten", "dieci"), 11: ("eleven", "undici"),
+}
+
+
+def test_readmes_count_the_explained_parts_that_end_with_a_guarantee_line():
+    """The count follows EXPLAINED_POINTS, so a new explained point cannot leave 'Ten' standing."""
+    sentences = ("%s of the parts below each end", "%s delle parti qui sotto chiudono")
+    for intro, words, sentence in zip(pages("explanation"), COUNT_WORDS[len(EXPLAINED_POINTS)], sentences):
+        assert sentence % words.capitalize() in intro
+
+
+def test_readmes_count_the_command_words_and_git_subcommands_of_the_worker_check():
+    """The counts in prose follow _COMMAND_CHECKS and _SHARED_STATE, so a new row of either cannot leave them stale."""
+    commands = COUNT_WORDS[len(pre_tool_use._COMMAND_CHECKS)]
+    subcommands = COUNT_WORDS[len(pre_tool_use._SHARED_STATE)]
+    english, italian = pages("limits")
+    assert "only those %s command words" % commands[0] in english
+    assert "and those %s subcommands" % subcommands[0] in english
+    assert "solo quelle %s parole di comando" % commands[1] in italian
+    assert "e quei %s sottocomandi" % subcommands[1] in italian
+
+
+# What the live run of team-lead on 6 November 2026 proved, in the status line, in the explanation of parallel
+# work and in its guarantee line.
+EN_STATUS = (
+    "Not proven yet: an install on a clean machine, real work over several days and the parallel work of `team-lead` "
+    "on a real project and with session workers, which so far has had one live run on a small test repository, with "
+    "two sub-agent workers, on 6 November 2026."
+)
+IT_STATUS = (
+    "Non ancora provato: l'installazione su una macchina pulita, il lavoro vero di più giorni e il lavoro in "
+    "parallelo di `team-lead` su un progetto vero e con worker in sessione, che finora ha avuto un'esecuzione dal "
+    "vivo su un piccolo repository di prova, con due worker sotto-agenti, il 6 novembre 2026."
+)
+EN_PARALLEL = (
+    "Parallel work is not proven on a real project nor with session workers: it has had one live run on a small test "
+    "repository, with two sub-agent workers, on 6 November 2026; see [Known limits](#known-limits)."
+)
+IT_PARALLEL = (
+    "Il lavoro in parallelo non è provato su un progetto vero né con worker in sessione: ha avuto un'esecuzione dal "
+    "vivo su un piccolo repository di prova, con due worker sotto-agenti, il 6 novembre 2026; vedi [Limiti "
+    "noti](#limiti-noti)."
+)
+EN_GUARANTEE = (
+    "(the `PreToolUse` hook, proven live only in part, in one run with two sub-agent workers on a small test "
+    "repository on 6 November 2026, and not with session workers: see [Known limits](#known-limits))"
+)
+IT_GUARANTEE = (
+    "(l'hook `PreToolUse`, provato dal vivo solo in parte, in un'esecuzione con due worker sotto-agenti su un "
+    "piccolo repository di prova il 6 novembre 2026, e non con worker in sessione: vedi [Limiti noti](#limiti-noti))"
+)
+
+
 def test_readmes_date_the_live_regression_runs_and_drop_the_claims_they_made_false():
     status = ("Proven so far: the unit and structure tests, one live run of the end-to-end test of the rules import "
               "(29 October 2026), and the live regression runs against an existing setup of 4 November 2026: nine "
-              "scenarios, each with and without the plugin, with a matrix of ten languages. Not proven yet: an "
-              "install on a clean machine and real work over several days.",
+              "scenarios, each with and without the plugin, with a matrix of ten languages. " + EN_STATUS,
               "Provato finora: le prove di unità e di struttura, un'esecuzione dal vivo della prova da capo a fondo "
               "dell'import delle regole (29 ottobre 2026) e le esecuzioni dal vivo di regressione contro una "
               "configurazione esistente del 4 novembre 2026: nove scenari, ciascuno con e senza il plugin, con una "
-              "matrice di dieci linguaggi. Non ancora provato: l'installazione su una macchina pulita e il lavoro "
-              "vero di più giorni.")
+              "matrice di dieci linguaggi. " + IT_STATUS)
     stale = (
         "the live regression scenarios against an existing setup", "a run in languages other than Python",
         "are declared, not enforced", "the runs on other languages are still to come", "tried on macOS only",
@@ -1766,8 +2308,12 @@ def test_readmes_date_the_live_regression_runs_and_drop_the_claims_they_made_fal
         "sono dichiarati, non imposti", "le prove su altri linguaggi devono ancora arrivare",
         "provato solo su macOS", "dichiarati nell'agente, non imposti",
     )
-    for path, text, claim in zip((README, README_IT), pages(), status):
-        assert claim in text and [old for old in stale if old in text] == [], path.name
+    stale += ("Parallel work is not proven live", "hook, not proven live)", "in a live run.",
+              "Il lavoro in parallelo non è provato dal vivo", "non provato dal vivo)", "in una prova dal vivo.")
+    claims = ((EN_PARALLEL, EN_GUARANTEE), (IT_PARALLEL, IT_GUARANTEE))
+    for path, text, claim, more in zip((README, README_IT), pages(), status, claims):
+        missing = [sentence for sentence in (claim,) + more if sentence not in text]
+        assert missing == [] and [old for old in stale if old in text] == [], path.name
 
 
 def test_readmes_count_a_repeated_breach_once_and_name_wcag_2_2():
@@ -1859,6 +2405,67 @@ def test_readmes_place_the_configure_section_the_tutorial_step_and_the_skill_row
         assert "| `configure` |" in marked_blocks(text)["reference"]
 
 
+def test_readmes_explain_that_the_coordinator_never_resolves_a_conflict():
+    """The point on parallel work names the integration, the merge read and the script, and the rule on conflicts."""
+    sentences = ("the coordinator never resolves a conflict", "il coordinatore non risolve mai un conflitto")
+    for explanation, sentence in zip(pages("explain-parallel"), sentences):
+        for needed in ("--ff-only", "--remerge-diff", "`verify_delivery.py`", sentence):
+            assert needed in explanation, needed
+
+
+def test_readmes_integrate_the_commit_id_the_check_accepted_and_the_guide_answers_the_developer():
+    """The worker can move its branch after the check, so the merge takes the accepted id; the guide says what a
+    developer who follows it needs: the test environment, the base he gets, what he sees when it stalls."""
+    integrate = ("the commit id that the run after the PASS accepted, never the branch name",
+                 "l'id di commit che l'esecuzione dopo il PASS ha accettato, mai il nome del ramo")
+    guide = (
+        ("its own database, port and cache index", "nothing is asked of you", "more than 10 minutes", "terminal",
+         "stays yours", "(#known-limits)", "not proven on a real project"),
+        ("il suo database, la sua porta e il suo indice di cache", "non ti viene chiesto nulla", "più di 10 minuti",
+         "terminale", "resta tuo", "(#limiti-noti)", "non è provato su un progetto vero"),
+    )
+    for explanation, text, sentence, needed in zip(pages("explain-parallel"), pages("parallel"), integrate, guide):
+        assert sentence in explanation
+        assert [phrase for phrase in needed if phrase not in text] == []
+
+
+def test_readmes_class_the_delivery_check_as_a_rule_for_the_model_and_say_when_the_brief_goes_out():
+    """verify_delivery.py runs only when the model runs it, as the night script does: only the hook is a mechanism."""
+    classed = ("a rule for the model", "una regola per il modello")
+    mechanism = ("a mechanism for one thing, the hold of a worker", "un meccanismo per una cosa, il vincolo di un worker")
+    check = ("is a check that the model is told to run", "è un controllo che il modello deve lanciare")
+    sent = ("sends the brief only after", "manda il brief solo dopo")
+    unmeasured = ("not measured", "non misurati")
+    for guide, explanation, label, rule, after, caps, first, how in zip(
+        pages("parallel"), pages("explain-parallel"), GUARANTEE_LABELS, classed, sent, unmeasured, mechanism, check
+    ):
+        line = guarantee_line(explanation, label)
+        assert "`team-lead`" in line and "`PreToolUse`" in line
+        assert first in line and how in line
+        assert line.index(first) < line.lower().index(rule), "the mechanism comes first, then the rule for the rest"
+        assert after in explanation and caps in guide
+
+
+def test_readmes_place_the_parallel_guide_after_autonomy_and_the_final_team_lead_row():
+    for text in pages():
+        ids = list(marked_blocks(text))
+        assert ids[ids.index("autonomy") + 1] == "parallel"
+        row = next(line for line in marked_blocks(text)["reference"].splitlines() if line.startswith("| `team-lead` |"))
+        assert "`worker`" in row and "`blunt-reviewer`" in row
+
+
+def test_readmes_say_the_coordinator_ships_with_team_lead_and_only_the_guard_is_later():
+    wording = (
+        "The merge-request guard comes in a later version.",
+        "La guardia sulle merge request arriva in una versione successiva.",
+    )
+    gone = ("multi-agent coordinator", "coordinatore a più agenti")
+    for text, sentence, old in zip(pages(), wording, gone):
+        status = text.split("<!-- section:")[0]
+        assert sentence in status
+        assert old not in status
+
+
 def test_uninstall_says_the_calibration_log_goes_with_the_data_folder():
     assert [text for text in pages("uninstall") if "`calibration.md`" not in text or "`--keep-data`" not in text] == []
 
@@ -1898,8 +2505,11 @@ def test_ci_pins_one_runner_image_and_the_node24_actions_without_a_stored_token(
     assert text.count("persist-credentials: false") == 3  # one per checkout; no step pushes
 
 
-# The tests of what runs on the user's machine: the two hooks of the plugin and the night re-creation script.
-USER_MACHINE_TESTS = "tests/test_session_start.py tests/test_pre_tool_use.py tests/test_recreate_night_commits.py"
+# The tests of what runs on the user's machine: the two hooks of the plugin and the two scripts of the skills.
+USER_MACHINE_TESTS = (
+    "tests/test_session_start.py tests/test_pre_tool_use.py tests/test_recreate_night_commits.py "
+    "tests/test_pe_worktree.py tests/test_verify_delivery.py"
+)
 
 
 def ci_job(name: str) -> str:
@@ -1934,3 +2544,35 @@ def test_swallowed_failure_catches_the_forms_it_must():
 def test_readmes_name_the_ci_workflow():
     for path in (README, README_IT):
         assert "`.github/workflows/ci.yml`" in path.read_text(encoding="utf-8"), path.name
+
+
+def direct_git_calls(source: str) -> List[int]:
+    """The lines of a ``subprocess.<anything>(["git", ...])`` call: git started by the file itself."""
+    lines = []
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess" and node.args):
+            continue
+        command = node.args[0]
+        if isinstance(command, (ast.List, ast.Tuple)) and command.elts:
+            first = command.elts[0]
+            if isinstance(first, ast.Constant) and first.value == "git":
+                lines.append(node.lineno)
+    return lines
+
+
+def test_the_guard_against_a_direct_git_call_sees_one():
+    fake = "import subprocess\n\ndef f():\n    return subprocess.run(['git', 'status'], capture_output=True)\n"
+    assert direct_git_calls(fake) == [4]
+    assert direct_git_calls("import subprocess\nsubprocess.run(['python3', 'x'])\nrun_git('status')\n") == []
+
+
+def test_only_lib_pe_git_starts_git_in_lib_and_the_skill_scripts():
+    """The runner pins ``--no-replace-objects``: a script that starts git itself reads what ``git replace`` says."""
+    files = sorted(path for folder in ("lib", "skills") for path in (REPO_ROOT / folder).rglob("*.py"))
+    assert REPO_ROOT / "lib" / "pe_git.py" in files
+    offenders = {
+        str(path.relative_to(REPO_ROOT)): direct_git_calls(path.read_text(encoding="utf-8"))
+        for path in files if path.name != "pe_git.py" or path.parent.name != "lib"
+    }
+    assert {name: lines for name, lines in offenders.items() if lines} == {}

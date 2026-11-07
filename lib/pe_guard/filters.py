@@ -1,4 +1,4 @@
-"""Text filters shared by the project hook of step zero and the PreToolUse guard of A2.
+"""Text filters shared by the project hook of step zero and the PreToolUse guard of A2, and the worker grammar.
 
 Both checks are deliberately textual and apply to the whole command, with no
 prefix exemption: ``echo ok && git push --no-verify`` is caught like
@@ -39,7 +39,14 @@ text) and ``echo api .../merge -X PUT | xargs gh`` (xargs appends what echo
 prints to the gh it starts). This filter leaves both open; the project hook of
 step zero (tools/dev_guard.py) blocks the second, as it blocks any gh or glab
 word after xargs.
+
+read_statements, which the plugin's PreToolUse hook uses for a worker's Bash
+commands, is the opposite kind of check: it accepts only a small grammar and
+raises UnreadableCommand on anything else, because a check that denies by
+command word lets a call through wherever its model of the shell is
+approximate.
 """
+import itertools
 import re
 from pathlib import PurePath
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple
@@ -110,10 +117,11 @@ _MODELLED = re.compile(r"(?:[\w\-.,/=:@+% \t\n;|]|&&|'[^']*'|\"[^\"$`\\]*\")*", 
 # folder) as it does without the quotes. The start of a word is the start of the text, a blank or a separator.
 EMPTY_QUOTES_BEFORE_EXPANSION = r"(?<![^\s;&|])(?:''|\"\")+[=~]"
 _EMPTY_QUOTES_EXPANSION = re.compile(EMPTY_QUOTES_BEFORE_EXPANSION)
-# Statements end at && || ; | & and newline outside quotes, but not at a backslash-newline continuation; words end at
+# Statements end at && || ; | & and newline outside quotes, but not at a backslash-newline continuation nor at the &
+# or the | of a redirection (2>&1, >&2, <&0, &>file, >|file), which the shell keeps inside its statement; words end at
 # blanks outside quotes, and lose their quotes. A command outside the model is cut the same way, approximately: there
 # its calls can only add blocks to the whole-text verdict.
-_STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[^|;&\n])+")
+_STATEMENT = re.compile(r"(?:\\\r?\n|\"[^\"]*\"|'[^']*'|[<>]&|&>|>\||[^|;&\n])+")
 _WORD = re.compile(r"(?:[^\s\"'\\]|\\(?!\r?\n)|\"[^\"]*\"|'[^']*')+")
 _QUOTES = re.compile(r"\"([^\"]*)\"|'([^']*)'")
 _CLIENT = re.compile(r"(?:.*\W)?(gh|glab)", _I | re.DOTALL)  # also /usr/local/bin/gh, zsh's =gh, GH on macOS
@@ -468,3 +476,193 @@ def _read_word(reading: _Reading, word: str) -> Tuple[Optional[str], List[_Readi
     if verb and verb.group(1).lower() in verbs:
         return _PR_KIND[verb.group(1).lower()], []
     return None, [(name, False, option)] if option or after_option else []
+
+
+class UnreadableCommand(ValueError):
+    """A shell text outside the grammar of ``read_statements``; the message says what to write instead."""
+
+
+class ShellStatement(NamedTuple):
+    """One statement as ``read_statements`` reads it: the name of its command word after the last /, read through the
+    wrappers, the words after it, without quotes and without redirections, and the names of the variables that env
+    sets for it."""
+
+    name: str
+    arguments: List[str]
+    variables: Tuple[str, ...]
+
+
+# The tokens of the worker grammar: blanks; the list operators && || ; | and newline; the redirections 2>&1, 2>, >>,
+# > and <; and words of plain characters, single-quoted text, and double-quoted text without $, backtick or
+# backslash. A text that is not a run of these tokens is outside the grammar. An operator the shell reads on from a
+# redirection (>|, >&, <<, <( and >( ) needs no pattern of its own: it leaves either a character that no token matches
+# or a redirection whose next token is not a word, which _grammar_statements refuses. Two tokens the shell reads by
+# their position match before a word and are refused: a number glued to < or >, which redirects that descriptor
+# (1>, 3<, 12>), and an = that starts a word, which zsh turns into the path of the command it names (=rm, ''=rm).
+# 2>&1 must end where a word would: 2>&10 duplicates descriptor 10, and falls to 2> and an & that no token matches.
+_GRAMMAR_TOKEN = re.compile(r"""
+    [ \t]+
+  | (?P<operator>&&|\|\||[;|\n])
+  | (?P<redirection>2>&1(?![^ \t\n;&|<>])|2>|>>|[<>])
+  | (?P<descriptor>[0-9]+[<>])
+  | (?P<equals>(?:''|"")*=)
+  | (?P<word>(?:[A-Za-z0-9_./:@,+%=~^*?\[\]-]|'[^']*'|"[^"$`\\]*")+)
+""", re.VERBOSE)
+_GRAMMAR_HINT = (
+    "the hook reads a worker's command only in a plain grammar, words, '...' and \"...\" without $, backtick or "
+    "backslash, && || ; | and newlines, and the redirections > >> < and 2> with one target, and 2>&1, and %r falls "
+    "outside it; write the command without it: a file with the Write tool instead of a heredoc, git commit -F <file> "
+    "instead of -m \"$(...)\", a value written out instead of $NAME, and one statement for each command instead of a "
+    "group, a subshell, a loop or a command in the background"
+)
+_TARGET_HINT = "a redirection takes one word as its target, written out after it"
+_DESCRIPTOR_HINT = (
+    "a number glued to < or > redirects that descriptor, which the reader does not follow; write > or < without the "
+    "number, or 2> and 2>&1"
+)
+_EQUALS_HINT = "a word that starts with = is the path of a command in zsh; write the word without the ="
+_COMMAND_WORD_HINT = (
+    "a command word is read only as a plain name, letters, digits, . _ + and - after the first character, with a plain "
+    "path before it; a NAME=value or NAME+=value, a glob or a ~ leave open which command runs or what it gets: "
+    "name the command in full, and set a variable for a command other than git only as env NAME=value <command>, "
+    "right after env, with the value in letters, digits and . _ / : @ , + % -, or in single quotes; git takes none"
+)
+_WRAPPER_HINT = (
+    "env, command, sudo, builtin, exec and nohup are read only with the options the reader knows, each as a word of "
+    "its own (env -i, env -u NAME, sudo -u USER, and none for builtin, exec and nohup); write them so, or run the "
+    "command without the wrapper"
+)
+# The command words the reader refuses, in groups, each with what its words do: the reserved words of bash and zsh,
+# the commands that define what later ones read, the builtins that set how the shell reads later words, zsh's
+# precommand modifiers (zsh's - is no plain name, see _PLAIN_COMMAND_WORD), and the builtins that run their words, now
+# or at the end of the call, as shell text. The hint of a word names its whole group.
+_REFUSED_WORD_GROUPS: Tuple[Tuple[Tuple[str, ...], str], ...] = (
+    (("if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac", "select", "function",
+      "time", "coproc", "repeat", "foreach", "end"),
+     "open a compound command, whose commands the hook does not read; write each command as a statement of its own"),
+    (("export", "declare", "typeset", "readonly", "local", "alias", "hash", "enable", "float", "integer"),
+     "change what later commands read; a worker does not use them"),
+    (("set", "shopt", "setopt", "unsetopt", "emulate", "disable", "zmodload"),
+     "change how the shell reads the words after them, as a cd that reads a variable or a ^ that globs; run the "
+     "commands without them, chained with && where set -e would stop on an error"),
+    (("noglob", "nocorrect"), "change how the command after them is read; run the command without them"),
+    (("eval", "trap"),
+     "run their words as shell text, which the hook does not read, as sh -c does; write the commands themselves as "
+     "statements of their own"),
+)
+
+
+def _named(words: Tuple[str, ...]) -> str:
+    return "%s and %s" % (", ".join(words[:-1]), words[-1])
+
+
+_REFUSED_COMMAND_WORDS: Dict[str, str] = {
+    word: "%s %s" % (_named(words), effect) for words, effect in _REFUSED_WORD_GROUPS for word in words
+}
+# A command word the reader can name: a plain name, with a plain path before it (/usr/bin/git, ./run.sh). [ and [[
+# run no command of their own, and an empty word is a wrapper with nothing after it.
+_PLAIN_COMMAND_WORD = re.compile(r"(?:[A-Za-z0-9_.+-]*/)*[A-Za-z0-9_][A-Za-z0-9_.+-]*")
+_COMMAND_WORDS_AS_THEY_ARE = frozenset({"", "[", "[["})
+_REFUSED_TOKENS = {"descriptor": _DESCRIPTOR_HINT, "equals": _EQUALS_HINT}
+# The commands that run the command written after their options, with the options of each that the reader knows and
+# how many words each takes after it. Any other option makes the statement unreadable: a bundle (-iu), a folder
+# option (env -C, sudo -D), env -S, which runs the string it splits, sudo -e, which edits the file it names, exec -a.
+_WRAPPER_OPTIONS: Dict[str, Dict[str, int]] = {
+    "env": {"-": 0, "-i": 0, "--ignore-environment": 0, "-0": 0, "--null": 0, "-v": 0, "--debug": 0, "-u": 1,
+            "--unset": 1},
+    "command": {"-p": 0, "-v": 0, "-V": 0},
+    "sudo": {
+        "-A": 0, "--askpass": 0, "-b": 0, "--background": 0, "-E": 0, "--preserve-env": 0, "-H": 0, "--set-home": 0,
+        "-i": 0, "--login": 0, "-k": 0, "--reset-timestamp": 0, "-n": 0, "--non-interactive": 0, "-P": 0,
+        "--preserve-groups": 0, "-S": 0, "--stdin": 0, "-s": 0, "--shell": 0, "-u": 1, "--user": 1, "-g": 1,
+        "--group": 1, "-h": 1, "--host": 1, "-p": 1, "--prompt": 1, "-C": 1, "--close-from": 1, "-r": 1, "--role": 1,
+        "-t": 1, "--type": 1, "-T": 1, "--command-timeout": 1, "-U": 1, "--other-user": 1,
+    },
+    "builtin": {},
+    "exec": {},
+    "nohup": {},
+}
+# The words that set a variable for the command env runs: right after env, before any option of it, each NAME a plain
+# name and each value plain characters or single-quoted text, so that no shell changes it (bash expands a ~ after the
+# = of an argument, zsh's magic_equal_subst an = too). env reads no option after them: the next word is the command.
+_ENV_SETTING = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=(?:[A-Za-z0-9_./:@,+%-]|'[^']*')*")
+
+
+def read_statements(text: str) -> List[ShellStatement]:
+    """Read each statement of a worker's shell command by its command word, accepting only a grammar read for sure.
+
+    The tokens are those of ``_GRAMMAR_TOKEN``; a redirection and its target are left out. The command word is read
+    through the wrappers of ``_WRAPPER_OPTIONS`` and the ``_ENV_SETTING`` words right after env, and must be a plain
+    name (``_PLAIN_COMMAND_WORD``) and none of ``_REFUSED_COMMAND_WORDS``. Anything else raises ``UnreadableCommand``,
+    whose message says what to write instead. The arguments keep a leading ~ and their globs, which the caller judges.
+    """
+    return [_read_statement(words) for words in _grammar_statements(text)]
+
+
+def _grammar_tokens(text: str) -> List[Tuple[str, str]]:
+    """The tokens of ``text`` other than blanks, each with the name of its kind."""
+    tokens: List[Tuple[str, str]] = []
+    position = 0
+    while position < len(text):
+        token = _GRAMMAR_TOKEN.match(text, position)
+        if token is None:
+            raise UnreadableCommand(_GRAMMAR_HINT % text[position])
+        if token.lastgroup in _REFUSED_TOKENS:
+            raise UnreadableCommand(_REFUSED_TOKENS[token.lastgroup])
+        if token.lastgroup:
+            tokens.append((token.lastgroup, token.group()))
+        position = token.end()
+    return tokens
+
+
+def _grammar_statements(text: str) -> List[List[str]]:
+    """The words of each statement as they are written, each redirection left out with its target."""
+    statements: List[List[str]] = [[]]
+    tokens = iter(_grammar_tokens(text))
+    for kind, token in tokens:
+        if kind == "operator":
+            statements.append([])
+        elif kind == "word":
+            statements[-1].append(token)
+        elif token != "2>&1" and next(tokens, ("", ""))[0] != "word":
+            raise UnreadableCommand(_TARGET_HINT)
+    return [words for words in statements if words]
+
+
+def _read_statement(written: List[str]) -> ShellStatement:
+    """The command word by its name after the last /, read through the wrappers, the words after it without their
+    quotes, and the names of the variables that env sets for it, whose values are judged as they are written."""
+    words = [remove_quotes(word) for word in written]
+    variables: List[str] = []
+    position = 0
+    while True:
+        word = words[position] if position < len(words) else ""
+        name = word.rsplit("/", 1)[-1].lower()  # a case-insensitive file system, macOS's default, runs RM as rm
+        _refuse_an_unsure_command_word(word, name)
+        options = _WRAPPER_OPTIONS.get(name)
+        if options is None:
+            return ShellStatement(name, words[position + 1:], tuple(variables))
+        settings = list(itertools.takewhile(_ENV_SETTING.fullmatch, written[position + 1:])) if name == "env" else []
+        variables += [setting.partition("=")[0] for setting in settings]
+        position += 1 + len(settings)
+        if not settings:
+            position = _after_wrapper_options(words, position, options)
+
+
+def _refuse_an_unsure_command_word(word: str, name: str) -> None:
+    if word not in _COMMAND_WORDS_AS_THEY_ARE and not _PLAIN_COMMAND_WORD.fullmatch(word):
+        raise UnreadableCommand(_COMMAND_WORD_HINT)
+    if name in _REFUSED_COMMAND_WORDS:
+        raise UnreadableCommand(_REFUSED_COMMAND_WORDS[name])
+
+
+def _after_wrapper_options(words: List[str], position: int, options: Dict[str, int]) -> int:
+    """The index of the first word after a wrapper's options, each with the words it takes."""
+    while position < len(words) and words[position].startswith("-"):
+        if words[position] == "--":
+            return position + 1
+        option, joined, _ = words[position].partition("=")
+        if option not in options:
+            raise UnreadableCommand(_WRAPPER_HINT)
+        position += 1 if joined else 1 + options[option]
+    return position
