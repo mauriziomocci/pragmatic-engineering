@@ -462,6 +462,9 @@ CONTRACTS: Dict[str, Contract] = {
         ),
         phrases=(
             "an approved plan", "at least two disjoint file areas", "a test environment for each suite",
+            # the one file every worker edits: each ticks only its own boxes, and its conflicts are the worker's
+            "so that no two workers edit the same file, except the shared task file, where each worker ticks only its "
+            "own boxes and a conflict is the worker's, like any other;",
             "OWNED:", "TESTS:", "exits 1", "exits 3", "--remerge-diff", "--reviewed",
             "before the review and again after the PASS",
             "inherits the environment", "env NAME=value", "git worktree prune", "write a path in it with `/`",
@@ -480,6 +483,9 @@ CONTRACTS: Dict[str, Contract] = {
             "at most two internal agents",
             # the brief and the orders
             "above 6,000 characters the brief goes to a file",
+            # a session has no agent type, so only its brief can hand it the worker's own rules
+            "A session's brief tells the worker to follow `<this skill's folder>/../../agents/worker.md`, which a "
+            "sub-agent gets from its type.",
             "a message from the coordinator approves no permission",
             "`notify_when_idle: true`", "only to a stopped session", "now do X and report",
             "suite running in the background, report when it ends",
@@ -493,6 +499,13 @@ CONTRACTS: Dict[str, Contract] = {
             "the tests of the modules touched by the incoming branch and by those integrated before it",
             # decisions, failures, closing
             "cites the entry it derives from", "after two rounds",
+            # a general rule decided rounds 4 and 5 in a live trial; only the answer for that case decides it
+            "A general rule is not such an entry: a decision cites the answer, task or entry that decides that case.",
+            # every commit of the integration branch sits in a reviewed range: the coordinator only integrates
+            "The coordinator makes no commit on the integration branch other than the integrations",
+            "a worker ticks its own tasks in its delivery, the task file in its `OWNED:` lines",
+            "any other change to a tracked file, a deferral record included, goes into a worker's package, so that it "
+            "is reviewed",
             "archived only when its branch is integrated and its report recorded",
             # the worktrees of sub-agents live inside the repository: excluded before the first launch, removed after
             "Before the first sub-agent launch", "`.claude/worktrees/`", "`git rev-parse --git-path info/exclude`",
