@@ -753,6 +753,28 @@ def test_worker_body_states_its_contract():
     assert len(text.splitlines()) < 200
 
 
+# team-lead sends a session worker to this file too, so what a session does differently is written in it.
+WORKER_SESSION_CLAUSES = (
+    "You follow `engineering-principles`, which a sub-agent receives with its type and a session loads with the "
+    "Skill tool:",
+    "A sub-agent launches no one; a session launches at most two internal agents, declared in its delivery file.",
+)
+WORKER_SESSION_FIRST_STEP = (
+    "A session whose worktree already sits on that branch skips the switch when `git rev-parse HEAD` prints the "
+    "integration tip, and otherwise stops and reports the commit it found."
+)
+
+
+def test_worker_definition_holds_for_a_session_worker_too():
+    """A rule true only for the sub-agent contradicts team-lead, which lets a session launch two agents and opens it
+    on its branch already."""
+    _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
+    (first_step,) = [line for line in sections(body)["How you work"].splitlines() if line.startswith("1. ")]
+    assert [clause for clause in WORKER_SESSION_CLAUSES if clause not in body] == []
+    assert WORKER_SESSION_FIRST_STEP in first_step
+    assert "You launch no one" not in body and "loaded with you" not in body
+
+
 WORKER_STEP_FOUR_IN_ORDER = (
     "then the tests of the touched area, green;",
     "then the project's own lint and format checks on your changed files, the ones its CI and pre-commit "
@@ -1599,11 +1621,12 @@ GUIDED_SENTENCES = {
          "after them)",
          "`<tip before the fixes>..<tip after the fixes>` (dall'ultimo commit prima delle correzioni all'ultimo "
          "dopo)"),
-        # the stop of blunt-review: an order to fix more opens the rounds it names, no more
-        ("An answer that orders more fixing after round 2 opens only the rounds it names; what is still open after "
-         "them goes up again.",
-         "Una risposta che ordina altre correzioni dopo il giro 2 apre solo i giri che nomina; ciò che resta aperto "
-         "dopo quei giri sale di nuovo."),
+        # the stop of blunt-review: its two exceptions in one sentence, and an order to fix more opens no more
+        # rounds than it names
+        ("or an answer orders more fixing, which opens only the rounds it names, each run with `round=2`.",
+         "o che una risposta ordini altre correzioni, che apre solo i giri che nomina, ciascuno con `round=2`."),
+        ("what is still open after the rounds an answer opened goes up again.",
+         "ciò che resta aperto dopo i giri aperti da una risposta sale di nuovo."),
     ),
     "explanation": (
         (" of the parts below each end with a line that says what guarantees the part; two have none: the life "
@@ -2182,6 +2205,13 @@ GUIDED_SENTENCES = {
         EXCLUDE_SENTENCES,
     ),
     "explain-parallel": (EXCLUDE_SENTENCES,),
+    # the one file every worker edits has no first owner, as in the entry conditions of team-lead
+    "parallel": (
+        ("The task file, which every worker edits, is the exception: each ticks only its own boxes there, and a "
+         "conflict on it is the worker's to resolve, like any other.",
+         "Il file dei compiti, che ogni worker modifica, è l'eccezione: ciascuno spunta lì solo le proprie caselle, "
+         "e un conflitto su di esso lo risolve il worker, come ogni altro."),
+    ),
 }
 
 

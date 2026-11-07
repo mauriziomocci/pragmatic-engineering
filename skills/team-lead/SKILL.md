@@ -76,7 +76,7 @@ The coordinator never resolves a conflict: the worker does, in its worktree, and
 
 ## Decisions
 
-A decision of the coordinator holds only if it cites the entry it derives from (a spec line, a plan task, a decision-log entry) and changes no requirement, interface, data model or contract; any other goes up by the escalation of `development-workflow`. A general rule is not such an entry: a decision cites the answer, task or entry that decides that case. A technical decision inside a task is the worker's, in its report. Check a report against git and tests; bring the user's decisions together.
+A decision of the coordinator holds only if it cites the entry it derives from (a spec line, a plan task, a decision-log entry, an answer from above) and changes no requirement, interface, data model or contract; any other goes up by the escalation of `development-workflow`. A general rule is not such an entry: the entry must decide that case. A technical decision inside a task is the worker's, in its report. Check a report against git and tests; bring the user's decisions together.
 
 ## Failures
 

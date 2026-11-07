@@ -176,7 +176,8 @@ CONTRACTS: Dict[str, Contract] = {
             "Whoever adds it proves the need: over-engineering is the defect.",
             # the stop of the cycle defers to the project's own criterion, and nobody waits for an absent user
             "If round 2 also ends with `changes`, there is no third round, unless the project has its own audit "
-            "criterion, which then says when the cycle stops.",
+            "criterion, which then says when the cycle stops, or an answer from above orders more fixing, which opens "
+            "only the rounds it names, each run with `round=2`.",
             "An audit criterion is a stop rule written in the project's own instructions or configuration, never "
             "inferred from any other document.",
             "The open blocking findings go up one level with the recommendation of whoever carries them, and the "
@@ -185,8 +186,7 @@ CONTRACTS: Dict[str, Contract] = {
             "tracked deferral.",
             # an order to fix more is no open-ended licence: in a live trial a named third round became five; the
             # reviewer's grammar stops at round=2, so the rounds it opens take that value, not one chosen on the spot
-            "An answer from above that orders more fixing after round 2 opens only the rounds it names, each run with "
-            "`round=2`; what is still open after them goes up again.",
+            "What is still open after the rounds an answer opened goes up again.",
         ),
         absent=(
             "Delivering work", "Pythonic",
@@ -475,7 +475,7 @@ CONTRACTS: Dict[str, Contract] = {
             "not in the integration",
             # the team: one line for each pair, numbers before, the caps with their source
             "one line for each pair that shares files or interfaces",
-            "section and migration numbers and the generated files are assigned before",
+            "section and migration numbers and the generated files are assigned beforehand",
             "at most three per test environment",
             # the two bases and the opening of a session
             "`worker`", "`blunt-reviewer`", "a fresh context", 'initiation: "user_asked"', "`own_initiative`",
@@ -504,7 +504,8 @@ CONTRACTS: Dict[str, Contract] = {
             # decisions, failures, closing
             "cites the entry it derives from", "after two rounds",
             # a general rule decided rounds 4 and 5 in a live trial; only the answer for that case decides it
-            "A general rule is not such an entry: a decision cites the answer, task or entry that decides that case.",
+            "(a spec line, a plan task, a decision-log entry, an answer from above)",
+            "A general rule is not such an entry: the entry must decide that case.",
             # every commit of the integration branch sits in a reviewed range: the coordinator only integrates
             "The coordinator makes no commit on the integration branch other than the integrations",
             "a worker ticks its own tasks in its delivery, the task file in its `OWNED:` lines",
