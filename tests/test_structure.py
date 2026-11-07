@@ -768,8 +768,8 @@ WORKER_SESSION_CLAUSES = (
     "A sub-agent launches no one; a session launches at most two internal agents, declared in its delivery file.",
 )
 WORKER_SESSION_FIRST_STEP = (
-    "a session whose worktree sits on a branch not yet delivered skips the switch when `git rev-parse HEAD` prints "
-    "the integration tip, and otherwise stops and reports the commit it found."
+    "a session whose worktree sits on that branch, not yet delivered, skips the switch when `git rev-parse HEAD` "
+    "prints the integration tip, and otherwise stops and reports the commit it found."
 )
 
 
@@ -787,9 +787,10 @@ def test_worker_first_step_gives_way_to_the_resumption_of_a_delivered_branch():
     to the section that resumes a delivered branch instead of stopping it."""
     _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
     (resumption,) = [title for title, text in sections(body).items() if "`git switch -C <branch>-sync <tip>`" in text]
-    assert 'A branch you already delivered skips this step and is resumed as "%s" says;' % resumption in worker_step(
-        body, 1
-    )
+    # bound to the branch the brief names: a session cleared after another package still sits on that one's branch
+    assert 'If you already delivered the branch the brief names, skip this step and resume it as "%s" says;' % (
+        resumption
+    ) in worker_step(body, 1)
 
 
 WORKER_STEP_FOUR_IN_ORDER = (
