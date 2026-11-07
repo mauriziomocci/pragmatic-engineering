@@ -1581,6 +1581,11 @@ GUIDED_SENTENCES = {
          "after them)",
          "`<tip before the fixes>..<tip after the fixes>` (dall'ultimo commit prima delle correzioni all'ultimo "
          "dopo)"),
+        # the stop of blunt-review: an order to fix more opens the rounds it names, no more
+        ("An answer that orders more fixing after round 2 opens only the rounds it names; what is still open after "
+         "them goes up again.",
+         "Una risposta che ordina altre correzioni dopo il giro 2 apre solo i giri che nomina; ciò che resta aperto "
+         "dopo quei giri sale di nuovo."),
     ),
     "explanation": (
         (" of the parts below each end with a line that says what guarantees the part; two have none: the life "

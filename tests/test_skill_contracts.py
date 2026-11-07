@@ -183,6 +183,10 @@ CONTRACTS: Dict[str, Contract] = {
             "coordinator takes them to the user or, during an autonomy, to the PM lens, which may only park them or "
             "propose a deferral to the user, because a gate closes on an open blocking finding only by the user's "
             "tracked deferral.",
+            # an order to fix more is no open-ended licence: in a live trial a named third round became five; the
+            # reviewer's grammar stops at round=2, so the rounds it opens take that value, not one chosen on the spot
+            "An answer from above that orders more fixing after round 2 opens only the rounds it names, each run with "
+            "`round=2`; what is still open after them goes up again.",
         ),
         absent=(
             "Delivering work", "Pythonic",
