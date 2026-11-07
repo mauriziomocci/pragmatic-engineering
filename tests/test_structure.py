@@ -753,6 +753,24 @@ def test_worker_body_states_its_contract():
     assert len(text.splitlines()) < 200
 
 
+WORKER_STEP_FOUR_IN_ORDER = (
+    "then the tests of the touched area, green;",
+    "then the project's own lint and format checks on your changed files, the ones its CI and pre-commit "
+    "configuration run, clean;",
+    "then your review of the diff.",
+    "Commit each task, with its box ticked, on your branch when its tests are green",
+)
+
+
+def test_worker_runs_the_project_checks_before_its_review_and_ticks_its_own_task():
+    """In a live trial no worker ran the formatter of the project's pre-commit, and the coordinator ticked the tasks
+    in commits outside every reviewed range: both are steps of the worker, in this order."""
+    _, body = parse_frontmatter(WORKER.read_text(encoding="utf-8"))
+    (fourth_step,) = [line for line in sections(body)["How you work"].splitlines() if line.startswith("4. ")]
+    positions = [fourth_step.find(phrase) for phrase in WORKER_STEP_FOUR_IN_ORDER]
+    assert -1 not in positions and positions == sorted(positions), positions
+
+
 def test_no_agent_file_outside_the_list():
     """The checks below run on every agent of AGENTS, so an agent missing from it would skip them."""
     assert {path.stem for path in (REPO_ROOT / "agents").glob("*.md")} == set(AGENTS)
