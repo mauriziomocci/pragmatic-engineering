@@ -844,6 +844,7 @@ def test_read_statements_reads_the_variables_that_env_sets_for_the_command(text,
     "nocorrect rm", "- rm", "repeat 1 rm", "foreach", "integer A", "float A", "~/bin/rm", ":",
     "shopt -s x", "setopt x", "unsetopt x", "set -e", "emulate sh", "disable cd", "zmodload x", "SET -e", "2>&10 rm",
     "rm 2>&1x", "eval rm x", "eval 'cd ..; rm x'", "builtin eval rm x", "trap 'rm x' EXIT",
+    "mapfile -C 'rm x' -c 1 a < f", "readarray -C 'rm x' -c 1 a < f", "mapfile a < f", "builtin readarray a < f",
 ])
 def test_read_statements_refuses_what_it_cannot_read_for_sure(text):
     with pytest.raises(filters.UnreadableCommand):

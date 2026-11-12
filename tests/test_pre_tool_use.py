@@ -691,6 +691,7 @@ def test_a_worker_cd_or_pushd_alone_inside_its_worktree_gets_no_decision(worker_
 
 @pytest.mark.parametrize("command", [
     "eval cd .. && rm -rf ../x", "eval 'cd ..; rm -rf ../x'", "builtin eval cd ..", "trap 'cd ..; rm -rf ../x' EXIT",
+    "mapfile -C 'cd ..' -c 1 lines < README.md", "readarray -C 'cd ..' -c 1 lines < README.md",
 ])
 def test_a_worker_command_that_runs_its_words_as_shell_text_is_denied(worker_worktree, command):
     reason = hook.decide(bash_call(command, worker_worktree / "docs"))
@@ -849,6 +850,13 @@ def test_a_worker_git_command_with_its_own_configuration_is_denied(worker_worktr
     "git tag -d v1", "git tag -f v1", "git tag --delete v1", "git tag -fa v1 -m x",
     "git fetch . HEAD:integration", "git fetch origin main:main", "git pull . w:integration",
     "git fetch origin --refmap=a:b", "git fetch --refmap=x:y origin main", "git pull --refmap=x:y origin main",
+    "git fetch https://example.org/repo.git main",  # a URL holds a :
+    "git fetch --prune --prune-tags origin",  # deletes the local tags the remote does not have
+    "git fetch -P origin", "git fetch --tags --force origin", "git fetch -f origin",  # overwrite a local tag
+    "git pull --force origin main", "git fetch --force origin tag v1",
+    "git fetch origin tag v1",  # tag <name> fetches into the local tag of that name, with no :
+    # even a plain fetch prunes or overwrites tags and branches through the configuration (fetch.pruneTags)
+    "git fetch", "git fetch origin", "git fetch origin main", "git pull origin main",
     "git push", "git push . HEAD:integration", "git push origin w",
     "git update-ref refs/heads/integration HEAD",
     "git config core.worktree ../main", "git config --unset user.name", "git config set user.name x",
@@ -858,10 +866,15 @@ def test_a_worker_git_write_that_it_never_needs_is_denied(worker_worktree, comma
     assert reason and "all the worktrees share" in reason
 
 
+def test_a_worker_fetch_reads_in_its_reason_that_a_worker_never_fetches(worker_worktree):
+    reason = hook.decide(bash_call("git fetch origin", worker_worktree))
+    assert reason and "no git stash, git worktree remove or prune, git fetch, git pull, git push" in reason
+
+
 @pytest.mark.parametrize("command", [
     "python3 -m pytest -q 2>&1 | tail -5", "rm -rf build 2>/dev/null", "rm -f build.log >> /tmp/log 2>&1",
-    "env -u HOME rm -rf build", "sudo -u bob ls", "git tag v1", "git tag -l", "git tag -a v1 -m x", "git fetch",
-    "git fetch origin", "git config --get user.name", "git config --list", "git config get user.name",
+    "env -u HOME rm -rf build", "sudo -u bob ls", "git tag v1", "git tag -l", "git tag -a v1 -m x",
+    "git config --get user.name", "git config --list", "git config get user.name",
     "git switch -C w-sync HEAD", "git checkout -B w2", "rm -rf 'build dir'", "git commit -F .pe/commit-message.txt",
     "[ -d build ] && rm -rf build", "python3 -c \"print('x')\"", "git log --format=%h -3", "grep -rn 'a|b' src",
     "make CC=gcc", "ls -la ~", "git diff HEAD~1 -- docs", "echo ok\n\npython3 -m pytest -q", "cd docs;",

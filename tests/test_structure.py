@@ -1901,7 +1901,8 @@ GUIDED_SENTENCES = {
          "above it pays two, the root and whether git tracks anything under `.pe`, and in a worker session a Write "
          "measured about 57 to 65 ms and a Bash call about 56 to 58 ms. All these costs come from one measurement "
          "session, three rounds of 50 runs each with the versions interleaved, on the maintainer's macOS machine "
-         "with a load average of about 7 to 8 from other work.",
+         "with a load average of about 7 to 8 from other work. A lone `cd`, `chdir` or `pushd` of a worker pays one "
+         "git subprocess more, the root of the folder it names, and that cost is not measured.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
@@ -1920,7 +1921,8 @@ GUIDED_SENTENCES = {
          "qualcosa sotto `.pe`, e in una sessione worker un Write ha misurato circa 57-65 ms e una chiamata Bash "
          "circa 56-58 ms. Tutti questi costi vengono da una sola sessione di misura, tre giri da 50 esecuzioni "
          "ciascuno con le versioni alternate, sulla macchina macOS del manutentore, con un carico medio di circa 7-8 "
-         "dovuto ad altro lavoro."),
+         "dovuto ad altro lavoro. Un `cd`, un `chdir` o un `pushd` da solo di un worker paga un sottoprocesso git in "
+         "più, la radice della cartella che nomina, e quel costo non è misurato."),
         # the worker boundary: what it holds and what is not proven
         ("The worker boundary of the `PreToolUse` hook is proven live only in part. In the live run of 6 November "
          "2026, launched with `claude -p`, with two `worker` sub-agents started with `isolation: worktree`, Claude "
@@ -1993,7 +1995,8 @@ GUIDED_SENTENCES = {
          "glued to `<` or `>` (`1>`), a word that starts with `=`, which zsh turns into the path of a command, a "
          "command word that is not a plain name with a plain path before it (a NAME=value or NAME+=value, a glob, a "
          "`~`, zsh's `-`), `export`, `declare`, `typeset`, `readonly`, `local`, `alias`, `hash`, `enable`, `float`, "
-         "`integer`, `set`, `shopt`, `setopt`, `unsetopt`, `emulate`, `disable`, `zmodload`, `eval` and `trap`, which "
+         "`integer`, `set`, `shopt`, `setopt`, `unsetopt`, `emulate`, `disable`, `zmodload`, `eval`, `trap`, `mapfile` "
+         "and `readarray`, which "
          "run their words as shell text, a reserved word of bash or zsh such as `if`, `for`, `time` or `repeat` (`[` "
          "and `[[` pass, because they run no command of their own), zsh's `noglob` and `nocorrect`, and an option of a "
          "wrapper that it does not know, such as `-iu`, `env -C`, `env -S`, `sudo -D` or `sudo -e`; for this reason "
@@ -2004,7 +2007,8 @@ GUIDED_SENTENCES = {
          "percorso di un comando, una parola di comando che non è un nome semplice con davanti un percorso semplice "
          "(un NAME=value o un NAME+=value, un carattere jolly, una `~`, il `-` di zsh), `export`, `declare`, "
          "`typeset`, `readonly`, `local`, `alias`, `hash`, `enable`, `float`, `integer`, `set`, `shopt`, `setopt`, "
-         "`unsetopt`, `emulate`, `disable`, `zmodload`, `eval` e `trap`, che eseguono le loro parole come testo di "
+         "`unsetopt`, `emulate`, `disable`, `zmodload`, `eval`, `trap`, `mapfile` e `readarray`, che eseguono le loro "
+         "parole come testo di "
          "shell, una parola riservata di bash o di zsh come `if`, `for`, `time` o `repeat` (`[` e `[[` passano, perché "
          "non eseguono un comando proprio), `noglob` e `nocorrect` di zsh, e un'opzione di un involucro che non "
          "conosce, come `-iu`, `env -C`, `env -S`, `sudo -D` o `sudo -e`; per questo il worker fa i commit con `git "
@@ -2040,10 +2044,11 @@ GUIDED_SENTENCES = {
          "could turn into another subcommand or option, a git command that `-C`, `--git-dir` or `--work-tree` points "
          "outside the worktree, or that carries a configuration of its own (`-c`, `--config-env`, or a variable that "
          "`env` sets for it); and, because all "
-         "the worktrees share what they change, `git stash`, `git worktree remove` and `prune`, `git push`, `git "
-         "update-ref`, a `git config` that does more than read, a `git branch` or `git tag` that deletes, moves or "
-         "forces one, and a `git fetch` or `git pull` with a `:` in any of its words, operand or option value "
-         "(`--refmap=a:b`), which is how a refspec names a destination, so a remote written as a URL is denied too.",
+         "the worktrees share what they change, `git stash`, `git worktree remove` and `prune`, `git fetch`, `git "
+         "pull` and `git push`, `git update-ref`, a `git config` that does more than read, and a `git branch` or `git "
+         "tag` that deletes, moves or forces one. A worker never needs a fetch or a pull, and even a plain `git fetch "
+         "origin` can prune or overwrite tags and branches through the repository's configuration "
+         "(`fetch.pruneTags`, `remote.<name>.fetch`).",
          "Nega `rm`, `rmdir`, `unlink` e `find ... -delete` su un percorso che non sta sotto la radice del worktree, "
          "quindi anche sulla radice stessa, o che la shell espanderebbe ancora, perché comincia con `~` o contiene un "
          "carattere jolly (`*`, `?`, `[`), e un `find ... -delete` con `-files0-from`, che legge da un file i suoi "
@@ -2056,10 +2061,10 @@ GUIDED_SENTENCES = {
          "`--work-tree` puntano fuori dal worktree, o che porta una configurazione propria (`-c`, `--config-env`, o "
          "una variabile che `env` gli imposta); e, "
          "perché tutti i worktree condividono ciò che cambiano, `git stash`, `git worktree remove` e `prune`, `git "
-         "push`, `git update-ref`, un `git config` che non si limita a leggere, un `git branch` o un `git tag` che "
-         "cancella, sposta o forza un ramo o un tag, e un `git fetch` o un `git pull` con un `:` in una qualsiasi "
-         "delle sue parole, operando o valore di un'opzione (`--refmap=a:b`), che è il modo in cui un refspec nomina "
-         "una destinazione, quindi è negato anche un remoto scritto come URL."),
+         "fetch`, `git pull` e `git push`, `git update-ref`, un `git config` che non si limita a leggere, e un `git "
+         "branch` o un `git tag` che cancella, sposta o forza un ramo o un tag. Un worker non ha mai bisogno di un "
+         "fetch o di un pull, e anche un semplice `git fetch origin` può cancellare o sovrascrivere tag e rami "
+         "attraverso la configurazione del repository (`fetch.pruneTags`, `remote.<nome>.fetch`)."),
         ("Every path is read from the call's working directory, which is why a `cd`, `chdir`, `pushd` or `popd` passes "
          "only alone, as the whole command (a statement made only of redirections does not count), and `cd docs; cd "
          "..` is denied too. The options of a command are read as getopt reads them: they end at `--` or at the first "

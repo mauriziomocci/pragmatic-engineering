@@ -24,9 +24,12 @@
    under .pe, or a .pe symlink, never holds a session.
    The worker agent pays one git subprocess to find <toplevel>, and a call
    that finds .pe/worker in its cwd or a folder above it pays two, the root
-   and whether git tracks anything under .pe; any other call of these tools
-   looks only for that file, without git, so a setup whose <toplevel> is not
-   one of those folders (core.worktree, GIT_WORK_TREE) is never held.
+   and whether git tracks anything under .pe; a lone cd, chdir or pushd of a
+   worker pays one more, the root of the folder it names, and that cost is
+   not measured.
+   Any other call of these tools looks only for .pe/worker, without git, so a
+   setup whose <toplevel> is not one of those folders (core.worktree,
+   GIT_WORK_TREE) is never held.
 4. For the same calls it reads each statement of a Bash command with
    read_statements of lib/pe_guard/filters.py, which accepts only a small
    grammar that it reads for sure and raises UnreadableCommand on anything
@@ -47,11 +50,14 @@
    or option, or that -C, --git-dir or --work-tree points outside <toplevel>,
    or that carries a configuration of its own (-c, --config-env, or a variable
    that env NAME=value sets for it); and the git commands that change what all
-   the worktrees share, in _SHARED_STATE, among them a fetch or a pull with a :
-   in any word. The operands are read as getopt reads them: the options end at
-   -- or at the first word that is not one, and every word after is an operand.
-   The reader refuses eval and trap, which run their words as shell text, and
-   reads the command after env's NAME=value words as any other. Any other
+   the worktrees share, in _SHARED_STATE, among them every fetch and pull: a
+   worker never needs one, and even a plain one can prune or overwrite tags and
+   branches through the repository's configuration (fetch.pruneTags,
+   remote.<name>.fetch). The operands are read as getopt
+   reads them: the options end at -- or at the first word that is not one, and
+   every word after is an operand. The reader refuses eval, trap, mapfile and
+   readarray, which run their words as shell text, and reads the command after
+   env's NAME=value words as any other. Any other
    command word, and any other git subcommand, gets no decision: the READMEs
    list under "Known limits" what stays open. lib/pe_guard is imported only for
    a worker's command, so a broken module fails no other call.
@@ -288,9 +294,9 @@ _WORKER_GIT_PLACE_REASON = (
     "as core.worktree and GIT_DIR do"
 )
 _WORKER_GIT_SHARED_REASON = (
-    "a worker leaves alone what all the worktrees share: no git stash, git worktree remove or prune, git push, git "
-    "update-ref or git config that writes, no git branch or git tag that deletes, moves or forces one, and no git "
-    "fetch or git pull into a local branch (<src>:<dst>); name the need in the delivery file instead"
+    "a worker leaves alone what all the worktrees share: no git stash, git worktree remove or prune, git fetch, git "
+    "pull, git push, git update-ref or git config that writes, and no git branch or git tag that deletes, moves or "
+    "forces one; name the need in the delivery file instead"
 )
 _WORKER_GIT_GLOB_REASON = (
     "a worker writes every word of a git command without a glob (*, ?, [), quoted or not, because the shell may "
@@ -387,22 +393,17 @@ def _is_option(word: str, letters: str, names: Tuple[str, ...]) -> bool:
     return word.startswith("-") and bool(set(letters) & set(word[1:]))
 
 
-def _names_a_destination(words: List[str]) -> bool:
-    """Whether a fetch or a pull names a refspec with a destination, which moves a local branch (. HEAD:integration):
-    any word, because git reads one as an operand and as the value of an option in any place (--refmap=a:b)."""
-    return any(":" in word for word in words)
-
-
 # The git subcommands that change what all the worktrees of a repository share, each with the test of the words after
-# it: one stash stack, one list of worktrees, one set of branches and tags, one configuration; a worker never pushes
-# and never moves a ref by hand.
+# it: one stash stack, one list of worktrees, one set of branches and tags, one configuration; a worker never pushes,
+# never fetches or pulls, which the configuration can turn into pruning or overwriting refs, and never moves a ref by
+# hand.
 _SHARED_STATE: Dict[str, Callable[[List[str]], bool]] = {
     "stash": lambda words: True,
     "worktree": lambda words: words[:1] in (["remove"], ["prune"]),
     "branch": lambda words: _has_option(words, *_BRANCH_WRITES),
     "tag": lambda words: _has_option(words, *_TAG_WRITES),
-    "fetch": _names_a_destination,
-    "pull": _names_a_destination,
+    "fetch": lambda words: True,
+    "pull": lambda words: True,
     "push": lambda words: True,
     "update-ref": lambda words: True,
     "config": lambda words: not (words and words[0] in _CONFIG_READS),
