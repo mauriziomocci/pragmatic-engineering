@@ -802,6 +802,10 @@ WORKER_NO_CODE_STEP = (
     "A task that changes no code cannot be red before the code: in place of its red, name in the delivery file the "
     "code its tests cover, for the coordinator's mutations."
 )
+WORKER_NO_CODE_DELIVERY_FILE = (
+    "for each task its red test (name and failing assertion, word for word) or, for a task with no code, the code "
+    "its tests cover, its commit and its result;"
+)
 
 
 def test_worker_knows_that_a_package_with_no_code_gets_its_red_from_the_mutations_of_the_coordinator():
@@ -809,6 +813,7 @@ def test_worker_knows_that_a_package_with_no_code_gets_its_red_from_the_mutation
     brief = sections(body)["The brief you receive"]
     assert [phrase for phrase in WORKER_NO_CODE_TESTS_LINE if phrase not in brief] == []
     assert WORKER_NO_CODE_STEP in worker_step(body, 4)
+    assert WORKER_NO_CODE_DELIVERY_FILE in sections(body)["What you write"]
 
 
 WORKER_STEP_FOUR_IN_ORDER = (
@@ -2292,8 +2297,8 @@ def test_readmes_count_the_command_words_and_git_subcommands_of_the_worker_check
     assert "e quei %s sottocomandi" % subcommands[1] in italian
 
 
-# What the live run of team-lead on 6 November 2026 proved, in the status line, in the explanation of parallel
-# work and in its guarantee line.
+# What the live runs of team-lead on 6 and 7 November 2026 proved, in the status line, in the explanation of
+# parallel work and in its guarantee line.
 EN_STATUS = (
     "Not proven yet: an install on a clean machine, real work over several days and the parallel work of `team-lead` "
     "with session workers; with two to five sub-agent workers it had two live runs on a copy of a real Django "

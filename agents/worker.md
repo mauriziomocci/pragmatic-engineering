@@ -38,7 +38,7 @@ A branch you already delivered is resumed on a new branch from its tip, `git swi
 
 ## What you write
 
-You write only inside your worktree. Your delivery file is `.pe/delivery.md` at the root of your worktree, written in blocks, never all at the end. Its first line is a status line, `STATUS: IN PROGRESS - done: ...; next: ...`, updated after each block, and `STATUS: COMPLETE` when you finish. It holds the plan; for each task its red test (name and failing assertion, word for word), its commit and its result; the decisions you took, with their reasons; the open questions; the internal agents a session launched, if any; and what you found broken outside your `OWNED:` lines.
+You write only inside your worktree. Your delivery file is `.pe/delivery.md` at the root of your worktree, written in blocks, never all at the end. Its first line is a status line, `STATUS: IN PROGRESS - done: ...; next: ...`, updated after each block, and `STATUS: COMPLETE` when you finish. It holds the plan; for each task its red test (name and failing assertion, word for word) or, for a task with no code, the code its tests cover, its commit and its result; the decisions you took, with their reasons; the open questions; the internal agents a session launched, if any; and what you found broken outside your `OWNED:` lines.
 
 ## Your final message
 

@@ -544,7 +544,11 @@ CONTRACTS: Dict[str, Contract] = {
             # that only tightened tests was refused by --red, and the coordinator had to decide alone; "no code",
             # not "only tests", because every delivery also ticks the task file
             "A delivery that changes no code has no red by `--red`, since the code its tests cover is already on the "
-            "base: check it without `--red`; its red is the mutations of that code, run the same way.",
+            "base: check it without `--red`.",
+            # a task with no code inside a package with code: --red passes on the other tasks, so without this
+            # mutation the tightened tests would be integrated without ever having failed (review of c93143a)
+            "mutations only of guards, serious fixes and the code that a task changing no code names in the "
+            "delivery file,",
             # exit 3 means one thing before the review and another after it
             "before the review a merge with a conflict resolution, after it every commit above the reviewed tip",
             "The delivery goes back; nothing is reviewed.",
