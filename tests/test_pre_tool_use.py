@@ -433,6 +433,9 @@ GIT_ENTRY_RULE = "never writes the .git file or folder"
 @pytest.mark.parametrize("folder,path", [
     ("", ".git"), ("", ".GIT"), ("", ".git/config"), ("", ".Git/hooks/pre-commit"), ("docs", "../.git"),
     ("", "docs/.git"), ("", "docs/.GIT"), ("", ".git."), ("", ".git "), ("", "docs/.git ./config"), ("docs", ".git"),
+    # NTFS reads what follows a colon as a stream of the name before it: .git::$DATA is the content of .git, and
+    # .git::$INDEX_ALLOCATION the .git folder itself (CVE-2019-1352)
+    ("", ".git::$DATA"), ("", ".git:x"), ("", ".git::$INDEX_ALLOCATION/config"),
 ])
 def test_a_worker_write_of_the_git_file_or_folder_of_its_worktree_is_denied(worker_worktree, agent_type, tool_name,
                                                                              folder, path):
@@ -641,6 +644,7 @@ GIT_ENTRY_DELETE = "never the root itself nor a .git"
     ("", "rm .git"), ("", "rm -f docs/.git"), ("", "rmdir .git"), ("", "unlink .git"), ("", "rm -rf .GIT"),
     ("", "rm .git."), ("", "rm -rf docs/.git/objects"), ("", "find .git -delete"), ("", "find docs/.git -delete"),
     ("docs", "rm ../.git"), ("docs", "rm .git"),
+    ("", "rm '.git::$DATA'"), ("", "rm .git:x"), ("", "rm -rf '.git::$INDEX_ALLOCATION/config'"),  # NTFS streams
 ])
 def test_a_worker_deletion_of_a_git_file_or_folder_is_denied(worker_worktree, folder, command):
     reason = hook.decide(bash_call(command, worker_worktree / folder))
@@ -710,7 +714,7 @@ def test_a_worker_git_c_into_a_folder_with_a_git_file_of_its_own_is_denied(worke
 def test_a_worker_git_c_into_another_repository_inside_its_worktree_is_denied(worktree_with_nested_roots, folder,
                                                                              command, denied):
     reason = hook.decide(bash_call(command, worktree_with_nested_roots / folder))
-    assert (reason == hook._WORKER_GIT_PLACE_REASON) == denied
+    assert reason == (hook._WORKER_GIT_PLACE_REASON if denied else None)
 
 
 def test_the_reason_for_an_option_before_the_git_subcommand_states_the_rule_and_why(worker_worktree):

@@ -1951,17 +1951,21 @@ GUIDED_SENTENCES = {
          "anche gli agenti che una tale sessione lancia nel suo worktree sono vincolati."),
         ("Inside the worktree it denies the same calls on a `.git` file or folder, at the root or in any folder below "
          "it, and on anything inside one, in any letter case, without the trailing dots and spaces that Windows drops "
-         "(`.git.` opens `.git`), and with symlinks resolved, because a `.git` tells git where the repository of its "
+         "(`.git.` opens `.git`) and without an NTFS stream after a colon (`.git::$DATA` is the content of `.git`), "
+         "and with symlinks resolved, because a `.git` tells git where the repository of its "
          "folder is: the root's, rewritten to point at the `.git` of the main checkout, would make a plain `git "
          "commit` move that checkout's branch, and a new `docs/.git` would do the same for `git -C docs commit`.",
          "Dentro il worktree nega le stesse chiamate su un file o una cartella `.git`, alla radice o in una cartella "
          "qualsiasi sotto di essa, e su qualunque cosa al suo interno, in qualsiasi combinazione di maiuscole e "
-         "minuscole, senza i punti e gli spazi finali che Windows scarta (`.git.` apre `.git`), e con i collegamenti "
+         "minuscole, senza i punti e gli spazi finali che Windows scarta (`.git.` apre `.git`) e senza un flusso NTFS "
+         "dopo i due punti (`.git::$DATA` è il contenuto di `.git`), e con i collegamenti "
          "simbolici risolti, perché un `.git` dice a git dove sta il repository della sua cartella: quello della "
          "radice, riscritto perché punti al `.git` del checkout principale, farebbe spostare a un semplice `git "
          "commit` il ramo di quel checkout, e un nuovo `docs/.git` farebbe lo stesso con `git -C docs commit`."),
-        ("It does not check the Windows 8.3 short name of `.git`, such as `GIT~1`.",
-         "Non controlla il nome breve 8.3 di Windows di `.git`, come `GIT~1`."),
+        ("It does not check the Windows 8.3 short name of `.git`, such as `GIT~1`, nor the Unicode characters that "
+         "HFS+ ignores in a name, such as U+200C, which git skips when it compares a name with `.git`.",
+         "Non controlla il nome breve 8.3 di Windows di `.git`, come `GIT~1`, né i caratteri Unicode che HFS+ ignora "
+         "in un nome, come U+200C, che git salta quando confronta un nome con `.git`."),
         ("The first turn of a worker session, which only reports that it is online, runs before the signal is written.",
          "Il primo turno di una sessione worker, che si limita a segnalare di essere online, gira prima che il "
          "segnale sia scritto."),
@@ -2305,13 +2309,6 @@ GUIDED_SENTENCES = {
 def test_readmes_state_the_guided_configuration_in_both_languages(section):
     for text, language in zip(pages(section), (0, 1)):
         assert [pair[language] for pair in GUIDED_SENTENCES[section] if pair[language] not in text] == []
-
-
-def test_readmes_no_longer_declare_a_deeper_git_open():
-    """The hook denies a .git in any part of a worker's path, so the limit that left docs/.git open is gone."""
-    english, italian = pages("limits")
-    assert "`docs/.git`, is not denied" not in english
-    assert "`docs/.git`, non è negato" not in italian
 
 
 # The words the limits sentence uses for the sizes of the hook's tables, in English and in Italian.

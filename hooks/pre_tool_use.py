@@ -16,22 +16,22 @@
    (agent_type) whose path lies outside <toplevel> of the call's cwd, the
    worker's own worktree, both paths compared after os.path.realpath; with
    no <toplevel> it denies them all. It denies them too on a path with a .git
-   among its names below <toplevel> (_names_git_entry), compared after
-   os.path.realpath, with casefold() and without trailing dots and spaces,
-   because a .git tells git where the repository of its folder is, a
-   case-insensitive filesystem opens .GIT as .git and Windows opens .git. as
-   .git. The same file calls of any other session or agent are held the same
-   way when that <toplevel> carries the signal .pe/worker, its .pe is a real
-   folder and not a symlink, and git tracks nothing under .pe in any letter
-   case: the coordinator writes the signal
-   into the worktree of a worker session, so the agents such a session
-   launches there are held too, while a repository that tracks any file
-   under .pe, or a .pe symlink, never holds a session.
+   among its names below <toplevel> (_has_git_entry), compared after
+   os.path.realpath without an NTFS stream after a colon, trailing dots and
+   spaces, and the letter case, because a .git tells git where the repository
+   of its folder is, NTFS opens .git::$DATA and .git. as .git, and a
+   case-insensitive filesystem opens .GIT as .git. The
+   same file calls of any other session or agent are held the same way when
+   that <toplevel> carries the signal .pe/worker, its .pe is a real folder and
+   not a symlink, and git tracks nothing under .pe in any letter case: the
+   coordinator writes the signal into the worktree of a worker session, so the
+   agents such a session launches there are held too, while a repository that
+   tracks any file under .pe, or a .pe symlink, never holds a session.
    The worker agent pays one git subprocess to find <toplevel>, and a call
    that finds .pe/worker in its cwd or a folder above it pays two, the root
    and whether git tracks anything under .pe; a lone cd, chdir or pushd of a
-   worker, and a git command of a worker with -C, pays one more, the root of
-   the folder it names, and that cost is not measured.
+   worker, and a git command of a worker with -C, each pays one more, the root
+   of the folder it names, and that cost is not measured.
    Any other call of these tools looks only for .pe/worker, without git, so a
    setup whose <toplevel> is not one of those folders (core.worktree,
    GIT_WORK_TREE) is never held.
@@ -194,24 +194,21 @@ def _toplevel(cwd: Any) -> Optional[str]:
     return os.path.realpath(top) if top else None
 
 
-def _resolved(cwd: str, path: str) -> Path:
-    """``path`` read from ``cwd`` with every symlink resolved: the one way the hook finds what a path of a call names."""
-    return Path(os.path.realpath(os.path.join(cwd, path)))
-
-
-def _inside(root: str, cwd: str, path: str) -> bool:
-    """Whether ``path``, read from ``cwd`` with every symlink resolved, lies below ``root``, taken as it is.
+def _parts_below(root: str, cwd: str, path: str) -> Optional[Tuple[str, ...]]:
+    """The names of ``path`` below ``root``, read from ``cwd`` with every symlink resolved, or None when it does not
+    lie below ``root``, taken as it is: the one way the hook finds what a path of a call names, resolved once.
 
     ``root`` is not resolved here: the reviewer's ``.pe`` must stay unresolved, or a committed ``.pe`` symlink
     would carry the allowed folder out of the repository together with the path.
     """
-    return Path(root) in _resolved(cwd, path).parents
+    resolved = Path(os.path.realpath(os.path.join(cwd, path)))
+    return resolved.relative_to(root).parts if Path(root) in resolved.parents else None
 
 
 def _write_problem(tool_input: Dict[str, Any], cwd: Any) -> Optional[str]:
     path = tool_input.get("file_path")
     top = _toplevel(cwd)
-    if isinstance(path, str) and path and top and _inside(os.path.join(top, PE_FOLDER), cwd, path):
+    if isinstance(path, str) and path and top and _parts_below(os.path.join(top, PE_FOLDER), cwd, path) is not None:
         return None
     return _WRITE_REASON
 
@@ -249,20 +246,23 @@ def _signalled_root(cwd: Any) -> Optional[str]:
     return top if proc and proc.returncode == 1 else None
 
 
-def _names_git_entry(root: str, cwd: str, path: str) -> bool:
-    """Whether any name of ``path`` below ``root``, where the path must lie, is a .git: the file or folder that tells
-    git where the repository of its folder is, at the root or deeper. Names are compared as the filesystems that open
-    them: in any letter case, since a case-insensitive one opens .GIT as .git, and without trailing dots and spaces,
-    which Windows drops, so that .git. opens .git."""
-    names = _resolved(cwd, path).relative_to(root).parts
-    return any(name.rstrip(". ").casefold() == ".git" for name in names)
+def _has_git_entry(names: Tuple[str, ...]) -> bool:
+    """Whether one of ``names`` is a .git, the file or folder that tells git where the repository of its folder is.
+
+    Each name is compared after dropping what NTFS and a case-insensitive filesystem drop before they open it: a
+    stream after a colon (.git::$DATA is the content of .git, .git::$INDEX_ALLOCATION the folder itself), trailing
+    dots and spaces (.git. opens .git) and the letter case (.GIT). The 8.3 short name (GIT~1) and the characters that
+    HFS+ ignores (U+200C), which git's is_hfs_dotgit skips, are not compared.
+    """
+    return any(name.partition(":")[0].rstrip(". ").casefold() == ".git" for name in names)
 
 
 def _worker_file_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional[str]) -> Optional[str]:
     paths = [tool_input[key] for key in _FILE_PATH_KEYS if key in tool_input]
-    if not (root and paths and all(isinstance(path, str) and path and _inside(root, cwd, path) for path in paths)):
+    below = [_parts_below(root, cwd, path) if root and isinstance(path, str) and path else None for path in paths]
+    if not below or None in below:
         return _WORKER_WRITE_REASON
-    return _WORKER_GIT_ENTRY_REASON if any(_names_git_entry(root, cwd, path) for path in paths) else None
+    return _WORKER_GIT_ENTRY_REASON if any(map(_has_git_entry, below)) else None
 
 
 # The glob characters, which the shell may expand into other words (bash before 5.2 counts .. among the matches of
@@ -293,27 +293,28 @@ def _operands(arguments: List[str]) -> List[str]:
     return arguments[position:]
 
 
-def _spelled_below(root: Optional[str], cwd: Any, path: str) -> bool:
-    """Whether ``path`` is the path the shell uses and lies below ``root``."""
-    return bool(root) and not _UNSPELLED.search(path) and _inside(root, cwd, path)
+def _spelled_parts(root: Optional[str], cwd: Any, path: str) -> Optional[Tuple[str, ...]]:
+    """The names of ``path`` below ``root``, or None when it is not the path the shell uses or not below ``root``."""
+    return _parts_below(root, cwd, path) if root and not _UNSPELLED.search(path) else None
 
 
 def _deletable(root: Optional[str], cwd: Any, path: str) -> bool:
     """Whether a worker may delete ``path``: spelled out, below ``root`` and naming no .git, because a worktree nested
     in the main checkout that loses its .git has the main checkout as the root git finds, and the hook holds it there."""
-    return _spelled_below(root, cwd, path) and not _names_git_entry(root, cwd, path)
+    names = _spelled_parts(root, cwd, path)
+    return names is not None and not _has_git_entry(names)
 
 
 def _worktree_folder(root: Optional[str], cwd: Any, folder: str) -> bool:
-    """Whether ``folder`` is ``root`` or lies below it, spelled as above, and has ``root`` as its repository root: a
-    folder that cd or git -C may name, and not one of a submodule, a nested worktree or a folder with a .git of its
-    own, where git finds another repository.
+    """Whether ``folder`` is ``root`` or lies below it, spelled out as _spelled_parts asks, and has ``root`` as its
+    repository root: a folder that cd or git -C may name, and not one of a submodule, a nested worktree or a folder
+    with a .git of its own, where git finds another repository.
 
     A folder is within the worktree when a name inside it lies below the root, which also holds for the root itself;
     posixpath joins with /, which _UNSPELLED accepts, where os.path on Windows would join with a backslash. The root
     of the folder costs one git subprocess, paid only by a folder that passes the rest.
     """
-    within = _spelled_below(root, cwd, posixpath.join(folder, "x"))
+    within = _spelled_parts(root, cwd, posixpath.join(folder, "x")) is not None
     return within and _toplevel(os.path.join(cwd, folder)) == root
 
 
@@ -332,9 +333,8 @@ _WORKER_CD_REASON = (
 _WORKER_GIT_PLACE_REASON = (
     "a worker writes no option before the git subcommand except -C with one folder of its own worktree, not of another "
     "repository inside it, and no variable that env sets for git: an option can take the next word as its value, so "
-    "the hook would read another "
-    "subcommand than git runs, and an option or a variable can point git at another repository or configuration "
-    "(--git-dir, -c, GIT_DIR); write the subcommand right after git, or after -C <folder>"
+    "the hook would read another subcommand than git runs, and an option or a variable can point git at another "
+    "repository or configuration (--git-dir, -c, GIT_DIR); write the subcommand right after git, or after -C <folder>"
 )
 _WORKER_GIT_SHARED_REASON = (
     "a worker leaves alone what all the worktrees share: no git stash, git worktree remove or prune, git fetch, git "
