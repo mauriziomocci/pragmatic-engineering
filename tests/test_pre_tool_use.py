@@ -412,11 +412,43 @@ def test_a_worker_write_through_a_symlink_of_its_worktree_that_leads_out_is_deni
 
 
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)
-@pytest.mark.parametrize("relative", ["README.md", "docs/new.md", ".pe/delivery.md"])
+@pytest.mark.parametrize("relative", [
+    "README.md", "docs/new.md", ".pe/delivery.md",
+    ".gitignore", ".gitattributes", ".github/workflows/ci.yml", "docs/.gitkeep",  # a name that only starts with .git
+])
 def test_a_worker_file_write_inside_its_worktree_gets_no_decision(worker_worktree, tool_name, relative):
     assert hook.decide(file_call(tool_name, worker_worktree / relative, worker_worktree)) is None
     assert hook.decide(file_call(tool_name, worker_worktree / relative, worker_worktree / "docs")) is None
     assert hook.decide(file_call(tool_name, relative, worker_worktree)) is None  # a relative path is read from the cwd
+
+
+GIT_ENTRY_RULE = "never writes the .git file or folder"
+
+
+# A .git tells git where the repository of its folder is: the worktree's, rewritten to name the main checkout's .git,
+# made a plain git commit move the main checkout's branch, and a new docs/.git made git -C docs commit do it (git 2.54).
+# A case-insensitive filesystem opens .GIT as .git, and Windows drops trailing dots and spaces: .git. opens .git.
+@pytest.mark.parametrize("agent_type", [WORKER, None])
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+@pytest.mark.parametrize("folder,path", [
+    ("", ".git"), ("", ".GIT"), ("", ".git/config"), ("", ".Git/hooks/pre-commit"), ("docs", "../.git"),
+    ("", "docs/.git"), ("", "docs/.GIT"), ("", ".git."), ("", ".git "), ("", "docs/.git ./config"), ("docs", ".git"),
+])
+def test_a_worker_write_of_the_git_file_or_folder_of_its_worktree_is_denied(worker_worktree, agent_type, tool_name,
+                                                                             folder, path):
+    write_signal(worker_worktree)  # holds the session without an agent_type; the worker agent needs none
+    reason = hook.decide(file_call(tool_name, worker_worktree / folder / path, worker_worktree / folder, agent_type))
+    assert reason and GIT_ENTRY_RULE in reason
+
+
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_a_worker_write_through_a_symlink_to_the_git_file_of_its_worktree_is_denied(worker_worktree, tool_name):
+    try:
+        os.symlink(".git", str(worker_worktree / "gitfile"))
+    except OSError as exc:  # Windows without the symlink privilege
+        pytest.skip("cannot create a symlink here: %s" % exc)
+    reason = hook.decide(file_call(tool_name, worker_worktree / "gitfile", worker_worktree))
+    assert reason and GIT_ENTRY_RULE in reason
 
 
 def test_a_worker_write_outside_a_repository_or_of_an_unknown_shape_is_denied(worker_worktree, tmp_path):
@@ -592,12 +624,40 @@ def test_a_worker_deletion_outside_its_worktree_is_denied(worker_worktree, tmp_p
     assert reason and "deletes only" in reason
 
 
+# find -delete deletes from its start paths, the working directory without any: one at the root is the root itself,
+# which no deletion may name, so find cannot reach the root's .git through its expression either.
+@pytest.mark.parametrize("command", ["find . -delete", "find -delete", "find %(root)s -delete", "find . -name x -delete"])
+def test_a_find_delete_that_starts_at_the_root_is_denied(worker_worktree, command):
+    reason = hook.decide(bash_call(command % {"root": worker_worktree.as_posix()}, worker_worktree))
+    assert reason and "deletes only" in reason
+
+
+# Without its .git a worktree nested in the main checkout (.superpowers/worktrees/*) has the main checkout as its
+# repository root, which the hook then holds the worker to.
+GIT_ENTRY_DELETE = "never the root itself nor a .git"
+
+
+@pytest.mark.parametrize("folder,command", [
+    ("", "rm .git"), ("", "rm -f docs/.git"), ("", "rmdir .git"), ("", "unlink .git"), ("", "rm -rf .GIT"),
+    ("", "rm .git."), ("", "rm -rf docs/.git/objects"), ("", "find .git -delete"), ("", "find docs/.git -delete"),
+    ("docs", "rm ../.git"), ("docs", "rm .git"),
+])
+def test_a_worker_deletion_of_a_git_file_or_folder_is_denied(worker_worktree, folder, command):
+    reason = hook.decide(bash_call(command, worker_worktree / folder))
+    assert reason and GIT_ENTRY_DELETE in reason
+
+
+@pytest.mark.parametrize("command", ["rm docs/a.py", "rm -f .gitignore", "rm -rf docs/.github", "rm docs/.gitkeep"])
+def test_a_worker_deletion_of_a_name_that_only_starts_with_git_gets_no_decision(worker_worktree, command):
+    assert hook.decide(bash_call(command, worker_worktree)) is None
+
+
 GIT_AIMED_OUTSIDE = [
     "git -C %(main)s commit -m x",
     "git --git-dir=%(main)s/.git log",
     "git --git-dir %(main)s/.git log",
     "git --work-tree=../main add .",
-    "git -c core.pager=cat -C ../mate status",  # -c takes its value, so -C is still read
+    "git -c core.pager=cat -C ../mate status",
     "cd %(main)s && git commit -m x",
 ]
 
@@ -606,6 +666,58 @@ GIT_AIMED_OUTSIDE = [
 def test_a_worker_git_command_aimed_outside_its_worktree_is_denied(worker_worktree, tmp_path, command):
     reason = hook.decide(bash_call(command % {"main": (tmp_path / "main").as_posix()}, worker_worktree))
     assert reason and HELD in reason
+
+
+# git gives some options before the subcommand the next word as their value, so a reader that does not know one of
+# them reads another subcommand than git runs: git --shallow-file status push . HEAD:refs/heads/main ran push and moved
+# main (git 2.54) while the hook read status. Only -C followed by one folder of the worktree passes, once.
+GIT_OPTIONS_BEFORE_THE_SUBCOMMAND = [
+    "git --shallow-file status push origin HEAD:main", "git --shallow-file status stash",
+    "git --exec-path=x commit -F m.txt", "git --no-pager status", "git --git-dir=.git status",
+    "git --work-tree=. status", "git -Cfoo status", "git -C", "git -c user.name=x commit -F m.txt",
+    "git --namespace x status", "git -p status", "git --bare status", "git -C . --no-pager log",
+    "git -C docs --git-dir=../.git status",
+    "git -C . -C docs status",  # each -C is read from the folder of the one before it, so a second one is denied
+]
+
+
+@pytest.mark.parametrize("command", GIT_OPTIONS_BEFORE_THE_SUBCOMMAND)
+def test_a_worker_git_command_with_any_option_before_its_subcommand_but_one_c_is_denied(worker_worktree, command):
+    assert hook.decide(bash_call(command, worker_worktree)) == hook._WORKER_GIT_PLACE_REASON
+
+
+def test_a_second_c_that_climbs_from_the_first_is_denied(worker_worktree):
+    """From docs, .. and ../mate each lie inside the worktree, while git reads ../mate from .. and reaches the mate's
+    worktree beside it."""
+    assert hook.decide(bash_call("git -C .. -C ../mate status", worker_worktree / "docs")) == (
+        hook._WORKER_GIT_PLACE_REASON)
+
+
+def test_a_worker_git_c_into_a_folder_with_a_git_file_of_its_own_is_denied(worker_worktree, tmp_path):
+    """A docs/.git naming the main checkout's .git made git -C docs commit move the main checkout's branch (git 2.54):
+    -C takes only a folder whose repository root is the worktree, as cd does."""
+    command = "git -C docs commit -F m.txt"
+    assert hook.decide(bash_call(command, worker_worktree)) is None  # a plain docs/
+    gitfile = "gitdir: %s\n" % (tmp_path / "main" / ".git").as_posix()
+    (worker_worktree / "docs" / ".git").write_text(gitfile, encoding="utf-8")
+    assert hook.decide(bash_call(command, worker_worktree)) == hook._WORKER_GIT_PLACE_REASON
+
+
+@pytest.mark.parametrize("folder,command,denied", [
+    ("", "git -C vendor/lib status", True), ("vendor", "git -C lib log", True), ("", "git -C inner commit -F m", True),
+    ("docs", "git -C ../inner status", True), ("", "git -C vendor status", False), ("vendor", "git -C .. log", False),
+])
+def test_a_worker_git_c_into_another_repository_inside_its_worktree_is_denied(worktree_with_nested_roots, folder,
+                                                                             command, denied):
+    reason = hook.decide(bash_call(command, worktree_with_nested_roots / folder))
+    assert (reason == hook._WORKER_GIT_PLACE_REASON) == denied
+
+
+def test_the_reason_for_an_option_before_the_git_subcommand_states_the_rule_and_why(worker_worktree):
+    reason = hook.decide(bash_call("git --shallow-file status push origin HEAD:main", worker_worktree))
+    assert reason and "no option before the git subcommand except -C with one folder of its own worktree" in reason
+    assert "the next word as its value" in reason and "another subcommand than git runs" in reason
+    assert "not of another repository inside it" in reason
 
 
 @pytest.mark.parametrize("command,denied", [
@@ -931,7 +1043,7 @@ def test_a_variable_written_before_the_command_word_is_denied_with_the_form_that
     "rm -rf build", "rm -rf .pe/tmp", "git commit -m x", "git merge integration", "git branch", "git worktree list",
     "python3 -m pytest -q",
     "cd %(root)s", "git -C %(root)s status", "git -C docs log",
-    "git -C . switch -c w-sync HEAD",
+    "git -C . switch -c w-sync HEAD", "git -C . status", "git -C docs log --oneline -1", "git status --porcelain", "git",
     "rm -rf build > /dev/null 2>&1", "pushd docs > /dev/null", "find build -name '*.pyc' -delete",
     "git branch -vv", "git branch --sort=-committerdate", "git branch --merged", "git commit -m 'git stash; rm -rf /'",
     "echo rm -rf /x", "ls ../main", "grep -rn cd ../main", "cat ~/x", "",

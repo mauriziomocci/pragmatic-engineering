@@ -15,18 +15,23 @@
 3. It denies a Write, Edit or NotebookEdit of pragmatic-engineering:worker
    (agent_type) whose path lies outside <toplevel> of the call's cwd, the
    worker's own worktree, both paths compared after os.path.realpath; with
-   no <toplevel> it denies them all. The same file calls of any other session
-   or agent are held the same way when that <toplevel> carries the signal
-   .pe/worker, its .pe is a real folder and not a symlink, and git tracks
-   nothing under .pe in any letter case: the coordinator writes the signal
+   no <toplevel> it denies them all. It denies them too on a path with a .git
+   among its names below <toplevel> (_names_git_entry), compared after
+   os.path.realpath, with casefold() and without trailing dots and spaces,
+   because a .git tells git where the repository of its folder is, a
+   case-insensitive filesystem opens .GIT as .git and Windows opens .git. as
+   .git. The same file calls of any other session or agent are held the same
+   way when that <toplevel> carries the signal .pe/worker, its .pe is a real
+   folder and not a symlink, and git tracks nothing under .pe in any letter
+   case: the coordinator writes the signal
    into the worktree of a worker session, so the agents such a session
    launches there are held too, while a repository that tracks any file
    under .pe, or a .pe symlink, never holds a session.
    The worker agent pays one git subprocess to find <toplevel>, and a call
    that finds .pe/worker in its cwd or a folder above it pays two, the root
    and whether git tracks anything under .pe; a lone cd, chdir or pushd of a
-   worker pays one more, the root of the folder it names, and that cost is
-   not measured.
+   worker, and a git command of a worker with -C, pays one more, the root of
+   the folder it names, and that cost is not measured.
    Any other call of these tools looks only for .pe/worker, without git, so a
    setup whose <toplevel> is not one of those folders (core.worktree,
    GIT_WORK_TREE) is never held.
@@ -44,13 +49,19 @@
    or -N, and whose own repository root is <toplevel>, because the hold of the
    next call is found from it; and a popd with any word. It denies rm, rmdir,
    unlink and find -delete, whose start paths include the word after each -f,
-   on a path that is not below <toplevel> or that the shell would still expand
+   on a path that is not below <toplevel>, that names a .git as the file calls
+   above do, because a worktree nested in the main checkout without its .git
+   has the main checkout as <toplevel>, or that the shell would still expand
    (a leading ~, a glob), and a find -delete with -files0-from; a git command
    with a glob in any word, which the shell could turn into another subcommand
-   or option, or that -C, --git-dir or --work-tree points outside <toplevel>,
-   or that carries a configuration of its own (-c, --config-env, or a variable
-   that env NAME=value sets for it); and the git commands that change what all
-   the worktrees share, in _SHARED_STATE, among them every fetch and pull: a
+   or option; a git command with any option before its subcommand but one -C
+   followed by one folder that cd may name (_worktree_folder), whose own
+   repository root is <toplevel>, because git gives some options
+   the next word as their value (--shallow-file, --namespace), so a reader that
+   does not know each one would read another subcommand than git runs, or with
+   a variable that env NAME=value sets for it, which points git elsewhere as
+   GIT_DIR does; and the git commands that change what all the worktrees
+   share, in _SHARED_STATE, among them every fetch and pull: a
    worker never needs one, and even a plain one can prune or overwrite tags and
    branches through the repository's configuration (fetch.pruneTags,
    remote.<name>.fetch). The operands are read as getopt
@@ -130,6 +141,11 @@ _WORKER_WRITE_REASON = (
     "a worker writes files only inside its own worktree, the repository root of its working directory (git "
     "rev-parse --show-toplevel); a file outside it is not the worker's: name it in the delivery file instead"
 )
+_WORKER_GIT_ENTRY_REASON = (
+    "a worker never writes the .git file or folder of a repository, at the root of its worktree or below it, in any "
+    "letter case, because it tells git where the repository is: rewritten, it can make a git commit move a branch of "
+    "another checkout; name the need in the delivery file instead"
+)
 # Write and Edit name their file file_path, NotebookEdit notebook_path; every one of them present is checked.
 _FILE_PATH_KEYS = ("file_path", "notebook_path")
 GIT_TIMEOUT = 5.0  # seconds; the hook's own timeout in hooks/hooks.json is longer
@@ -178,13 +194,18 @@ def _toplevel(cwd: Any) -> Optional[str]:
     return os.path.realpath(top) if top else None
 
 
+def _resolved(cwd: str, path: str) -> Path:
+    """``path`` read from ``cwd`` with every symlink resolved: the one way the hook finds what a path of a call names."""
+    return Path(os.path.realpath(os.path.join(cwd, path)))
+
+
 def _inside(root: str, cwd: str, path: str) -> bool:
     """Whether ``path``, read from ``cwd`` with every symlink resolved, lies below ``root``, taken as it is.
 
     ``root`` is not resolved here: the reviewer's ``.pe`` must stay unresolved, or a committed ``.pe`` symlink
     would carry the allowed folder out of the repository together with the path.
     """
-    return Path(root) in Path(os.path.realpath(os.path.join(cwd, path))).parents
+    return Path(root) in _resolved(cwd, path).parents
 
 
 def _write_problem(tool_input: Dict[str, Any], cwd: Any) -> Optional[str]:
@@ -228,11 +249,20 @@ def _signalled_root(cwd: Any) -> Optional[str]:
     return top if proc and proc.returncode == 1 else None
 
 
+def _names_git_entry(root: str, cwd: str, path: str) -> bool:
+    """Whether any name of ``path`` below ``root``, where the path must lie, is a .git: the file or folder that tells
+    git where the repository of its folder is, at the root or deeper. Names are compared as the filesystems that open
+    them: in any letter case, since a case-insensitive one opens .GIT as .git, and without trailing dots and spaces,
+    which Windows drops, so that .git. opens .git."""
+    names = _resolved(cwd, path).relative_to(root).parts
+    return any(name.rstrip(". ").casefold() == ".git" for name in names)
+
+
 def _worker_file_problem(tool_input: Dict[str, Any], cwd: Any, root: Optional[str]) -> Optional[str]:
     paths = [tool_input[key] for key in _FILE_PATH_KEYS if key in tool_input]
-    if root and paths and all(isinstance(path, str) and path and _inside(root, cwd, path) for path in paths):
-        return None
-    return _WORKER_WRITE_REASON
+    if not (root and paths and all(isinstance(path, str) and path and _inside(root, cwd, path) for path in paths)):
+        return _WORKER_WRITE_REASON
+    return _WORKER_GIT_ENTRY_REASON if any(_names_git_entry(root, cwd, path) for path in paths) else None
 
 
 # The glob characters, which the shell may expand into other words (bash before 5.2 counts .. among the matches of
@@ -264,22 +294,33 @@ def _operands(arguments: List[str]) -> List[str]:
 
 
 def _spelled_below(root: Optional[str], cwd: Any, path: str) -> bool:
-    """Whether ``path`` is the path the shell uses and lies below ``root``: a path a worker may delete."""
+    """Whether ``path`` is the path the shell uses and lies below ``root``."""
     return bool(root) and not _UNSPELLED.search(path) and _inside(root, cwd, path)
 
 
-def _spelled_within(root: Optional[str], cwd: Any, path: str) -> bool:
-    """Whether ``path`` is ``root`` or lies below it, spelled as above: a folder a worker may work in.
+def _deletable(root: Optional[str], cwd: Any, path: str) -> bool:
+    """Whether a worker may delete ``path``: spelled out, below ``root`` and naming no .git, because a worktree nested
+    in the main checkout that loses its .git has the main checkout as the root git finds, and the hook holds it there."""
+    return _spelled_below(root, cwd, path) and not _names_git_entry(root, cwd, path)
+
+
+def _worktree_folder(root: Optional[str], cwd: Any, folder: str) -> bool:
+    """Whether ``folder`` is ``root`` or lies below it, spelled as above, and has ``root`` as its repository root: a
+    folder that cd or git -C may name, and not one of a submodule, a nested worktree or a folder with a .git of its
+    own, where git finds another repository.
 
     A folder is within the worktree when a name inside it lies below the root, which also holds for the root itself;
-    posixpath joins with /, which _UNSPELLED accepts, where os.path on Windows would join with a backslash.
+    posixpath joins with /, which _UNSPELLED accepts, where os.path on Windows would join with a backslash. The root
+    of the folder costs one git subprocess, paid only by a folder that passes the rest.
     """
-    return _spelled_below(root, cwd, posixpath.join(path, "x"))
+    within = _spelled_below(root, cwd, posixpath.join(folder, "x"))
+    return within and _toplevel(os.path.join(cwd, folder)) == root
 
 
 _WORKER_DELETE_REASON = (
-    "a worker deletes only below the root of its own worktree, never the root itself, and only paths that the command "
-    "spells out: none that starts with ~ or holds a glob (*, ?, [); name each path in full"
+    "a worker deletes only below the root of its own worktree, never the root itself nor a .git file or folder, which "
+    "tells git where a repository is, and only paths that the command spells out: none that starts with ~ or holds a "
+    "glob (*, ?, [); name each path in full"
 )
 _WORKER_CD_REASON = (
     "a worker's shell stays in its own worktree: cd, chdir and pushd take one folder inside it, spelled out in full "
@@ -289,9 +330,11 @@ _WORKER_CD_REASON = (
     "it; run the cd in its own call, or use git -C <folder> and paths from the current folder"
 )
 _WORKER_GIT_PLACE_REASON = (
-    "a worker runs git only on its own worktree: no -C, --git-dir or --work-tree that points outside it, and no "
-    "configuration of its own (-c, --config-env, or a variable that env sets for it), which can point it elsewhere, "
-    "as core.worktree and GIT_DIR do"
+    "a worker writes no option before the git subcommand except -C with one folder of its own worktree, not of another "
+    "repository inside it, and no variable that env sets for git: an option can take the next word as its value, so "
+    "the hook would read another "
+    "subcommand than git runs, and an option or a variable can point git at another repository or configuration "
+    "(--git-dir, -c, GIT_DIR); write the subcommand right after git, or after -C <folder>"
 )
 _WORKER_GIT_SHARED_REASON = (
     "a worker leaves alone what all the worktrees share: no git stash, git worktree remove or prune, git fetch, git "
@@ -309,7 +352,7 @@ _WORKER_UNREADABLE_REASON = "the hook cannot read this worker command for sure, 
 
 def _deletion_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> Optional[str]:
     targets = _operands(statement.arguments)
-    return None if all(_spelled_below(root, cwd, target) for target in targets) else _WORKER_DELETE_REASON
+    return None if all(_deletable(root, cwd, target) for target in targets) else _WORKER_DELETE_REASON
 
 
 def _find_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> Optional[str]:
@@ -324,7 +367,7 @@ def _find_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) ->
     starts = [path for option, path in zip(arguments, arguments[1:]) if option == "-f"]
     starts += itertools.takewhile(lambda word: not word.startswith(("-", "(", "!")), after_options)
     spelled = "-files0-from" not in arguments
-    inside = all(_spelled_below(root, cwd, start) for start in starts or ["."])
+    inside = all(_deletable(root, cwd, start) for start in starts or ["."])
     return None if spelled and inside else _WORKER_DELETE_REASON
 
 
@@ -338,9 +381,9 @@ def _cd_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> O
     path, so only one folder, spelled out, passes; and only one of the same repository, because from the root of a
     submodule or a nested worktree the next call would find no signal."""
     folders = _operands(statement.arguments)
-    if len(folders) != 1 or _CD_SHORTHAND.fullmatch(folders[0]) or not _spelled_within(root, cwd, folders[0]):
+    if len(folders) != 1 or _CD_SHORTHAND.fullmatch(folders[0]) or not _worktree_folder(root, cwd, folders[0]):
         return _WORKER_CD_REASON
-    return None if _toplevel(os.path.join(cwd, folders[0])) == root else _WORKER_CD_REASON
+    return None
 
 
 def _popd_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> Optional[str]:
@@ -349,15 +392,6 @@ def _popd_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) ->
     return _WORKER_CD_REASON if statement.arguments else None
 
 
-# git's options before the subcommand that take the next word as their value when no = joins it to them; those that
-# point git at another repository or working tree; and those that give git a configuration of its own, which can do
-# the same (core.worktree). A variable does it too (GIT_DIR, GIT_CONFIG_COUNT): one written before git never gets
-# past the grammar, and git takes none that env sets, as it takes no -c.
-_GIT_VALUE_OPTIONS = frozenset({
-    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source",
-})
-_GIT_PLACE_OPTIONS = frozenset({"-C", "--git-dir", "--work-tree"})
-_GIT_CONFIG_OPTIONS = frozenset({"-c", "--config-env"})
 # The options of git branch and git tag that delete, move or force one (branch -C is --copy --force); git takes short
 # ones bundled (-Df) and long ones shortened to a prefix (--del), so a word that could be either counts.
 _BRANCH_WRITES = ("dDfmMC", ("delete", "force", "move"))
@@ -366,21 +400,20 @@ _TAG_WRITES = ("df", ("delete", "force"))
 _CONFIG_READS = frozenset({"--get", "--get-all", "--get-regexp", "--list", "-l", "get", "list"})
 
 
-def _git_options(arguments: List[str]) -> Tuple[List[str], List[str], List[str]]:
-    """git's options before the subcommand, the folders they name, and the words from the subcommand on."""
-    options: List[str] = []
-    places: List[str] = []
-    position = 0
-    while position < len(arguments) and arguments[position].startswith("-"):
-        option, joined, value = arguments[position].partition("=")
-        if not joined and option in _GIT_VALUE_OPTIONS:
-            position += 1
-            value = arguments[position] if position < len(arguments) else ""
-        options.append(option)
-        if option in _GIT_PLACE_OPTIONS:
-            places.append(value)
-        position += 1
-    return options, places, arguments[position:]
+def _git_subcommand_words(arguments: List[str], cwd: Any, root: Optional[str]) -> Optional[List[str]]:
+    """The words of a git command from its subcommand on, or None when an option comes before the subcommand other
+    than one -C followed by a folder of the worktree's own repository.
+
+    The list is closed because git gives some options the next word as their value (--shallow-file, --namespace): a
+    reader that does not know one of them takes that value for the subcommand, while git runs the word after it. -C
+    always takes the next word, and git reads a second -C from the folder of the first, where a check from cwd does
+    not look, so only one passes.
+    """
+    if arguments[:1] == ["-C"]:
+        if len(arguments) < 2 or not _worktree_folder(root, cwd, arguments[1]):
+            return None
+        arguments = arguments[2:]
+    return None if arguments and arguments[0].startswith("-") else arguments
 
 
 def _has_option(words: List[str], letters: str, names: Tuple[str, ...]) -> bool:
@@ -413,9 +446,10 @@ _SHARED_STATE: Dict[str, Callable[[List[str]], bool]] = {
 def _git_problem(statement: "ShellStatement", cwd: Any, root: Optional[str]) -> Optional[str]:
     if any(_GLOB.search(word) for word in statement.arguments):
         return _WORKER_GIT_GLOB_REASON
-    options, places, words = _git_options(statement.arguments)
-    configured = statement.variables or _GIT_CONFIG_OPTIONS.intersection(options)
-    if configured or not all(_spelled_within(root, cwd, place) for place in places):
+    words = _git_subcommand_words(statement.arguments, cwd, root)
+    # git takes from a variable what it takes from an option (GIT_DIR, GIT_WORK_TREE); one written before git never
+    # gets past the grammar, so only those that env sets reach this check
+    if words is None or statement.variables:
         return _WORKER_GIT_PLACE_REASON
     shared = _SHARED_STATE.get(words[0]) if words else None
     return _WORKER_GIT_SHARED_REASON if shared and shared(words[1:]) else None
