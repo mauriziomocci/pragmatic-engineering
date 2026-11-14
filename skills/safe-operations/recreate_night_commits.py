@@ -12,21 +12,24 @@ branches are read as they are after the last fetch); a backup tag that already e
 checks on the result, stopping at the first that fails (``rebase.updateRefs`` is pinned off, so no other local branch
 moves). Only when all four pass does the branch move to the result, with ``git update-ref`` guarded by the tip read
 before the run. The user's working tree and index are never read or written: the new tree is the tag's, so they stay
-consistent, and uncommitted changes and untracked files, ignored or not, are safe. On any failure after the tag the
+consistent, and uncommitted changes and untracked files, ignored or not, are safe. Every git call runs with
+``--no-replace-objects`` (the shared runner of ``lib/pe_git.py``), so the commits are read as they are and a
+``git replace`` ref is not replayed. On any failure after the tag the
 branch has not moved, and the message says how to delete the tag.
 
 Every day uses the hours of ``pe.officeHours``, weekends and ``pe.holidays`` included, so a commit re-created on a
 weekend morning carries a date inside the weekday hours, which the date check accepts.
 """
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Iterator, List, Sequence, Tuple
+from pathlib import Path
+from typing import Callable, List, Sequence, Tuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+from pe_git import run_git  # noqa: E402
+from pe_worktree import WorktreeError, temporary_worktree  # noqa: E402  (the plugin's shared code, found from this file)
 
 WINDOW = re.compile(r"(\d\d)-(\d\d)")
 
@@ -68,24 +71,19 @@ def parse_window(value: str) -> Window:
     return Window(start, end)
 
 
-def _run(*args: str) -> subprocess.CompletedProcess:
-    """``surrogateescape`` keeps the bytes of a commit message that is not valid text, so it still compares exactly."""
-    return subprocess.run(["git", *args], capture_output=True, text=True, errors="surrogateescape")
-
-
 def git(*args: str) -> str:
-    proc = _run(*args)
+    proc = run_git(*args)
     if proc.returncode != 0:
         raise Refusal("git", "`git %s` failed: %s" % (" ".join(args), proc.stderr.strip()))
     return proc.stdout
 
 
 def git_succeeds(*args: str) -> bool:
-    return _run(*args).returncode == 0
+    return run_git(*args).returncode == 0
 
 
 def office_window() -> Window:
-    proc = _run("config", "--get", "pe.officeHours")
+    proc = run_git("config", "--get", "pe.officeHours")
     value = proc.stdout.strip()
     if proc.returncode != 0 or value in ("", "none"):
         raise Refusal("office hours", "no office hours set: the window comes from `git config pe.officeHours`")
@@ -135,26 +133,10 @@ def branch_is_unchanged(tag: str) -> Tuple[str]:
     return ("the branch is unchanged; delete the tag with `git tag -d %s` if you do not want it" % tag,)
 
 
-@contextmanager
-def temporary_worktree(tag: str) -> Iterator[str]:
-    """A detached worktree of ``tag`` in a folder of the script's own, removed on success and on every failure."""
-    try:
-        folder = tempfile.mkdtemp(prefix="recreate-night-commits-")
-    except OSError as error:
-        raise Refusal("worktree", "the temporary folder cannot be made: %s" % error) from error
-    try:
-        git("worktree", "add", "--detach", folder, tag)
-        yield folder
-    finally:
-        _run("worktree", "remove", "--force", folder)
-        _run("worktree", "prune")
-        shutil.rmtree(folder, ignore_errors=True)  # what is left when `worktree add` failed before it took over
-
-
 def rebase(base: str, folder: str) -> str:
     """Replay the range inside ``folder`` and return the new tip. ``rebase.updateRefs`` is pinned off because it would
     move every other local branch that points into the range, before the checks."""
-    proc = _run("-c", "rebase.updateRefs=false", "-C", folder, "rebase", "--force-rebase", "--ignore-date",
+    proc = run_git("-c", "rebase.updateRefs=false", "-C", folder, "rebase", "--force-rebase", "--ignore-date",
                 "--rebase-merges", base)
     if proc.returncode != 0:
         raise Refusal("rebase", "`git rebase` failed: %s" % proc.stderr.strip())
@@ -220,7 +202,7 @@ def verify(recreation: Recreation) -> None:
 
 def move_branch(tip: str, recreation: Recreation) -> None:
     """``tip`` is the value read before the run, so a branch that moved meanwhile is refused, never overwritten."""
-    proc = _run("update-ref", "-m", "recreate_night_commits", "HEAD", recreation.new, tip)
+    proc = run_git("update-ref", "-m", "recreate_night_commits", "HEAD", recreation.new, tip)
     if proc.returncode != 0:
         detail = "the branch moved while the script ran: %s" % proc.stderr.strip()
         raise Refusal("branch", detail)
@@ -241,12 +223,14 @@ def recreate(base: str, now: datetime) -> str:
     tip = git("rev-parse", "HEAD").strip()
     tag = create_backup_tag(now, tip)
     try:
-        with temporary_worktree(tag) as folder:
+        with temporary_worktree(tag, "recreate-night-commits-") as folder:
             recreation = Recreation(base, tag, rebase(base, folder), window)
             verify(recreation)
         move_branch(tip, recreation)
     except Refusal as refusal:  # the one home of the way back: whatever fails after the tag leaves the branch alone
         raise Refusal(refusal.check, refusal.detail, branch_is_unchanged(tag)) from refusal
+    except WorktreeError as error:
+        raise Refusal("worktree", str(error), branch_is_unchanged(tag)) from error
     return tag
 
 

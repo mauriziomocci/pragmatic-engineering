@@ -26,7 +26,7 @@ A phase starts only when the gate before it is closed. No gate is skipped.
 | 2 Spec | Three-step design. On an interface or on API responses, one round of the UX, user and review lenses first (`interface-quality`). A spec touching a delivered API states "contract unchanged" or "CONTRACT CHANGE" and follows the client's scenario table (`engineering-principles`). | heavy |
 | 3 Plan | `superpowers:writing-plans`, or `speckit-plan`. | light |
 | 4 Tasks | `superpowers:writing-plans` (titles `### Task N`), or `speckit-tasks` (lines `T001`). | light |
-| 5 Implementation | In sequence, with the engine of the chosen chain: `superpowers:subagent-driven-development` or `speckit-implement`. `superpowers:test-driven-development`. The tests of the touched area before every commit. | escalation when a decision is missing |
+| 5 Implementation | In sequence, with the engine of the chosen chain: `superpowers:subagent-driven-development` or `speckit-implement`, or in parallel with `team-lead` when its entry conditions hold. `superpowers:test-driven-development`. The tests of the touched area before every commit. | escalation when a decision is missing |
 | 6 Validation | As in Phase 6 and the merge request. | heavy |
 | 7 Closure | `superpowers:finishing-a-development-branch`, only after the gate of phase 6. The rest as in Closure. | none |
 
