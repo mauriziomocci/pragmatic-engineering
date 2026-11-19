@@ -111,8 +111,14 @@ def run_main(monkeypatch, payload) -> int:
     return hook.main()
 
 
-def crash(_payload):
-    raise RuntimeError("boom")
+def raising(error):
+    """A stand-in for a function of the hook that raises ``error`` whatever it is given."""
+    def stand_in(*args, **kwargs):
+        raise error
+    return stand_in
+
+
+crash = raising(RuntimeError("boom"))
 
 
 def test_a_crash_on_a_reviewer_call_denies(monkeypatch, capsys):
@@ -412,11 +418,193 @@ def test_a_worker_write_through_a_symlink_of_its_worktree_that_leads_out_is_deni
 
 
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)
-@pytest.mark.parametrize("relative", ["README.md", "docs/new.md", ".pe/delivery.md"])
+@pytest.mark.parametrize("relative", [
+    "README.md", "docs/new.md", ".pe/delivery.md",
+    ".gitignore", ".gitattributes", ".github/workflows/ci.yml", "docs/.gitkeep",  # a name that only starts with .git
+    # what precedes a colon is the name NTFS opens: notes:.git is the stream .git of the file notes, not a .git (a
+    # one-letter name before the colon would be a drive on Windows)
+    "docs/notes:.git", ".github:x",
+])
 def test_a_worker_file_write_inside_its_worktree_gets_no_decision(worker_worktree, tool_name, relative):
     assert hook.decide(file_call(tool_name, worker_worktree / relative, worker_worktree)) is None
     assert hook.decide(file_call(tool_name, worker_worktree / relative, worker_worktree / "docs")) is None
     assert hook.decide(file_call(tool_name, relative, worker_worktree)) is None  # a relative path is read from the cwd
+
+
+GIT_ENTRY_RULE = "never writes the .git file or folder"
+
+
+# A .git tells git where the repository of its folder is: the worktree's, rewritten to name the main checkout's .git,
+# made a plain git commit move the main checkout's branch, and a new docs/.git made git -C docs commit do it (git 2.54).
+# A case-insensitive filesystem opens .GIT as .git, and Windows drops trailing dots and spaces: .git. opens .git.
+@pytest.mark.parametrize("agent_type", [WORKER, None])
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+@pytest.mark.parametrize("folder,path", [
+    ("", ".git"), ("", ".GIT"), ("", ".git/config"), ("", ".Git/hooks/pre-commit"), ("docs", "../.git"),
+    ("", "docs/.git"), ("", "docs/.GIT"), ("", ".git."), ("", ".git "), ("", "docs/.git ./config"), ("docs", ".git"),
+    # NTFS reads what follows a colon as a stream of the name before it: .git::$DATA is the content of .git
+    ("", ".git::$DATA"), ("", ".git:x"),
+])
+def test_a_worker_write_of_the_git_file_or_folder_of_its_worktree_is_denied(worker_worktree, agent_type, tool_name,
+                                                                             folder, path):
+    write_signal(worker_worktree)  # holds the session without an agent_type; the worker agent needs none
+    reason = hook.decide(file_call(tool_name, worker_worktree / folder / path, worker_worktree / folder, agent_type))
+    assert reason and GIT_ENTRY_RULE in reason
+
+
+@pytest.mark.parametrize("agent_type", [WORKER, None])
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_a_worker_write_into_the_git_folder_through_its_ntfs_stream_is_denied(worker_worktree, agent_type, tool_name):
+    """.git::$INDEX_ALLOCATION is the .git folder itself on NTFS (CVE-2019-1352). Where the system cannot resolve that
+    path (WinError 3 and 267 from ntpath.realpath on the user-machine job of Windows), the write is denied as one that
+    does not resolve below the root; where it resolves, it is denied as a .git."""
+    write_signal(worker_worktree)
+    path = worker_worktree / ".git::$INDEX_ALLOCATION" / "config"
+    try:
+        os.path.realpath(str(path))
+        expected = hook._WORKER_GIT_ENTRY_REASON
+    except (OSError, ValueError):
+        expected = hook._WORKER_WRITE_REASON
+    assert hook.decide(file_call(tool_name, path, worker_worktree, agent_type)) == expected
+
+
+UNRESOLVABLE = "unresolvable"
+
+
+def realpath_failing_on(name, error):
+    """os.path.realpath that raises ``error`` on a path holding ``name`` and resolves any other: ntpath.realpath raises
+    WinError 3 and 267 (FileNotFoundError, NotADirectoryError) on .git::$INDEX_ALLOCATION/config, and posixpath.realpath
+    raises ValueError on a NUL byte on the CPython versions measured, 3.12, 3.13 and 3.14."""
+    real_realpath = os.path.realpath
+
+    def realpath(path, *args, **kwargs):
+        if name in os.fspath(path):
+            raise error("cannot resolve %s" % path)
+        return real_realpath(path, *args, **kwargs)
+    return realpath
+
+
+# A path the hook cannot resolve cannot be shown to lie inside the worktree, so each check denies it with its own
+# reason, before any failure further down could turn it into a crash.
+UNRESOLVABLE_CALLS = [
+    ("Write", lambda root, agent_type: file_call("Write", root / "docs" / UNRESOLVABLE / "x", root, agent_type),
+     "_WORKER_WRITE_REASON"),
+    ("rm", lambda root, agent_type: bash_call("rm docs/%s/x" % UNRESOLVABLE, root, agent_type), "_WORKER_DELETE_REASON"),
+    ("git -C", lambda root, agent_type: bash_call("git -C docs/%s status" % UNRESOLVABLE, root, agent_type),
+     "_WORKER_GIT_PLACE_REASON"),
+]
+
+
+@pytest.mark.parametrize("error", [NotADirectoryError, FileNotFoundError, ValueError])
+@pytest.mark.parametrize("agent_type", [WORKER, None])
+@pytest.mark.parametrize("call,make,reason_name", UNRESOLVABLE_CALLS, ids=[call for call, _, _ in UNRESOLVABLE_CALLS])
+def test_a_worker_path_that_cannot_be_resolved_is_denied(worker_worktree, monkeypatch, error, agent_type, call, make,
+                                                         reason_name):
+    write_signal(worker_worktree)
+    monkeypatch.setattr(hook.os.path, "realpath", realpath_failing_on(UNRESOLVABLE, error))
+    assert hook.decide(make(worker_worktree, agent_type)) == getattr(hook, reason_name)
+
+
+@pytest.mark.parametrize("error", [NotADirectoryError, FileNotFoundError, ValueError])
+def test_a_worker_session_write_that_cannot_be_resolved_exits_2(worker_worktree, monkeypatch, capsys, error):
+    """Through main, as Claude Code runs the hook: before the fix the exception made a worker session's call pass."""
+    write_signal(worker_worktree)
+    monkeypatch.setattr(hook.os.path, "realpath", realpath_failing_on(UNRESOLVABLE, error))
+    payload = file_call("Write", worker_worktree / UNRESOLVABLE / "x", worker_worktree, agent_type=None)
+    assert run_main(monkeypatch, payload) == 2
+    assert "its own worktree" in capsys.readouterr().err
+
+
+def test_the_write_reason_covers_a_path_that_does_not_resolve():
+    """The same reason answers a path outside the worktree and one the system cannot resolve, so it names neither."""
+    assert "only paths that resolve below the root of its own worktree" in hook._WORKER_WRITE_REASON
+    assert "outside" not in hook._WORKER_WRITE_REASON
+
+
+def realpath_keeping(name):
+    """os.path.realpath that returns a path holding ``name`` as it is, as CPython 3.9 does for a NUL byte, and resolves
+    any other: the path then reaches git -C, where subprocess raises ValueError on the NUL."""
+    real_realpath = os.path.realpath
+
+    def realpath(path, *args, **kwargs):
+        return os.fspath(path) if name in os.fspath(path) else real_realpath(path, *args, **kwargs)
+    return realpath
+
+
+@pytest.mark.parametrize("realpath", ["as on CPython 3.9", "of this interpreter"])
+@pytest.mark.parametrize("agent_type", [WORKER, None])
+@pytest.mark.parametrize("command,reason_name", [
+    ("git -C 'docs\x00' push", "_WORKER_GIT_PLACE_REASON"), ("cd 'docs\x00'", "_WORKER_CD_REASON"),
+])
+def test_a_worker_folder_with_a_nul_is_denied_with_its_reason(worker_worktree, monkeypatch, capsys, realpath,
+                                                              agent_type, command, reason_name):
+    """A NUL inside single quotes is a word of the grammar; CPython 3.9's realpath keeps it, and git -C could not
+    start on it, which crashed the check and let a worker session's push through."""
+    write_signal(worker_worktree)
+    if realpath == "as on CPython 3.9":
+        monkeypatch.setattr(hook.os.path, "realpath", realpath_keeping("\x00"))
+    assert run_main(monkeypatch, bash_call(command, worker_worktree, agent_type)) == 2
+    assert capsys.readouterr().err == "pragmatic-engineering: %s\n" % getattr(hook, reason_name)
+
+
+@pytest.mark.parametrize("make", [
+    lambda root: file_call("Write", root / "README.md", root, agent_type=None),
+    lambda root: bash_call("rm -rf build", root, agent_type=None),
+], ids=["Write", "rm"])
+def test_a_crash_in_the_check_of_a_worker_session_denies(worker_worktree, monkeypatch, capsys, make):
+    """Any exception, not only the ones the checks expect: a worker session is held by its signal alone, and a failure
+    that gave no decision would let its call through."""
+    write_signal(worker_worktree)
+    monkeypatch.setattr(hook, "_parts_below", crash)
+    assert run_main(monkeypatch, make(worker_worktree)) == 2
+    assert "RuntimeError: boom" in capsys.readouterr().err
+
+
+def test_a_crash_that_cannot_look_for_the_signal_denies(worker_worktree, monkeypatch, capsys):
+    """When the search for the signal fails too, nothing shows that the call is not a worker session's."""
+    monkeypatch.setattr(hook, "decide", crash)
+    monkeypatch.setattr(hook, "_signal_above", raising(ValueError("embedded null byte")))
+    assert run_main(monkeypatch, file_call("Write", worker_worktree / "x", worker_worktree, agent_type=None)) == 2
+    assert "RuntimeError: boom" in capsys.readouterr().err
+
+
+def run_in_an_ascii_locale(real_run):
+    """subprocess.run as it runs where the locale's encoding is ASCII: text=True without an encoding decodes git's
+    output with the locale's encoding, which cannot read the UTF-8 that git prints for a folder named José."""
+    def run(args, **kwargs):
+        if kwargs.get("text") and not kwargs.get("encoding"):
+            kwargs = dict(kwargs, encoding="ascii")
+        return real_run(args, **kwargs)
+    return run
+
+
+def test_a_worker_session_in_a_folder_with_a_non_ascii_name_is_held_whatever_the_locale(tmp_path, monkeypatch):
+    """git prints paths in UTF-8 whatever the locale; decoded with the locale's encoding, José failed, the hook found
+    no root, and the worker session's write outside its worktree got no decision."""
+    session = init_repo(tmp_path / "José")
+    write_signal(session)
+    monkeypatch.setattr(hook.subprocess, "run", run_in_an_ascii_locale(subprocess.run))
+    reason = hook.decide(file_call("Write", tmp_path / "sentinel.txt", session, agent_type=None))
+    assert reason == hook._WORKER_WRITE_REASON
+
+
+def test_git_output_that_is_not_utf8_still_decodes(monkeypatch):
+    """Decoding never raises, so the only ValueError _git catches is an argument with a NUL byte."""
+    real_run = subprocess.run
+    printer = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'w\\xff')"]
+    monkeypatch.setattr(hook.subprocess, "run", lambda args, **kwargs: real_run(printer, **kwargs))
+    proc = hook._git(".", "rev-parse", "--show-toplevel")
+    assert proc is not None and proc.stdout == "w\udcff"
+
+
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_a_worker_write_through_a_symlink_to_the_git_file_of_its_worktree_is_denied(worker_worktree, tool_name):
+    try:
+        os.symlink(".git", str(worker_worktree / "gitfile"))
+    except OSError as exc:  # Windows without the symlink privilege
+        pytest.skip("cannot create a symlink here: %s" % exc)
+    reason = hook.decide(file_call(tool_name, worker_worktree / "gitfile", worker_worktree))
+    assert reason and GIT_ENTRY_RULE in reason
 
 
 def test_a_worker_write_outside_a_repository_or_of_an_unknown_shape_is_denied(worker_worktree, tmp_path):
@@ -592,12 +780,43 @@ def test_a_worker_deletion_outside_its_worktree_is_denied(worker_worktree, tmp_p
     assert reason and "deletes only" in reason
 
 
+# find -delete deletes from its start paths, the working directory without any: one at the root is the root itself,
+# which no deletion may name, so find cannot reach the root's .git through its expression either.
+@pytest.mark.parametrize("command", ["find . -delete", "find -delete", "find %(root)s -delete", "find . -name x -delete"])
+def test_a_find_delete_that_starts_at_the_root_is_denied(worker_worktree, command):
+    reason = hook.decide(bash_call(command % {"root": worker_worktree.as_posix()}, worker_worktree))
+    assert reason and "deletes only" in reason
+
+
+# Without its .git a worktree nested in the main checkout (.superpowers/worktrees/*) has the main checkout as its
+# repository root, which the hook then holds the worker to.
+GIT_ENTRY_DELETE = "never the root itself nor a .git"
+
+
+@pytest.mark.parametrize("folder,command", [
+    ("", "rm .git"), ("", "rm -f docs/.git"), ("", "rmdir .git"), ("", "unlink .git"), ("", "rm -rf .GIT"),
+    ("", "rm .git."), ("", "rm -rf docs/.git/objects"), ("", "find .git -delete"), ("", "find docs/.git -delete"),
+    ("docs", "rm ../.git"), ("docs", "rm .git"),
+    ("", "rm '.git::$DATA'"), ("", "rm .git:x"), ("", "rm -rf '.git::$INDEX_ALLOCATION/config'"),  # NTFS streams
+])
+def test_a_worker_deletion_of_a_git_file_or_folder_is_denied(worker_worktree, folder, command):
+    reason = hook.decide(bash_call(command, worker_worktree / folder))
+    assert reason and GIT_ENTRY_DELETE in reason
+
+
+@pytest.mark.parametrize("command", [
+    "rm docs/a.py", "rm -f .gitignore", "rm -rf docs/.github", "rm docs/.gitkeep", "rm docs/notes:.git",
+])
+def test_a_worker_deletion_of_a_name_that_only_starts_with_git_gets_no_decision(worker_worktree, command):
+    assert hook.decide(bash_call(command, worker_worktree)) is None
+
+
 GIT_AIMED_OUTSIDE = [
     "git -C %(main)s commit -m x",
     "git --git-dir=%(main)s/.git log",
     "git --git-dir %(main)s/.git log",
     "git --work-tree=../main add .",
-    "git -c core.pager=cat -C ../mate status",  # -c takes its value, so -C is still read
+    "git -c core.pager=cat -C ../mate status",
     "cd %(main)s && git commit -m x",
 ]
 
@@ -606,6 +825,58 @@ GIT_AIMED_OUTSIDE = [
 def test_a_worker_git_command_aimed_outside_its_worktree_is_denied(worker_worktree, tmp_path, command):
     reason = hook.decide(bash_call(command % {"main": (tmp_path / "main").as_posix()}, worker_worktree))
     assert reason and HELD in reason
+
+
+# git gives some options before the subcommand the next word as their value, so a reader that does not know one of
+# them reads another subcommand than git runs: git --shallow-file status push . HEAD:refs/heads/main ran push and moved
+# main (git 2.54) while the hook read status. Only -C followed by one folder of the worktree passes, once.
+GIT_OPTIONS_BEFORE_THE_SUBCOMMAND = [
+    "git --shallow-file status push origin HEAD:main", "git --shallow-file status stash",
+    "git --exec-path=x commit -F m.txt", "git --no-pager status", "git --git-dir=.git status",
+    "git --work-tree=. status", "git -Cfoo status", "git -C", "git -c user.name=x commit -F m.txt",
+    "git --namespace x status", "git -p status", "git --bare status", "git -C . --no-pager log",
+    "git -C docs --git-dir=../.git status",
+    "git -C . -C docs status",  # each -C is read from the folder of the one before it, so a second one is denied
+]
+
+
+@pytest.mark.parametrize("command", GIT_OPTIONS_BEFORE_THE_SUBCOMMAND)
+def test_a_worker_git_command_with_any_option_before_its_subcommand_but_one_c_is_denied(worker_worktree, command):
+    assert hook.decide(bash_call(command, worker_worktree)) == hook._WORKER_GIT_PLACE_REASON
+
+
+def test_a_second_c_that_climbs_from_the_first_is_denied(worker_worktree):
+    """From docs, .. and ../mate each lie inside the worktree, while git reads ../mate from .. and reaches the mate's
+    worktree beside it."""
+    assert hook.decide(bash_call("git -C .. -C ../mate status", worker_worktree / "docs")) == (
+        hook._WORKER_GIT_PLACE_REASON)
+
+
+def test_a_worker_git_c_into_a_folder_with_a_git_file_of_its_own_is_denied(worker_worktree, tmp_path):
+    """A docs/.git naming the main checkout's .git made git -C docs commit move the main checkout's branch (git 2.54):
+    -C takes only a folder whose repository root is the worktree, as cd does."""
+    command = "git -C docs commit -F m.txt"
+    assert hook.decide(bash_call(command, worker_worktree)) is None  # a plain docs/
+    gitfile = "gitdir: %s\n" % (tmp_path / "main" / ".git").as_posix()
+    (worker_worktree / "docs" / ".git").write_text(gitfile, encoding="utf-8")
+    assert hook.decide(bash_call(command, worker_worktree)) == hook._WORKER_GIT_PLACE_REASON
+
+
+@pytest.mark.parametrize("folder,command,denied", [
+    ("", "git -C vendor/lib status", True), ("vendor", "git -C lib log", True), ("", "git -C inner commit -F m", True),
+    ("docs", "git -C ../inner status", True), ("", "git -C vendor status", False), ("vendor", "git -C .. log", False),
+])
+def test_a_worker_git_c_into_another_repository_inside_its_worktree_is_denied(worktree_with_nested_roots, folder,
+                                                                             command, denied):
+    reason = hook.decide(bash_call(command, worktree_with_nested_roots / folder))
+    assert reason == (hook._WORKER_GIT_PLACE_REASON if denied else None)
+
+
+def test_the_reason_for_an_option_before_the_git_subcommand_states_the_rule_and_why(worker_worktree):
+    reason = hook.decide(bash_call("git --shallow-file status push origin HEAD:main", worker_worktree))
+    assert reason and "no option before the git subcommand except -C with one folder of its own worktree" in reason
+    assert "the next word as its value" in reason and "another subcommand than git runs" in reason
+    assert "not of another repository inside it" in reason
 
 
 @pytest.mark.parametrize("command,denied", [
@@ -931,7 +1202,7 @@ def test_a_variable_written_before_the_command_word_is_denied_with_the_form_that
     "rm -rf build", "rm -rf .pe/tmp", "git commit -m x", "git merge integration", "git branch", "git worktree list",
     "python3 -m pytest -q",
     "cd %(root)s", "git -C %(root)s status", "git -C docs log",
-    "git -C . switch -c w-sync HEAD",
+    "git -C . switch -c w-sync HEAD", "git -C . status", "git -C docs log --oneline -1", "git status --porcelain", "git",
     "rm -rf build > /dev/null 2>&1", "pushd docs > /dev/null", "find build -name '*.pyc' -delete",
     "git branch -vv", "git branch --sort=-committerdate", "git branch --merged", "git commit -m 'git stash; rm -rf /'",
     "echo rm -rf /x", "ls ../main", "grep -rn cd ../main", "cat ~/x", "",
@@ -989,9 +1260,9 @@ def test_a_broken_shared_module_denies_only_a_worker_command(worker_worktree, tm
     assert run_main(monkeypatch, bash_call("rm -rf build", worker_worktree)) == 2
     assert "pe_guard.filters" in capsys.readouterr().err
     assert hook.decide(bash_call("rm -rf build", worker_worktree, agent_type=None)) is None
-    write_signal(worker_worktree)  # a worker session is known only from its signal: a failure lets its call through
-    assert run_main(monkeypatch, bash_call("rm -rf build", worker_worktree, agent_type=None)) == 0
-    assert capsys.readouterr() == ("", "")
+    write_signal(worker_worktree)  # a worker session is held by its signal alone: a failure on its call denies it
+    assert run_main(monkeypatch, bash_call("rm -rf build", worker_worktree, agent_type=None)) == 2
+    assert "pe_guard.filters" in capsys.readouterr().err
 
 
 def test_a_worker_command_is_decided_by_the_script_run_as_a_process(worker_worktree, tmp_path):

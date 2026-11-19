@@ -1901,8 +1901,9 @@ GUIDED_SENTENCES = {
          "above it pays two, the root and whether git tracks anything under `.pe`, and in a worker session a Write "
          "measured about 57 to 65 ms and a Bash call about 56 to 58 ms. All these costs come from one measurement "
          "session, three rounds of 50 runs each with the versions interleaved, on the maintainer's macOS machine "
-         "with a load average of about 7 to 8 from other work. A lone `cd`, `chdir` or `pushd` of a worker pays one "
-         "git subprocess more, the root of the folder it names, and that cost is not measured.",
+         "with a load average of about 7 to 8 from other work. A lone `cd`, `chdir` or `pushd` of a worker, and a "
+         "git command of a worker with `-C`, each pays one git subprocess more, the root of the folder it names, and "
+         "that cost is not measured.",
          "Il controllo copre il nome con il prefisso del plugin `pragmatic-engineering:blunt-reviewer`. Tre "
          "esecuzioni dal vivo con Claude Code 2.1.318 hanno mostrato il rifiuto al lancio, le letture e scritture "
          "del revisore stesso lasciate passare, e che Claude Code non risolve il nome senza prefisso `blunt-reviewer` "
@@ -1921,8 +1922,9 @@ GUIDED_SENTENCES = {
          "qualcosa sotto `.pe`, e in una sessione worker un Write ha misurato circa 57-65 ms e una chiamata Bash "
          "circa 56-58 ms. Tutti questi costi vengono da una sola sessione di misura, tre giri da 50 esecuzioni "
          "ciascuno con le versioni alternate, sulla macchina macOS del manutentore, con un carico medio di circa 7-8 "
-         "dovuto ad altro lavoro. Un `cd`, un `chdir` o un `pushd` da solo di un worker paga un sottoprocesso git in "
-         "più, la radice della cartella che nomina, e quel costo non è misurato."),
+         "dovuto ad altro lavoro. Un `cd`, un `chdir` o un `pushd` da solo di un worker, e un comando git di un "
+         "worker con `-C`, pagano ciascuno un sottoprocesso git in più, la radice della cartella che nominano, e quel "
+         "costo non è misurato."),
         # the worker boundary: what it holds and what is not proven
         ("The worker boundary of the `PreToolUse` hook is proven live only in part. In the live run of 6 November "
          "2026, launched with `claude -p`, with two `worker` sub-agents started with `isolation: worktree`, Claude "
@@ -1947,6 +1949,23 @@ GUIDED_SENTENCES = {
          "repository della cartella di lavoro della chiamata, e fa lo stesso con una sessione la cui radice porta il "
          "segnale `.pe/worker`, un file vuoto che la sessione che coordina scrive nel worktree di una sessione worker prima di mandare il brief; "
          "anche gli agenti che una tale sessione lancia nel suo worktree sono vincolati."),
+        ("Inside the worktree it denies the same calls on a `.git` file or folder, at the root or in any folder below "
+         "it, and on anything inside one, in any letter case, without the trailing dots and spaces that Windows drops "
+         "(`.git.` opens `.git`) and without an NTFS stream after a colon (`.git::$DATA` is the content of `.git`), "
+         "and with symlinks resolved, because a `.git` tells git where the repository of its "
+         "folder is: the root's, rewritten to point at the `.git` of the main checkout, would make a plain `git "
+         "commit` move that checkout's branch, and a new `docs/.git` would do the same for `git -C docs commit`.",
+         "Dentro il worktree nega le stesse chiamate su un file o una cartella `.git`, alla radice o in una cartella "
+         "qualsiasi sotto di essa, e su qualunque cosa al suo interno, in qualsiasi combinazione di maiuscole e "
+         "minuscole, senza i punti e gli spazi finali che Windows scarta (`.git.` apre `.git`) e senza un flusso NTFS "
+         "dopo i due punti (`.git::$DATA` è il contenuto di `.git`), e con i collegamenti "
+         "simbolici risolti, perché un `.git` dice a git dove sta il repository della sua cartella: quello della "
+         "radice, riscritto perché punti al `.git` del checkout principale, farebbe spostare a un semplice `git "
+         "commit` il ramo di quel checkout, e un nuovo `docs/.git` farebbe lo stesso con `git -C docs commit`."),
+        ("It does not check the Windows 8.3 short name of `.git`, such as `GIT~1`, nor the Unicode characters that "
+         "HFS+ ignores in a name, such as U+200C, which git skips when it compares a name with `.git`.",
+         "Non controlla il nome breve 8.3 di Windows di `.git`, come `GIT~1`, né i caratteri Unicode che HFS+ ignora "
+         "in un nome, come U+200C, che git salta quando confronta un nome con `.git`."),
         ("The first turn of a worker session, which only reports that it is online, runs before the signal is written.",
          "Il primo turno di una sessione worker, che si limita a segnalare di essere online, gira prima che il "
          "segnale sia scritto."),
@@ -1975,10 +1994,14 @@ GUIDED_SENTENCES = {
          "Una sessione la cui radice del repository non è né la sua cartella di lavoro né una cartella sopra di essa, "
          "come con `core.worktree` o `GIT_WORK_TREE`, non è mai vincolata, nemmeno con il segnale, perché l'hook "
          "cerca `.pe/worker` solo in quelle cartelle prima di chiedere a git."),
-        ("A failure of the hook denies a call of the worker agent, but lets a call of a worker session through, "
-         "because such a session is known only from its signal.",
-         "Un guasto dell'hook nega una chiamata dell'agente worker, ma lascia passare una chiamata di una sessione "
-         "worker, perché una tale sessione si riconosce solo dal suo segnale."),
+        ("A crash of the hook after it has read its input denies a call that launches or runs inside the reviewer, a "
+         "call of the worker agent, and a call whose working directory, or a folder above it, holds `.pe/worker`, as "
+         "every call of a worker session does; it denies too when the search for that signal fails. A crash on any "
+         "other call lets it through.",
+         "Un guasto dell'hook dopo che ha letto il suo input nega una chiamata che lancia il revisore o gira al suo "
+         "interno, una chiamata dell'agente worker, e una chiamata la cui cartella di lavoro, o una cartella sopra di "
+         "essa, contiene `.pe/worker`, come ogni chiamata di una sessione worker; nega anche quando la ricerca di quel "
+         "segnale fallisce. Un guasto su ogni altra chiamata la lascia passare."),
         # the Bash part of the worker boundary: the grammar it accepts, what it denies, what stays open
         ("The Bash part of the worker boundary reads the text of a command, not what the shell runs.",
          "La parte Bash del confine del worker legge il testo di un comando, non ciò che la shell esegue."),
@@ -2035,31 +2058,39 @@ GUIDED_SENTENCES = {
          "Passano anche `env -i <comando>` e `env -u NOME <comando>`, ma dopo un'opzione di `env` una parola "
          "`NOME=valore` è negata."),
         ("It denies `rm`, `rmdir`, `unlink` and `find ... -delete` on a path that does not lie below the worktree "
-         "root, so the root itself is denied too, or that the shell would still expand, because it starts with `~` or "
+         "root, so the root itself is denied too, that names a `.git` in any of its parts, compared as for the file "
+         "writes, or that the shell would still expand, because it starts with `~` or "
          "holds a glob (`*`, `?`, `[`), and a `find ... -delete` with `-files0-from`, which reads its start paths from "
          "a file; a `cd`, zsh's `chdir` or a `pushd` to anything but one folder inside the worktree, spelled out in "
          "the same way, not `-`, `+N` or `-N`, and of the worktree's own repository, not of a submodule or a nested "
          "worktree, because the shell keeps that folder for the next call and from there the hook would no longer find "
          "the worktree, and a `popd` with any word; a git command with a glob in any of its words, which the shell "
-         "could turn into another subcommand or option, a git command that `-C`, `--git-dir` or `--work-tree` points "
-         "outside the worktree, or that carries a configuration of its own (`-c`, `--config-env`, or a variable that "
-         "`env` sets for it); and, because all "
+         "could turn into another subcommand or option, a git command with any option before its subcommand other "
+         "than a single `-C` followed by one folder inside the worktree and of its own repository, such as "
+         "`--git-dir`, `--work-tree`, `-c`, "
+         "`--config-env`, `--shallow-file` or `--no-pager`, because git gives some options the next word as their "
+         "value, so the hook would read another subcommand than the one git runs, or with a variable that `env` sets "
+         "for it; and, because all "
          "the worktrees share what they change, `git stash`, `git worktree remove` and `prune`, `git fetch`, `git "
          "pull` and `git push`, `git update-ref`, a `git config` that does more than read, and a `git branch` or `git "
          "tag` that deletes, moves or forces one. A worker never needs a fetch or a pull, and even a plain `git fetch "
          "origin` can prune or overwrite tags and branches through the repository's configuration "
          "(`fetch.pruneTags`, `remote.<name>.fetch`).",
          "Nega `rm`, `rmdir`, `unlink` e `find ... -delete` su un percorso che non sta sotto la radice del worktree, "
-         "quindi anche sulla radice stessa, o che la shell espanderebbe ancora, perché comincia con `~` o contiene un "
+         "quindi anche sulla radice stessa, che nomina un `.git` in una qualsiasi delle sue parti, confrontato come "
+         "per le scritture di file, o che la shell espanderebbe ancora, perché comincia con `~` o contiene un "
          "carattere jolly (`*`, `?`, `[`), e un `find ... -delete` con `-files0-from`, che legge da un file i suoi "
          "percorsi di partenza; un `cd`, il `chdir` di zsh o un `pushd` verso qualunque cosa che non sia una sola "
          "cartella dentro il worktree, scritta per esteso allo stesso modo, che non sia `-`, `+N` o `-N` e che sia del "
          "repository stesso del worktree, non di un submodule o di un worktree annidato, perché la shell tiene quella "
          "cartella per la chiamata dopo e da lì l'hook non troverebbe più il worktree, e un `popd` con una parola "
          "qualsiasi; un comando git con un carattere jolly in una qualsiasi delle sue parole, che la shell potrebbe "
-         "trasformare in un altro sottocomando o in un'altra opzione, un comando git che `-C`, `--git-dir` o "
-         "`--work-tree` puntano fuori dal worktree, o che porta una configurazione propria (`-c`, `--config-env`, o "
-         "una variabile che `env` gli imposta); e, "
+         "trasformare in un altro sottocomando o in un'altra opzione, un comando git con un'opzione qualsiasi prima "
+         "del suo sottocomando diversa da un solo `-C` seguito da una cartella dentro il worktree e del suo stesso "
+         "repository, come `--git-dir`, "
+         "`--work-tree`, `-c`, `--config-env`, `--shallow-file` o `--no-pager`, perché git dà ad alcune opzioni la "
+         "parola dopo come valore, e così l'hook leggerebbe un sottocomando diverso da quello che git esegue, o con "
+         "una variabile che `env` gli imposta; e, "
          "perché tutti i worktree condividono ciò che cambiano, `git stash`, `git worktree remove` e `prune`, `git "
          "fetch`, `git pull` e `git push`, `git update-ref`, un `git config` che non si limita a leggere, e un `git "
          "branch` o un `git tag` che cancella, sposta o forza un ramo o un tag. Un worker non ha mai bisogno di un "
@@ -2088,7 +2119,10 @@ GUIDED_SENTENCES = {
          "variable or a shell option "
          "set before the call, such as `CDPATH` for `cd`, `GIT_DIR` for git, or zsh's `extended_glob` and "
          "`cdable_vars` from the shell configuration; and the targets of redirections. Inside its worktree a worker "
-         "can still delete `.pe/worker`, and so turn off the hold of its own session.",
+         "can still delete `.pe/worker`, and so turn off the hold of its own session. `mv`, `cp`, `ln` and a "
+         "redirection, open as said above, can still move or replace a `.git`. The root of a worker agent is read "
+         "from git at each call, so such a change moves the root that its next calls are held to, and a worker "
+         "session whose new root carries no `.pe/worker` is no longer held.",
          "Tutto il resto resta aperto, perché il controllo legge solo quelle nove parole di comando, e di git solo le "
          "opzioni prima del sottocomando e quei nove sottocomandi: ogni altro comando che scrive o cancella, come "
          "`mv`, `cp`, `ln`, `tee`, `python3` o `make`; ogni altro sottocomando di git che cambia ciò che i worktree "
@@ -2103,7 +2137,10 @@ GUIDED_SENTENCES = {
          "prima della chiamata, come `CDPATH` "
          "per `cd`, `GIT_DIR` per git, o `extended_glob` e `cdable_vars` di zsh dalla configurazione della shell; e i "
          "bersagli delle redirezioni. Dentro il suo worktree un worker può ancora cancellare `.pe/worker`, e spegnere "
-         "così il vincolo della propria sessione."),
+         "così il vincolo della propria sessione. `mv`, `cp`, `ln` e una redirezione, aperti come detto sopra, "
+         "possono ancora spostare o sostituire un `.git`. La radice di un agente worker si legge da git a ogni "
+         "chiamata, quindi un cambiamento così sposta la radice a cui sono vincolate le sue chiamate successive, e una "
+         "sessione worker la cui nuova radice non porta `.pe/worker` non è più vincolata."),
         ("(<https://code.claude.com/docs/en/sub-agents#what-loads-at-startup>). Claude Code documents another "
          "route, a `SubagentStart` hook that adds the rules as context, and the plugin does not take it: it would "
          "add about 9,500 characters to each of the most frequent subagents.",
@@ -2220,23 +2257,23 @@ GUIDED_SENTENCES = {
          "`PreToolUse`, registrato in `hooks/hooks.json` con il matcher `Agent|Bash|Write|Edit|NotebookEdit` come "
          "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, con un timeout di 10 secondi e "
          "`\"onFailure\": \"continue\"`."),
-        ("the file writes of a worker outside its worktree, every Bash command of a worker outside the plain grammar "
-         "that Known limits describes, and, in that grammar, a statement whose `rm`, `rmdir`, `unlink` or `find "
-         "-delete` reaches outside the worktree, a `cd`, `chdir` or `pushd` to anything but one folder inside the "
-         "worktree and of its own repository, a `popd` with any word, any of those four that is not the whole command, "
-         "a git command that points outside the worktree, holds a glob or carries a configuration of its own (`-c`, "
-         "`--config-env`, or a variable that `env` sets for it), and a git command that changes what all the "
-         "worktrees share, each with its reason; Known "
+        ("the file writes of a worker outside its worktree or on a `.git`, every Bash command of a worker outside the "
+         "plain grammar that Known limits describes, and, in that grammar, a statement whose `rm`, `rmdir`, `unlink` "
+         "or `find -delete` reaches outside the worktree or names a `.git`, a `cd`, `chdir` or `pushd` to anything "
+         "but one folder inside the worktree and of its own repository, a `popd` with any word, any of those four "
+         "that is not the whole command, a git command that holds a glob, has any option before its subcommand other "
+         "than a single `-C` with one folder inside the worktree and of its own repository, or a variable that `env` "
+         "sets for it, and a git command that changes what all the worktrees share, each with its reason; Known "
          "limits lists what it does not read.",
-         "fuori dalla sua definizione, le scritture di file di un worker fuori dal suo worktree, ogni comando Bash di "
-         "un worker fuori dalla grammatica semplice che i limiti noti descrivono e, dentro quella grammatica, "
-         "un'istruzione il cui `rm`, `rmdir`, `unlink` o `find -delete` esce dal worktree, un `cd`, un `chdir` o un "
-         "`pushd` verso qualunque cosa che non sia una sola cartella dentro il worktree e del suo stesso repository, "
-         "un `popd` con una parola qualsiasi, ciascuno di quei quattro che non sia l'intero comando, un comando git "
-         "che punta fuori dal worktree, contiene un carattere jolly o porta una configurazione propria (`-c`, "
-         "`--config-env`, o una variabile che `env` gli imposta), e un comando git che cambia ciò che tutti i "
-         "worktree condividono, ciascuna con il suo "
-         "motivo; i limiti noti elencano ciò che non legge."),
+         "fuori dalla sua definizione, le scritture di file di un worker fuori dal suo worktree o su un `.git`, ogni "
+         "comando Bash di un worker fuori dalla grammatica semplice che i limiti noti descrivono e, dentro quella "
+         "grammatica, un'istruzione il cui `rm`, `rmdir`, `unlink` o `find -delete` esce dal worktree o nomina un "
+         "`.git`, un `cd`, un `chdir` o un `pushd` verso qualunque cosa che non sia una sola cartella dentro il "
+         "worktree e del suo stesso repository, un `popd` con una parola qualsiasi, ciascuno di quei quattro che non "
+         "sia l'intero comando, un comando git che contiene un carattere jolly, ha prima del suo sottocomando "
+         "un'opzione diversa da un solo `-C` con una cartella dentro il worktree e del suo stesso repository, o una "
+         "variabile che `env` gli imposta, e un comando git che cambia ciò che tutti i worktree condividono, "
+         "ciascuna con il suo motivo; i limiti noti elencano ciò che non legge."),
         ("`skills/safe-operations/recreate_night_commits.py` re-creates, inside the office hours, the commits made "
          "outside them and never pushed, and leaves a `night-backup-<YYYYMMDD-HHMMSS>` tag in the repository.",
          "`skills/safe-operations/recreate_night_commits.py` ricrea, dentro l'orario d'ufficio, i commit fatti fuori "
