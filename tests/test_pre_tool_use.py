@@ -415,6 +415,9 @@ def test_a_worker_write_through_a_symlink_of_its_worktree_that_leads_out_is_deni
 @pytest.mark.parametrize("relative", [
     "README.md", "docs/new.md", ".pe/delivery.md",
     ".gitignore", ".gitattributes", ".github/workflows/ci.yml", "docs/.gitkeep",  # a name that only starts with .git
+    # what precedes a colon is the name NTFS opens: notes:.git is the stream .git of the file notes, not a .git (a
+    # one-letter name before the colon would be a drive on Windows)
+    "docs/notes:.git", ".github:x",
 ])
 def test_a_worker_file_write_inside_its_worktree_gets_no_decision(worker_worktree, tool_name, relative):
     assert hook.decide(file_call(tool_name, worker_worktree / relative, worker_worktree)) is None
@@ -651,7 +654,9 @@ def test_a_worker_deletion_of_a_git_file_or_folder_is_denied(worker_worktree, fo
     assert reason and GIT_ENTRY_DELETE in reason
 
 
-@pytest.mark.parametrize("command", ["rm docs/a.py", "rm -f .gitignore", "rm -rf docs/.github", "rm docs/.gitkeep"])
+@pytest.mark.parametrize("command", [
+    "rm docs/a.py", "rm -f .gitignore", "rm -rf docs/.github", "rm docs/.gitkeep", "rm docs/notes:.git",
+])
 def test_a_worker_deletion_of_a_name_that_only_starts_with_git_gets_no_decision(worker_worktree, command):
     assert hook.decide(bash_call(command, worker_worktree)) is None
 

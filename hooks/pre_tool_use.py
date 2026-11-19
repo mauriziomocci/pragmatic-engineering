@@ -19,11 +19,11 @@
    among its names below <toplevel> (_has_git_entry), compared after
    os.path.realpath without an NTFS stream after a colon, trailing dots and
    spaces, and the letter case, because a .git tells git where the repository
-   of its folder is, NTFS opens .git::$DATA and .git. as .git, and a
-   case-insensitive filesystem opens .GIT as .git. The
-   same file calls of any other session or agent are held the same way when
-   that <toplevel> carries the signal .pe/worker, its .pe is a real folder and
-   not a symlink, and git tracks nothing under .pe in any letter case: the
+   of its folder is: NTFS opens .git::$DATA as .git, Windows opens .git. as
+   .git, and a case-insensitive filesystem opens .GIT as .git. The same file
+   calls of any other session or agent are held the same way when that
+   <toplevel> carries the signal .pe/worker, its .pe is a real folder and not
+   a symlink, and git tracks nothing under .pe in any letter case: the
    coordinator writes the signal into the worktree of a worker session, so the
    agents such a session launches there are held too, while a repository that
    tracks any file under .pe, or a .pe symlink, never holds a session.
@@ -249,10 +249,10 @@ def _signalled_root(cwd: Any) -> Optional[str]:
 def _has_git_entry(names: Tuple[str, ...]) -> bool:
     """Whether one of ``names`` is a .git, the file or folder that tells git where the repository of its folder is.
 
-    Each name is compared after dropping what NTFS and a case-insensitive filesystem drop before they open it: a
-    stream after a colon (.git::$DATA is the content of .git, .git::$INDEX_ALLOCATION the folder itself), trailing
-    dots and spaces (.git. opens .git) and the letter case (.GIT). The 8.3 short name (GIT~1) and the characters that
-    HFS+ ignores (U+200C), which git's is_hfs_dotgit skips, are not compared.
+    Each name is compared after dropping what NTFS, the Windows path rules and a case-insensitive filesystem drop
+    before they open it: a stream after a colon (NTFS: .git::$DATA is the content of .git, .git::$INDEX_ALLOCATION the
+    folder itself), trailing dots and spaces (Windows: .git. opens .git) and the letter case (.GIT). The 8.3 short name
+    (GIT~1) and the characters that HFS+ ignores (U+200C), which git's is_hfs_dotgit skips, are not compared.
     """
     return any(name.partition(":")[0].rstrip(". ").casefold() == ".git" for name in names)
 
