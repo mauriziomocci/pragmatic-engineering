@@ -111,8 +111,14 @@ def run_main(monkeypatch, payload) -> int:
     return hook.main()
 
 
-def crash(_payload):
-    raise RuntimeError("boom")
+def raising(error):
+    """A stand-in for a function of the hook that raises ``error`` whatever it is given."""
+    def stand_in(*args, **kwargs):
+        raise error
+    return stand_in
+
+
+crash = raising(RuntimeError("boom"))
 
 
 def test_a_crash_on_a_reviewer_call_denies(monkeypatch, capsys):
@@ -541,13 +547,6 @@ def test_a_worker_folder_with_a_nul_is_denied_with_its_reason(worker_worktree, m
     assert capsys.readouterr().err == "pragmatic-engineering: %s\n" % getattr(hook, reason_name)
 
 
-def raising(error):
-    """A stand-in for a function of the hook that raises ``error`` whatever it is given."""
-    def stand_in(*args, **kwargs):
-        raise error
-    return stand_in
-
-
 @pytest.mark.parametrize("make", [
     lambda root: file_call("Write", root / "README.md", root, agent_type=None),
     lambda root: bash_call("rm -rf build", root, agent_type=None),
@@ -556,7 +555,7 @@ def test_a_crash_in_the_check_of_a_worker_session_denies(worker_worktree, monkey
     """Any exception, not only the ones the checks expect: a worker session is held by its signal alone, and a failure
     that gave no decision would let its call through."""
     write_signal(worker_worktree)
-    monkeypatch.setattr(hook, "_parts_below", raising(RuntimeError("boom")))
+    monkeypatch.setattr(hook, "_parts_below", crash)
     assert run_main(monkeypatch, make(worker_worktree)) == 2
     assert "RuntimeError: boom" in capsys.readouterr().err
 
@@ -567,6 +566,35 @@ def test_a_crash_that_cannot_look_for_the_signal_denies(worker_worktree, monkeyp
     monkeypatch.setattr(hook, "_signal_above", raising(ValueError("embedded null byte")))
     assert run_main(monkeypatch, file_call("Write", worker_worktree / "x", worker_worktree, agent_type=None)) == 2
     assert "RuntimeError: boom" in capsys.readouterr().err
+
+
+def run_in_an_ascii_locale(real_run):
+    """subprocess.run as it runs where the locale's encoding is ASCII: text=True without an encoding decodes git's
+    output with the locale's encoding, which cannot read the UTF-8 that git prints for a folder named José."""
+    def run(args, **kwargs):
+        if kwargs.get("text") and not kwargs.get("encoding"):
+            kwargs = dict(kwargs, encoding="ascii")
+        return real_run(args, **kwargs)
+    return run
+
+
+def test_a_worker_session_in_a_folder_with_a_non_ascii_name_is_held_whatever_the_locale(tmp_path, monkeypatch):
+    """git prints paths in UTF-8 whatever the locale; decoded with the locale's encoding, José failed, the hook found
+    no root, and the worker session's write outside its worktree got no decision."""
+    session = init_repo(tmp_path / "José")
+    write_signal(session)
+    monkeypatch.setattr(hook.subprocess, "run", run_in_an_ascii_locale(subprocess.run))
+    reason = hook.decide(file_call("Write", tmp_path / "sentinel.txt", session, agent_type=None))
+    assert reason == hook._WORKER_WRITE_REASON
+
+
+def test_git_output_that_is_not_utf8_still_decodes(monkeypatch):
+    """Decoding never raises, so the only ValueError _git catches is an argument with a NUL byte."""
+    real_run = subprocess.run
+    printer = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'w\\xff')"]
+    monkeypatch.setattr(hook.subprocess, "run", lambda args, **kwargs: real_run(printer, **kwargs))
+    proc = hook._git(".", "rev-parse", "--show-toplevel")
+    assert proc is not None and proc.stdout == "w\udcff"
 
 
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)

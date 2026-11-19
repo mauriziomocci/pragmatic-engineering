@@ -1994,12 +1994,14 @@ GUIDED_SENTENCES = {
          "Una sessione la cui radice del repository non è né la sua cartella di lavoro né una cartella sopra di essa, "
          "come con `core.worktree` o `GIT_WORK_TREE`, non è mai vincolata, nemmeno con il segnale, perché l'hook "
          "cerca `.pe/worker` solo in quelle cartelle prima di chiedere a git."),
-        ("A failure of the hook denies a call of the worker agent, and a call whose working directory, or a folder "
-         "above it, holds `.pe/worker`, as every call of a worker session does; it denies too when the search for that "
-         "signal fails. Any other failure lets the call through.",
-         "Un guasto dell'hook nega una chiamata dell'agente worker, e una chiamata la cui cartella di lavoro, o una "
-         "cartella sopra di essa, contiene `.pe/worker`, come ogni chiamata di una sessione worker; nega anche quando "
-         "la ricerca di quel segnale fallisce. Ogni altro guasto lascia passare la chiamata."),
+        ("A crash of the hook after it has read its input denies a call that launches or runs inside the reviewer, a "
+         "call of the worker agent, and a call whose working directory, or a folder above it, holds `.pe/worker`, as "
+         "every call of a worker session does; it denies too when the search for that signal fails. A crash on any "
+         "other call lets it through.",
+         "Un guasto dell'hook dopo che ha letto il suo input nega una chiamata che lancia il revisore o gira al suo "
+         "interno, una chiamata dell'agente worker, e una chiamata la cui cartella di lavoro, o una cartella sopra di "
+         "essa, contiene `.pe/worker`, come ogni chiamata di una sessione worker; nega anche quando la ricerca di quel "
+         "segnale fallisce. Un guasto su ogni altra chiamata la lascia passare."),
         # the Bash part of the worker boundary: the grammar it accepts, what it denies, what stays open
         ("The Bash part of the worker boundary reads the text of a command, not what the shell runs.",
          "La parte Bash del confine del worker legge il testo di un comando, non ciò che la shell esegue."),

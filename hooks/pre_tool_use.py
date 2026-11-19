@@ -83,10 +83,17 @@ with no output is no decision. A malformed input is no decision. A failure
 after the input is read denies when the call concerns the reviewer, comes
 from the worker agent or finds the worker signal at or above its cwd, as a
 worker session's call does, or when that search fails (_failure_denies); it
-is no decision otherwise, so a bug here can never block another tool. The
-hook is registered with "onFailure":
-"continue": a hook that cannot start or times out lets the call through, and
-the limits of the reviewer and of the worker are then declared only.
+is no decision otherwise, so a bug here can never block another tool. A
+crash under a tracked .pe/worker, which holds no session, is denied too.
+Git's silence and a crash get different answers on purpose. When git gives
+no answer on a call under the signal (no git, a hang past GIT_TIMEOUT, an
+error of rev-parse or ls-files), the hook cannot tell a worker session from
+a repository that commits .pe/worker, whose sessions it must not hold, so it
+holds nothing; that worker session is then declared only. A crash ends a
+check already running on a call that found the signal, and denying it costs
+that call alone. The hook is registered with "onFailure": "continue": a hook
+that cannot start or times out lets the call through, and the limits of the
+reviewer and of the worker are then declared only.
 """
 import importlib
 import itertools
@@ -182,9 +189,15 @@ def _command_problem(tool_input: Dict[str, Any], cwd: Any) -> Optional[str]:
 
 
 def _git(cwd: str, *args: str) -> Optional[subprocess.CompletedProcess]:
-    """Run git in ``cwd`` and return what it did, or None when git cannot start or hangs."""
+    """Run git in ``cwd`` and return what it did, or None when git cannot start or hangs.
+
+    The output is read as UTF-8 with surrogateescape, as Python reads file names on POSIX, so decoding never raises:
+    git prints a path as it is stored, which the locale's code page can fail to read, and that failure left a worker
+    session's call with no decision.
+    """
     try:
-        return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=GIT_TIMEOUT)
+        return subprocess.run(["git", "-C", cwd, *args], capture_output=True, encoding="utf-8",
+                              errors="surrogateescape", timeout=GIT_TIMEOUT)
     except (OSError, ValueError, subprocess.SubprocessError):  # no git, an argument with a NUL byte, or git hangs
         return None
 
@@ -552,7 +565,7 @@ def main() -> int:
         return 0
     try:
         reason = decide(payload)
-    except Exception as exc:  # taste-exempt: a crash must deny the calls the hook holds, and no other
+    except Exception as exc:  # taste-exempt: a crash denies the calls the hook may hold, under a tracked signal too
         reason = "check failed (%s: %s)" % (exc.__class__.__name__, exc) if _failure_denies(payload) else None
     if reason:
         print("pragmatic-engineering: " + reason, file=sys.stderr)
