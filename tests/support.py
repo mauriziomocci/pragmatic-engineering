@@ -82,7 +82,7 @@ SKILLS: Tuple[str, ...] = (
     "team-lead",
 )
 AGENTS: Tuple[str, ...] = ("blunt-reviewer", "worker")
-SUPERPOWERS_TESTED_VERSION = "7.0.0"
+SUPERPOWERS_TESTED_VERSION = "7.0.2"
 SUPERPOWERS_SKILLS: FrozenSet[str] = frozenset((
     "brainstorming", "diagnosing-superpowers", "dispatching-parallel-agents", "executing-plans",
     "finishing-a-development-branch", "receiving-code-review", "requesting-code-review",
