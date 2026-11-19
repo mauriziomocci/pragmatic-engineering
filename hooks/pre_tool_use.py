@@ -200,8 +200,16 @@ def _parts_below(root: str, cwd: str, path: str) -> Optional[Tuple[str, ...]]:
 
     ``root`` is not resolved here: the reviewer's ``.pe`` must stay unresolved, or a committed ``.pe`` symlink
     would carry the allowed folder out of the repository together with the path.
+
+    A path that cannot be resolved gives None too, so every caller denies it: ntpath.realpath raises on
+    .git::$INDEX_ALLOCATION/config (WinError 3 and 267), posixpath.realpath on a NUL byte from CPython 3.12, and an
+    exception here would let a worker session's call through. The lexical path is no fallback, because it skips the
+    symlinks that can carry a write out of the worktree.
     """
-    resolved = Path(os.path.realpath(os.path.join(cwd, path)))
+    try:
+        resolved = Path(os.path.realpath(os.path.join(cwd, path)))
+    except (OSError, ValueError):
+        return None
     return resolved.relative_to(root).parts if Path(root) in resolved.parents else None
 
 

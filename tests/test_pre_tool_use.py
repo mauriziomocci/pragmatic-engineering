@@ -436,15 +436,73 @@ GIT_ENTRY_RULE = "never writes the .git file or folder"
 @pytest.mark.parametrize("folder,path", [
     ("", ".git"), ("", ".GIT"), ("", ".git/config"), ("", ".Git/hooks/pre-commit"), ("docs", "../.git"),
     ("", "docs/.git"), ("", "docs/.GIT"), ("", ".git."), ("", ".git "), ("", "docs/.git ./config"), ("docs", ".git"),
-    # NTFS reads what follows a colon as a stream of the name before it: .git::$DATA is the content of .git, and
-    # .git::$INDEX_ALLOCATION the .git folder itself (CVE-2019-1352)
-    ("", ".git::$DATA"), ("", ".git:x"), ("", ".git::$INDEX_ALLOCATION/config"),
+    # NTFS reads what follows a colon as a stream of the name before it: .git::$DATA is the content of .git
+    ("", ".git::$DATA"), ("", ".git:x"),
 ])
 def test_a_worker_write_of_the_git_file_or_folder_of_its_worktree_is_denied(worker_worktree, agent_type, tool_name,
                                                                              folder, path):
     write_signal(worker_worktree)  # holds the session without an agent_type; the worker agent needs none
     reason = hook.decide(file_call(tool_name, worker_worktree / folder / path, worker_worktree / folder, agent_type))
     assert reason and GIT_ENTRY_RULE in reason
+
+
+@pytest.mark.parametrize("agent_type", [WORKER, None])
+@pytest.mark.parametrize("tool_name", FILE_TOOLS)
+def test_a_worker_write_into_the_git_folder_through_its_ntfs_stream_is_denied(worker_worktree, agent_type, tool_name):
+    """.git::$INDEX_ALLOCATION is the .git folder itself on NTFS (CVE-2019-1352). Windows cannot resolve that path
+    (WinError 3 and 267 from ntpath.realpath, CPython 3.15 on windows-latest), so there the write is denied as one the
+    hook cannot place; elsewhere the path resolves and the write is denied as a .git."""
+    write_signal(worker_worktree)
+    path = worker_worktree / ".git::$INDEX_ALLOCATION" / "config"
+    reason = hook.decide(file_call(tool_name, path, worker_worktree, agent_type))
+    assert reason in (hook._WORKER_GIT_ENTRY_REASON, hook._WORKER_WRITE_REASON)
+
+
+UNRESOLVABLE = "unresolvable"
+
+
+def realpath_failing_on(name, error):
+    """os.path.realpath that raises ``error`` on a path holding ``name`` and resolves any other: ntpath.realpath raises
+    WinError 3 and 267 (FileNotFoundError, NotADirectoryError) on .git::$INDEX_ALLOCATION/config, and posixpath.realpath
+    raises ValueError on a NUL byte from CPython 3.12."""
+    real_realpath = os.path.realpath
+
+    def realpath(path, *args, **kwargs):
+        if name in os.fspath(path):
+            raise error("cannot resolve %s" % path)
+        return real_realpath(path, *args, **kwargs)
+    return realpath
+
+
+# A path the hook cannot resolve cannot be shown to lie inside the worktree, so each check denies it; a crash would
+# let a worker session's call through, because a failure on a call known only from its signal is no decision.
+UNRESOLVABLE_CALLS = [
+    ("Write", lambda root, agent_type: file_call("Write", root / "docs" / UNRESOLVABLE / "x", root, agent_type),
+     "_WORKER_WRITE_REASON"),
+    ("rm", lambda root, agent_type: bash_call("rm docs/%s/x" % UNRESOLVABLE, root, agent_type), "_WORKER_DELETE_REASON"),
+    ("git -C", lambda root, agent_type: bash_call("git -C docs/%s status" % UNRESOLVABLE, root, agent_type),
+     "_WORKER_GIT_PLACE_REASON"),
+]
+
+
+@pytest.mark.parametrize("error", [NotADirectoryError, FileNotFoundError, ValueError])
+@pytest.mark.parametrize("agent_type", [WORKER, None])
+@pytest.mark.parametrize("call,make,reason_name", UNRESOLVABLE_CALLS, ids=[call for call, _, _ in UNRESOLVABLE_CALLS])
+def test_a_worker_path_that_cannot_be_resolved_is_denied(worker_worktree, monkeypatch, error, agent_type, call, make,
+                                                         reason_name):
+    write_signal(worker_worktree)
+    monkeypatch.setattr(hook.os.path, "realpath", realpath_failing_on(UNRESOLVABLE, error))
+    assert hook.decide(make(worker_worktree, agent_type)) == getattr(hook, reason_name)
+
+
+@pytest.mark.parametrize("error", [NotADirectoryError, FileNotFoundError, ValueError])
+def test_a_worker_session_write_that_cannot_be_resolved_exits_2(worker_worktree, monkeypatch, capsys, error):
+    """Through main, as Claude Code runs the hook: before the fix the exception made a worker session's call pass."""
+    write_signal(worker_worktree)
+    monkeypatch.setattr(hook.os.path, "realpath", realpath_failing_on(UNRESOLVABLE, error))
+    payload = file_call("Write", worker_worktree / UNRESOLVABLE / "x", worker_worktree, agent_type=None)
+    assert run_main(monkeypatch, payload) == 2
+    assert "its own worktree" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)
