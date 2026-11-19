@@ -80,10 +80,11 @@ and goes through the normal permission flow.
 
 Exit 2 denies, with the reason on stderr, as tools/dev_guard.py does; exit 0
 with no output is no decision. A malformed input is no decision. A failure
-after the input is read denies when the call concerns the reviewer or comes
-from the worker agent, and is no decision otherwise, so a bug here can never
-block another tool; a worker session is known only from its signal, so a
-failure on its call is no decision. The hook is registered with "onFailure":
+after the input is read denies when the call concerns the reviewer, comes
+from the worker agent or finds the worker signal at or above its cwd, as a
+worker session's call does, or when that search fails (_failure_denies); it
+is no decision otherwise, so a bug here can never block another tool. The
+hook is registered with "onFailure":
 "continue": a hook that cannot start or times out lets the call through, and
 the limits of the reviewer and of the worker are then declared only.
 """
@@ -138,8 +139,9 @@ _COMMAND_REASON = (
 )
 _WRITE_REASON = "blunt-reviewer writes only under .pe/ at the repository root (git rev-parse --show-toplevel)"
 _WORKER_WRITE_REASON = (
-    "a worker writes files only inside its own worktree, the repository root of its working directory (git "
-    "rev-parse --show-toplevel); a file outside it is not the worker's: name it in the delivery file instead"
+    "a worker writes only paths that resolve below the root of its own worktree, the repository root of its working "
+    "directory (git rev-parse --show-toplevel), with every symlink resolved; any other file is not the worker's: name "
+    "it in the delivery file instead"
 )
 _WORKER_GIT_ENTRY_REASON = (
     "a worker never writes the .git file or folder of a repository, at the root of its worktree or below it, in any "
@@ -183,7 +185,7 @@ def _git(cwd: str, *args: str) -> Optional[subprocess.CompletedProcess]:
     """Run git in ``cwd`` and return what it did, or None when git cannot start or hangs."""
     try:
         return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=GIT_TIMEOUT)
-    except (OSError, subprocess.SubprocessError):  # no git, or git hangs
+    except (OSError, ValueError, subprocess.SubprocessError):  # no git, an argument with a NUL byte, or git hangs
         return None
 
 
@@ -201,10 +203,10 @@ def _parts_below(root: str, cwd: str, path: str) -> Optional[Tuple[str, ...]]:
     ``root`` is not resolved here: the reviewer's ``.pe`` must stay unresolved, or a committed ``.pe`` symlink
     would carry the allowed folder out of the repository together with the path.
 
-    A path that cannot be resolved gives None too, so every caller denies it: ntpath.realpath raises on
-    .git::$INDEX_ALLOCATION/config (WinError 3 and 267), posixpath.realpath on a NUL byte from CPython 3.12, and an
-    exception here would let a worker session's call through. The lexical path is no fallback, because it skips the
-    symlinks that can carry a write out of the worktree.
+    A path that cannot be resolved gives None too, so every caller denies it with its own reason: ntpath.realpath
+    raises on .git::$INDEX_ALLOCATION/config (WinError 3 and 267), and posixpath.realpath on a NUL byte on the CPython
+    versions measured, 3.12, 3.13 and 3.14 (3.9 returns the path). The lexical path is no fallback, because it skips
+    the symlinks that can carry a write out of the worktree.
     """
     try:
         resolved = Path(os.path.realpath(os.path.join(cwd, path)))
@@ -528,6 +530,19 @@ def decide(payload: Any) -> Optional[str]:
     return worker_check(tool_input, cwd, root) if root else None
 
 
+def _failure_denies(payload: Any) -> bool:
+    """Whether a failure of the checks must deny this call rather than give no decision: a call of the reviewer or of
+    the worker agent, and a call that finds the worker signal at or above its cwd, as every call of a worker session
+    does, which nothing but that signal holds. The signal is looked for without git, as for the hold itself; a search
+    that fails shows nothing, so it denies too."""
+    if _launches_reviewer(payload) or _runs_in_reviewer(payload) or _runs_in_worker(payload):
+        return True
+    try:
+        return isinstance(payload, dict) and _signal_above(payload.get("cwd"))
+    except (OSError, ValueError):  # a cwd that realpath or Path.exists cannot read
+        return True
+
+
 def main() -> int:
     try:
         # Bytes, so json decodes the UTF-8 that Claude Code sends; text would use the locale's code page (cp1252 on
@@ -537,9 +552,8 @@ def main() -> int:
         return 0
     try:
         reason = decide(payload)
-    except Exception as exc:  # taste-exempt: a crash must deny the reviewer's and the worker's calls, and no other
-        concerned = _launches_reviewer(payload) or _runs_in_reviewer(payload) or _runs_in_worker(payload)
-        reason = "check failed (%s: %s)" % (exc.__class__.__name__, exc) if concerned else None
+    except Exception as exc:  # taste-exempt: a crash must deny the calls the hook holds, and no other
+        reason = "check failed (%s: %s)" % (exc.__class__.__name__, exc) if _failure_denies(payload) else None
     if reason:
         print("pragmatic-engineering: " + reason, file=sys.stderr)
         return 2

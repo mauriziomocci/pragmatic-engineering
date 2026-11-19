@@ -449,13 +449,17 @@ def test_a_worker_write_of_the_git_file_or_folder_of_its_worktree_is_denied(work
 @pytest.mark.parametrize("agent_type", [WORKER, None])
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)
 def test_a_worker_write_into_the_git_folder_through_its_ntfs_stream_is_denied(worker_worktree, agent_type, tool_name):
-    """.git::$INDEX_ALLOCATION is the .git folder itself on NTFS (CVE-2019-1352). Windows cannot resolve that path
-    (WinError 3 and 267 from ntpath.realpath, CPython 3.15 on windows-latest), so there the write is denied as one the
-    hook cannot place; elsewhere the path resolves and the write is denied as a .git."""
+    """.git::$INDEX_ALLOCATION is the .git folder itself on NTFS (CVE-2019-1352). Where the system cannot resolve that
+    path (WinError 3 and 267 from ntpath.realpath on the user-machine job of Windows), the write is denied as one that
+    does not resolve below the root; where it resolves, it is denied as a .git."""
     write_signal(worker_worktree)
     path = worker_worktree / ".git::$INDEX_ALLOCATION" / "config"
-    reason = hook.decide(file_call(tool_name, path, worker_worktree, agent_type))
-    assert reason in (hook._WORKER_GIT_ENTRY_REASON, hook._WORKER_WRITE_REASON)
+    try:
+        os.path.realpath(str(path))
+        expected = hook._WORKER_GIT_ENTRY_REASON
+    except (OSError, ValueError):
+        expected = hook._WORKER_WRITE_REASON
+    assert hook.decide(file_call(tool_name, path, worker_worktree, agent_type)) == expected
 
 
 UNRESOLVABLE = "unresolvable"
@@ -464,7 +468,7 @@ UNRESOLVABLE = "unresolvable"
 def realpath_failing_on(name, error):
     """os.path.realpath that raises ``error`` on a path holding ``name`` and resolves any other: ntpath.realpath raises
     WinError 3 and 267 (FileNotFoundError, NotADirectoryError) on .git::$INDEX_ALLOCATION/config, and posixpath.realpath
-    raises ValueError on a NUL byte from CPython 3.12."""
+    raises ValueError on a NUL byte on the CPython versions measured, 3.12, 3.13 and 3.14."""
     real_realpath = os.path.realpath
 
     def realpath(path, *args, **kwargs):
@@ -474,8 +478,8 @@ def realpath_failing_on(name, error):
     return realpath
 
 
-# A path the hook cannot resolve cannot be shown to lie inside the worktree, so each check denies it; a crash would
-# let a worker session's call through, because a failure on a call known only from its signal is no decision.
+# A path the hook cannot resolve cannot be shown to lie inside the worktree, so each check denies it with its own
+# reason, before any failure further down could turn it into a crash.
 UNRESOLVABLE_CALLS = [
     ("Write", lambda root, agent_type: file_call("Write", root / "docs" / UNRESOLVABLE / "x", root, agent_type),
      "_WORKER_WRITE_REASON"),
@@ -503,6 +507,66 @@ def test_a_worker_session_write_that_cannot_be_resolved_exits_2(worker_worktree,
     payload = file_call("Write", worker_worktree / UNRESOLVABLE / "x", worker_worktree, agent_type=None)
     assert run_main(monkeypatch, payload) == 2
     assert "its own worktree" in capsys.readouterr().err
+
+
+def test_the_write_reason_covers_a_path_that_does_not_resolve():
+    """The same reason answers a path outside the worktree and one the system cannot resolve, so it names neither."""
+    assert "only paths that resolve below the root of its own worktree" in hook._WORKER_WRITE_REASON
+    assert "outside" not in hook._WORKER_WRITE_REASON
+
+
+def realpath_keeping(name):
+    """os.path.realpath that returns a path holding ``name`` as it is, as CPython 3.9 does for a NUL byte, and resolves
+    any other: the path then reaches git -C, where subprocess raises ValueError on the NUL."""
+    real_realpath = os.path.realpath
+
+    def realpath(path, *args, **kwargs):
+        return os.fspath(path) if name in os.fspath(path) else real_realpath(path, *args, **kwargs)
+    return realpath
+
+
+@pytest.mark.parametrize("realpath", ["as on CPython 3.9", "of this interpreter"])
+@pytest.mark.parametrize("agent_type", [WORKER, None])
+@pytest.mark.parametrize("command,reason_name", [
+    ("git -C 'docs\x00' push", "_WORKER_GIT_PLACE_REASON"), ("cd 'docs\x00'", "_WORKER_CD_REASON"),
+])
+def test_a_worker_folder_with_a_nul_is_denied_with_its_reason(worker_worktree, monkeypatch, capsys, realpath,
+                                                              agent_type, command, reason_name):
+    """A NUL inside single quotes is a word of the grammar; CPython 3.9's realpath keeps it, and git -C could not
+    start on it, which crashed the check and let a worker session's push through."""
+    write_signal(worker_worktree)
+    if realpath == "as on CPython 3.9":
+        monkeypatch.setattr(hook.os.path, "realpath", realpath_keeping("\x00"))
+    assert run_main(monkeypatch, bash_call(command, worker_worktree, agent_type)) == 2
+    assert capsys.readouterr().err == "pragmatic-engineering: %s\n" % getattr(hook, reason_name)
+
+
+def raising(error):
+    """A stand-in for a function of the hook that raises ``error`` whatever it is given."""
+    def stand_in(*args, **kwargs):
+        raise error
+    return stand_in
+
+
+@pytest.mark.parametrize("make", [
+    lambda root: file_call("Write", root / "README.md", root, agent_type=None),
+    lambda root: bash_call("rm -rf build", root, agent_type=None),
+], ids=["Write", "rm"])
+def test_a_crash_in_the_check_of_a_worker_session_denies(worker_worktree, monkeypatch, capsys, make):
+    """Any exception, not only the ones the checks expect: a worker session is held by its signal alone, and a failure
+    that gave no decision would let its call through."""
+    write_signal(worker_worktree)
+    monkeypatch.setattr(hook, "_parts_below", raising(RuntimeError("boom")))
+    assert run_main(monkeypatch, make(worker_worktree)) == 2
+    assert "RuntimeError: boom" in capsys.readouterr().err
+
+
+def test_a_crash_that_cannot_look_for_the_signal_denies(worker_worktree, monkeypatch, capsys):
+    """When the search for the signal fails too, nothing shows that the call is not a worker session's."""
+    monkeypatch.setattr(hook, "decide", crash)
+    monkeypatch.setattr(hook, "_signal_above", raising(ValueError("embedded null byte")))
+    assert run_main(monkeypatch, file_call("Write", worker_worktree / "x", worker_worktree, agent_type=None)) == 2
+    assert "RuntimeError: boom" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("tool_name", FILE_TOOLS)
@@ -1168,9 +1232,9 @@ def test_a_broken_shared_module_denies_only_a_worker_command(worker_worktree, tm
     assert run_main(monkeypatch, bash_call("rm -rf build", worker_worktree)) == 2
     assert "pe_guard.filters" in capsys.readouterr().err
     assert hook.decide(bash_call("rm -rf build", worker_worktree, agent_type=None)) is None
-    write_signal(worker_worktree)  # a worker session is known only from its signal: a failure lets its call through
-    assert run_main(monkeypatch, bash_call("rm -rf build", worker_worktree, agent_type=None)) == 0
-    assert capsys.readouterr() == ("", "")
+    write_signal(worker_worktree)  # a worker session is held by its signal alone: a failure on its call denies it
+    assert run_main(monkeypatch, bash_call("rm -rf build", worker_worktree, agent_type=None)) == 2
+    assert "pe_guard.filters" in capsys.readouterr().err
 
 
 def test_a_worker_command_is_decided_by_the_script_run_as_a_process(worker_worktree, tmp_path):
