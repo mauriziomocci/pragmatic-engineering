@@ -2002,6 +2002,8 @@ GUIDED_SENTENCES = {
          "interno, una chiamata dell'agente worker, e una chiamata la cui cartella di lavoro, o una cartella sopra di "
          "essa, contiene `.pe/worker`, come ogni chiamata di una sessione worker; nega anche quando la ricerca di quel "
          "segnale fallisce. Un guasto su ogni altra chiamata la lascia passare."),
+        ("A worker session whose git gives no answer (missing, hung past 5 seconds, or failing) is not held either.",
+         "Nemmeno una sessione worker il cui git non risponde (assente, fermo oltre 5 secondi o in errore) è vincolata."),
         # the Bash part of the worker boundary: the grammar it accepts, what it denies, what stays open
         ("The Bash part of the worker boundary reads the text of a command, not what the shell runs.",
          "La parte Bash del confine del worker legge il testo di un comando, non ciò che la shell esegue."),
