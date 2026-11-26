@@ -6,8 +6,10 @@ what a commit contains must read the commit itself. ``errors="surrogateescape"``
 that is not valid text, so they still compare exactly.
 """
 import subprocess
+from typing import Optional
 
 
-def run_git(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "--no-replace-objects", *args], capture_output=True, text=True,
+def run_git(*args: str, input: Optional[str] = None) -> subprocess.CompletedProcess:  # noqa: A002 (subprocess's name)
+    """``input`` is the standard input, for a command that reads its names there, as ``cat-file --batch-check`` does."""
+    return subprocess.run(["git", "--no-replace-objects", *args], input=input, capture_output=True, text=True,
                           errors="surrogateescape")

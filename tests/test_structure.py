@@ -2584,10 +2584,10 @@ def test_ci_pins_one_runner_image_and_the_node24_actions_without_a_stored_token(
     assert text.count("persist-credentials: false") == 3  # one per checkout; no step pushes
 
 
-# The tests of what runs on the user's machine: the two hooks of the plugin and the two scripts of the skills.
+# The tests of what runs on the user's machine: the two hooks of the plugin and the three scripts of the skills.
 USER_MACHINE_TESTS = (
     "tests/test_session_start.py tests/test_pre_tool_use.py tests/test_recreate_night_commits.py "
-    "tests/test_pe_worktree.py tests/test_verify_delivery.py"
+    "tests/test_pe_worktree.py tests/test_verify_delivery.py tests/test_shared_state.py"
 )
 
 
