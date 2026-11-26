@@ -757,6 +757,23 @@ def test_a_hook_planted_once_the_temporary_worktree_is_added_exits_4_before_the_
     assert '["file", "hooks/post-checkout"]' in capsys.readouterr().err and calls(counter) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="no executable bit on this file system")
+def test_a_hook_made_executable_after_the_record_exits_4_before_it_runs(tmp_path):
+    """Git skips a hook that is not executable, so the bit decides whether a program starts, as the bytes do."""
+    counter = tmp_path / "hook-calls"
+
+    def idle_hook(repo: Path) -> None:
+        hook = common(repo) / "hooks" / "post-checkout"
+        hook.write_text("#!/bin/sh\necho x >> %s\n" % counter.as_posix(), encoding="utf-8")
+        hook.chmod(0o644)
+
+    delivery = make_delivery(tmp_path, idle_hook)
+    add_feature_with_its_test(delivery)
+    (common(delivery.repo) / "hooks" / "post-checkout").chmod(0o755)
+    items = changed_items(delivery.run(("--red", delivery.red_command())))
+    assert [item[:2] for item in items] == [["file", "hooks/post-checkout"]] and calls(counter) == 0
+
+
 def test_a_hook_that_the_test_command_writes_exits_4_before_the_next_worktree_is_added(delivery, tmp_path):
     counter = tmp_path / "hook-calls"
     # before the assertion: it runs on the integration tip, where the test then fails, so the next worktree is the tip's

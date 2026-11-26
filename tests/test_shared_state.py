@@ -355,6 +355,26 @@ def test_configuration_files_are_read_present_or_absent(repo, tmp_path):
     assert {path.resolve() for path in named + [global_config]} <= outside(shared_state.observe().items)
 
 
+def test_the_system_configuration_file_is_read_present_or_absent(repo, tmp_path, monkeypatch):
+    """Git names it even when it is absent; a file created there later would be read by every git command."""
+    system = tmp_path / "system.cfg"
+    monkeypatch.delenv("GIT_CONFIG_NOSYSTEM")
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(system))
+    assert system.resolve() not in outside(shared_state.observe().items)
+    system.write_text("[x]\n", encoding="utf-8")
+    assert system.resolve() in outside(shared_state.observe().items)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="no executable bit on this file system")
+def test_a_regular_file_is_read_with_its_executable_bit(repo):
+    hook = common(repo) / "hooks" / "post-checkout"
+    hook.write_text("#!/bin/sh\n", encoding="utf-8")
+    hook.chmod(0o644)
+    idle = shared_state.observe().items[("file", "hooks/post-checkout")]
+    hook.chmod(0o755)
+    assert shared_state.observe().items[("file", "hooks/post-checkout")] == idle + " executable"
+
+
 def test_a_hooks_folder_outside_every_worktree_is_read_and_one_inside_is_not(repo, tmp_path):
     hooks = tmp_path / "hooks"
     hooks.mkdir()

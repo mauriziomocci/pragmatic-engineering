@@ -43,21 +43,26 @@ The closed list of what may change between the record and a comparison:
 Everything else is compared, present or absent: each ref by name and symbolic target, its value from one ``git
 cat-file --batch-check``, a lookup (where the disk ignores case, a loose ``refs/heads/Main`` is what ``refs/heads/main``
 reads, while ``for-each-ref`` shows the packed value); each worktree's HEAD, branch and ``prunable``; every other file
-of the common folder, by its SHA-256, a symlink by its target, anything else by its kind; the entries of ``config``
+of the common folder, by its SHA-256 and its executable bit, without which git skips a hook, a symlink by its
+target, anything else by its kind; the entries of ``config``
 and of a new worktree's ``config.worktree`` by name and the SHA-256 of the value, so that no value is copied into the
 record (in the coordinator's ``.pe/``) or a message, though a value with little entropy can be guessed from its digest;
 the lines of ``info/exclude``; and, whole, each file git reads its configuration from, each
 target of ``include.path``, ``includeIf.*.path``, ``core.excludesFile`` and ``core.attributesFile``, ``~/.gitconfig``,
-``config``, ``ignore`` and ``attributes`` in ``$XDG_CONFIG_HOME/git/`` (``~/.config/git/`` without it), and the hooks
-folder when it lies outside every worktree. No git call here starts a program.
+``config``, ``ignore`` and ``attributes`` in ``$XDG_CONFIG_HOME/git/`` (``~/.config/git/`` without it), the system
+configuration file that ``git var GIT_CONFIG_SYSTEM`` names, and the hooks folder when it lies outside every worktree.
+No git call here starts a program.
 
 It sees what a worker changed in a hurry or by accident, after the fact; not a worker that rewrites the record, the
 scripts, the plugin's hook or the coordinator's checkout. Outside it too: includes nested under a false ``includeIf``,
 which ``--show-origin`` does not list; the system attributes file and ``%(prefix)/`` paths; the environment and the
 ``-c`` of a command; what a worktree's own files configure (a hooks folder, ``.gitattributes``), which the review
 reads; and a relative ``core.excludesFile`` or ``core.attributesFile``, read here from the coordinator's root but by the
-worker's status from the worker's. The global files are compared even where a setting or ``GIT_CONFIG_GLOBAL`` puts
-others in their place, so a change to one that git does not read is an exit 4 too.
+worker's status from the worker's; and a system configuration file absent at ``start`` where git cannot name it (a
+git without ``GIT_CONFIG_SYSTEM`` in ``git var``). The global files are compared even where a setting or
+``GIT_CONFIG_GLOBAL`` puts others in their place, so a change to one that git does not read is an exit 4 too. A
+compared file that cannot be read stops the run with exit 2, not 4; and a printed line that holds a single quote does
+not pass as ``accept '<line>'``, whose pieces are refused with exit 2.
 """
 import argparse
 import hashlib
@@ -74,7 +79,7 @@ from typing import Any, Callable, Dict, FrozenSet, Iterable, Iterator, List, Map
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 # the plugin's shared code, found from this file
-from pe_git import HEADS, OBJECT_ID, GitError, git, output_lines  # noqa: E402
+from pe_git import HEADS, OBJECT_ID, GitError, git, output_lines, run_git  # noqa: E402
 
 RECORD = Path(".pe") / "shared-state.json"
 NO_RECORD = "no record at %s: `shared_state.py start` begins a new run; in a run, stop and go to the user"
@@ -281,7 +286,7 @@ def file_value(path: str) -> Optional[str]:
         if stat.S_ISLNK(mode):
             return "symlink " + os.readlink(path)
         if stat.S_ISREG(mode):
-            return file_digest(path)
+            return file_digest(path) + (" executable" if mode & 0o111 else "")
     except FileNotFoundError:
         return None
     return FILE_KINDS.get(stat.S_IFMT(mode), "other")
@@ -407,9 +412,13 @@ def file_named(source: str, top: str, text: str) -> List[str]:
 
 
 def global_files() -> Set[str]:
+    """The configuration files git reads outside the repository, compared present or absent. The system one is the
+    file ``git var GIT_CONFIG_SYSTEM`` names, which fails where git reads no system file or cannot name it."""
     xdg = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config"), "git")
+    system = run_git("var", "GIT_CONFIG_SYSTEM")
     return {os.path.join(os.path.expanduser("~"), ".gitconfig"), *(os.path.join(xdg, name)
-                                                                    for name in ("config", "ignore", "attributes"))}
+                                                                    for name in ("config", "ignore", "attributes")),
+            *(output_lines(system.stdout) if system.returncode == 0 else [])}
 
 
 def is_below(path: str, folder: str) -> bool:
