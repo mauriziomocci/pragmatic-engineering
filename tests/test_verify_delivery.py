@@ -8,6 +8,7 @@ suite also runs on Windows, where a backslash is an escape for the command split
 """
 import json
 import os
+from contextlib import contextmanager
 import shlex
 import shutil
 import subprocess
@@ -728,6 +729,33 @@ HOOK_WRITER = (
     "os.chmod(hook, 0o755)\n"
 )
 DRIVER_WRITER = "import subprocess\nsubprocess.run(['git', 'config', 'merge.spy.driver', %r])\n"
+
+
+def test_a_hook_planted_once_the_temporary_worktree_is_added_exits_4_before_the_checkout_runs_it(
+        delivery, tmp_path, monkeypatch, capsys):
+    """The script runs here, in this process, so that the change lands between ``worktree add`` and ``checkout``."""
+    monkeypatch.syspath_prepend(str(SCRIPT.parent))
+    import verify_delivery
+
+    counter, added = tmp_path / "hook-calls", verify_delivery.temporary_worktree
+
+    @contextmanager
+    def then_a_hook(revision, prefix):
+        with added(revision, prefix) as folder:
+            hook = common(delivery.repo) / "hooks" / "post-checkout"
+            hook.write_text("#!/bin/sh\necho x >> %s\n" % counter.as_posix(), encoding="utf-8")
+            hook.chmod(0o755)
+            yield folder
+
+    monkeypatch.setattr(verify_delivery, "temporary_worktree", then_a_hook)
+    monkeypatch.chdir(delivery.repo)
+    for name, value in delivery.env().items():
+        monkeypatch.setenv(name, value)
+    add_feature_with_its_test(delivery)
+    arguments = ["--integration", "integration", "--branch", "w", "--tip", delivery.tip(), "--worktree",
+                 delivery.worktree.as_posix(), "--brief", delivery.brief.as_posix(), "--red", delivery.red_command()]
+    assert verify_delivery.main(arguments) == 4
+    assert '["file", "hooks/post-checkout"]' in capsys.readouterr().err and calls(counter) == 0
 
 
 def test_a_hook_that_the_test_command_writes_exits_4_before_the_next_worktree_is_added(delivery, tmp_path):

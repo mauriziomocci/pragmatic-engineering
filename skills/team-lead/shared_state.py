@@ -39,18 +39,15 @@ The closed list of what may change between the record and a comparison:
 - By entries and by lines: ``config`` may gain only ``extensions.worktreeconfig=true``; ``info/exclude`` only lines
   that start with ``.claude/`` or ``**/.claude/``.
 
-Everything else is compared: each ref by name and symbolic target (``git for-each-ref``), its value from one ``git
-cat-file --batch-check``, which reads a name as a lookup does (where the file system ignores case, a loose
-``refs/heads/Main`` is what ``refs/heads/main`` reads, while ``for-each-ref`` still shows the packed value); each
-worktree's HEAD, branch and ``prunable`` (``git worktree list --porcelain``); every other file of the common folder, a
-regular file by its SHA-256, a symlink by its target, a socket or a FIFO by its kind; the entries of ``config`` and of
-a new worktree's ``config.worktree`` by name and by the SHA-256 of the value, so that no value of a configuration is
-copied into the record, which lives in the coordinator's ``.pe/``, or into a message (a value with little entropy can
-still be guessed from its digest); the lines of ``info/exclude``; and, present or absent, each configuration file that
-``git config --list --show-origin`` names, each target of ``include.path`` and ``includeIf.*.path``, of
-``core.excludesFile`` and of ``core.attributesFile``, ``~/.gitconfig``, and ``config``, ``ignore`` and ``attributes``
-in ``$XDG_CONFIG_HOME/git/`` (``~/.config/git/`` without the variable), and the files of the hooks folder (``git
-rev-parse --git-path hooks``) when it lies outside every worktree. No git call here starts a program.
+Everything else is compared, present or absent: each ref by name and symbolic target, its value from one ``git
+cat-file --batch-check``, a lookup (where the disk ignores case, a loose ``refs/heads/Main`` is what ``refs/heads/main``
+reads, while ``for-each-ref`` shows the packed value); each worktree's HEAD, branch and ``prunable``; every other file
+of the common folder, by its SHA-256, a symlink by its target, anything else by its kind; configuration entries by name
+and the SHA-256 of the value, so that no value is copied into the record (in the coordinator's ``.pe/``) or a message,
+though a value with little entropy can be guessed from its digest; and each file git reads its configuration from, each
+target of ``include.path``, ``includeIf.*.path``, ``core.excludesFile`` and ``core.attributesFile``, ``~/.gitconfig``,
+``config``, ``ignore`` and ``attributes`` in ``$XDG_CONFIG_HOME/git/`` (``~/.config/git/`` without it), and the hooks
+folder when it lies outside every worktree. No git call here starts a program.
 
 It sees what a worker changed in a hurry or by accident, after the fact; not a worker that rewrites the record, the
 scripts, the plugin's hook or the coordinator's checkout. Outside it too: includes nested under a false ``includeIf``,
@@ -171,7 +168,7 @@ MAY_DISAPPEAR: Dict[str, Callable[[Observation, Item, Any], bool]] = {
     "worktree": lambda now, item, recorded: recorded[2],
     "file": goes_with_its_folder,
 }
-ITEM_KINDS = ("ref", "worktree", "file", "config", "worktree-config", "exclude")
+ITEM_KINDS = frozenset(MAY_APPEAR) | frozenset(MAY_DISAPPEAR)  # every kind has a rule
 
 
 def is_free(record: Record, now: Observation, change: Difference) -> bool:
@@ -423,15 +420,12 @@ def read_outside(common: str, worktrees: Iterable[str]) -> Dict[Item, str]:
     return file_items((path, path) for path in sorted(paths) if not is_below(os.path.realpath(path), inside[0]))
 
 
-def recorded_admin_folders(record: Record) -> FrozenSet[str]:
-    return frozenset(admin_folder(item[1]) for item in record.items if item[0] == "file") - {None}
-
-
 def observe(record: Optional[Record] = None) -> Observation:
     """Everything a record holds, read now. ``record`` says which folders under ``worktrees/`` are recorded; without
     one, at ``start``, every folder there is."""
     common = common_dir()
-    registered = None if record is None else recorded_admin_folders(record)
+    registered = None if record is None else frozenset(
+        admin_folder(item[1]) for item in record.items if item[0] == "file") - {None}
     try:
         worktrees = read_worktrees()
         admin = read_admin_folders(common, registered)

@@ -1856,6 +1856,16 @@ GUIDED_SENTENCES = {
          "ancora stato provato."),
     ),
     "limits": (
+        # the check of the shared state: after the fact, and another session's write is an exit 4 too
+        ("The check of the shared state by `shared_state.py` and exit 4 of `verify_delivery.py` sees a change after "
+         "it is made, not while it is made, and, like the delivery check, runs only when the model runs it.",
+         "Il controllo dello stato condiviso, con `shared_state.py` e l'uscita 4 di `verify_delivery.py`, vede un "
+         "cambiamento dopo che è avvenuto, non mentre avviene, e, come il controllo della consegna, gira solo "
+         "quando il modello lo lancia."),
+        ("Another session that writes the repository during a team run gives exit 4, and the run goes on only with "
+         "what you accept.",
+         "Un'altra sessione che scrive il repository durante una corsa della squadra dà l'uscita 4, e la corsa "
+         "prosegue solo con ciò che accetti."),
         ("With `--red`, `verify_delivery.py` runs the command of the project, and so the code of the delivery, in two "
          "temporary worktrees, one of the integration tip and one of the delivery tip, which it removes afterwards, "
          "and it runs `git worktree prune`, which drops the records of every worktree of the repository whose folder "
@@ -2234,23 +2244,35 @@ GUIDED_SENTENCES = {
          "nel worktree di un `worker` anche `delivery.md` (il suo file di consegna) e, in quello di una sessione "
          "worker, `worker` (il segnale che vincola la sessione al suo worktree, scritto dalla sessione che "
          "coordina), e"),
-        ("There are no commands in this version and, besides the `SessionStart` and `PreToolUse` hooks described "
-         "below, only two scripts: `skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells "
-         "the model to run, and `skills/team-lead/verify_delivery.py`, which `team-lead` tells the model to run.",
-         "In questa versione non ci sono comandi e, oltre agli hook `SessionStart` e `PreToolUse` descritti sotto, "
-         "ci sono due soli script: `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al "
-         "modello di eseguire, e `skills/team-lead/verify_delivery.py`, che `team-lead` dice al modello di "
-         "eseguire."),
-        ("`skills/team-lead/verify_delivery.py` checks the delivery of a worker against git and exits 0 when it is "
-         "accepted, 1 when it is refused, 2 on a usage error and 3 when it holds something the reviewer has not read. To "
-         "run it by hand: `python3 <the folder of team-lead>/verify_delivery.py --integration <branch> --branch "
-         "<branch> --tip <sha> --worktree <folder> --brief <file> [--reviewed <sha>] [--red <command>]`, from the "
-         "checkout of the repository.",
-         "`skills/team-lead/verify_delivery.py` controlla con git la consegna di un worker ed esce con 0 se è "
-         "accettata, con 1 se è rifiutata, con 2 per un errore d'uso e con 3 quando contiene qualcosa che il revisore "
-         "non ha letto. Per eseguirlo a mano: `python3 <la cartella di team-lead>/verify_delivery.py "
-         "--integration <ramo> --branch <ramo> --tip <sha> --worktree <cartella> --brief <file> [--reviewed <sha>] "
-         "[--red <comando>]`, dal checkout del repository."),
+        ("besides the `SessionStart` and `PreToolUse` hooks described below, three scripts: "
+         "`skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells the model to run, and "
+         "`skills/team-lead/verify_delivery.py` and `skills/team-lead/shared_state.py`, which `team-lead` tells the "
+         "model to run.",
+         "oltre agli hook `SessionStart` e `PreToolUse` descritti sotto, ci sono tre script: "
+         "`skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al modello di eseguire, e "
+         "`skills/team-lead/verify_delivery.py` e `skills/team-lead/shared_state.py`, che `team-lead` dice al "
+         "modello di eseguire."),
+        ("1 when it is refused, 2 on a usage error, 3 when it holds something the reviewer has not read and 4 when "
+         "what the worktrees share changed since the record.",
+         "con 1 se è rifiutata, con 2 per un errore d'uso, con 3 quando contiene qualcosa che il revisore non ha "
+         "letto e con 4 quando ciò che i worktree condividono è cambiato dalla registrazione."),
+        ("[--reviewed <sha>] [--red <command>]`, from the checkout of the repository. "
+         "`skills/team-lead/shared_state.py` keeps that record, in `.pe/shared-state.json` of the checkout, and "
+         "exits 0, or 2 on a usage error. To run it by hand, from the checkout of the repository: `python3 <the "
+         "folder of team-lead>/shared_state.py start --integration <branch> --team <branch>...` before the first "
+         "worker, `team <branch>...` before launching a branch that the record lacks, `merged <sha>` after each "
+         "integration, and `accept <item>...` with an item that exit 4 printed and you accepted.",
+         "[--reviewed <sha>] [--red <comando>]`, dal checkout del repository. `skills/team-lead/shared_state.py` "
+         "tiene quella registrazione, in `.pe/shared-state.json` del checkout, ed esce con 0, o con 2 per un errore "
+         "d'uso. Per eseguirlo a mano, dal checkout del repository: `python3 <la cartella di "
+         "team-lead>/shared_state.py start --integration <ramo> --team <ramo>...` prima del primo worker, `team "
+         "<ramo>...` prima di lanciare un ramo che la registrazione non ha, `merged <sha>` dopo ogni integrazione e "
+         "`accept <voce>...` con una voce che l'uscita 4 ha stampato e che hai accettato."),
+        # the team-lead row names the fourth condition too
+        ("(an approved plan, at least two disjoint file areas, a test environment for each suite, no other session "
+         "writing the repository)",
+         "(un piano approvato, almeno due aree di file disgiunte, un ambiente di prova per ogni suite, senza altre "
+         "sessioni che scrivono il repository)"),
         ("`PreToolUse`, registered in `hooks/hooks.json` with the matcher `Agent|Bash|Write|Edit|NotebookEdit` as "
          "`python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_tool_use.py\"`, with a timeout of 10 seconds and "
          "`\"onFailure\": \"continue\"`.",
@@ -2301,6 +2323,12 @@ GUIDED_SENTENCES = {
     ),
     # the one file every worker edits has no first owner, as in the entry conditions of team-lead
     "parallel": (
+        # the fourth condition: the record cannot tell a worker's write from another session's
+        ("It starts only when all four conditions hold: an approved plan, at least two disjoint file areas, a test "
+         "environment for each suite that runs at the same time, and no other session writing the repository;",
+         "Parte solo quando valgono tutte e quattro le condizioni: un piano approvato, almeno due aree di file "
+         "disgiunte, un ambiente di prova per ogni suite che gira nello stesso momento e nessun'altra sessione che "
+         "scrive il repository;"),
         ("The task file, which every worker edits, is the exception: each ticks only its own boxes there, and a "
          "conflict on it is the worker's to resolve, like any other.",
          "Il file dei compiti, che ogni worker modifica, è l'eccezione: ciascuno spunta lì solo le proprie caselle, "

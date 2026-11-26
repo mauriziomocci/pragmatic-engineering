@@ -553,9 +553,19 @@ CONTRACTS: Dict[str, Contract] = {
             "before the review a merge with a conflict resolution, after it every commit above the reviewed tip",
             "The delivery goes back; nothing is reviewed.",
             "in the delivery report", "the session log",
+            # the shared state: one record, never read again, and exit 4 goes to the user
+            "all four conditions hold", "- no other session writes the repository during the run.",
+            "`python3 <this skill's folder>/shared_state.py start --integration <branch> --team <branch>...` lists "
+            "the worktrees outside the team: with the user present, ask which are active.",
+            "Never read it again: `team <branch>` before launching a branch it lacks, `merged <new integration tip>` "
+            "after an integration, `accept <item>...` of what the user accepted after an exit 4.",
+            "- It exits 4: shared state changed, listed with its recorded and found values: it goes to the user, "
+            "never to the worker.",
+            "Integrate one delivery at a time, right after the run after the PASS, in order of arrival",
+            "(name, id, worktree, branch, role) and the record's path in the progress note",
         ),
         absent=("changes nothing", "no others", "changes only tests"),
-        extra_files=("verify_delivery.py",),
+        extra_files=("verify_delivery.py", "shared_state.py"),
     ),
     "quality-scoring": Contract(
         sections=(
