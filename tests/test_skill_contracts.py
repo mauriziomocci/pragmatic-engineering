@@ -556,9 +556,18 @@ CONTRACTS: Dict[str, Contract] = {
             # the shared state: one record, never read again, and exit 4 goes to the user
             "all four conditions hold", "- no other session writes the repository during the run.",
             "`python3 <this skill's folder>/shared_state.py start --integration <branch> --team <branch>...` lists "
-            "the worktrees outside the team: with the user present, ask which are active.",
-            "Never read it again: `team <branch>` before launching a branch it lacks, `merged <new integration tip>` "
-            "after an integration, `accept <item>...` of what the user accepted after an exit 4.",
+            "the worktrees outside the team: an active one fails the fourth condition; ask the user which are active, "
+            "and with the user away count every one but yours as active.",
+            "Never run `start` again in the run, since it reads git anew: `team <branch>` before launching a branch it "
+            "lacks, `merged <new integration tip>` after an integration, `accept <line>...` of what the user accepted "
+            "after an exit 4.",
+            # rules that a cut to fit the cap removed once (D-26-PE-7): each holds a decision no other line holds here
+            "The project's instructions change them and name the resources (`engineering-principles`, isolated "
+            "sessions).",
+            "Models and escalation: `development-workflow`.",
+            "In auto mode the classifier denies instead of waiting, and the worker reports it.",
+            "A technical decision inside a task is the worker's.",
+            "Handover: `development-workflow`.",
             "- It exits 4: shared state changed, listed with its recorded and found values: it goes to the user, "
             "never to the worker.",
             "Integrate one delivery at a time, right after the run after the PASS, in order of arrival",
@@ -967,8 +976,10 @@ def test_documentation_quality_stays_within_its_cap():
 
 
 def test_team_lead_stays_within_its_cap():
-    """10,000 characters: it holds the procedure only and cites the rules other skills hold, never repeats them."""
-    assert len(skill_text("team-lead")) <= 10000
+    """10,500 characters: it holds the procedure only and cites the rules other skills hold, never repeats them."""
+    # D-26-PE-7 (provisional): 10,000 became 10,500 because the five rules and the record steps of D30 need 10,426
+    # characters, and a rule cut to fit stops firing
+    assert len(skill_text("team-lead")) <= 10500
 
 
 def test_configure_stays_within_its_cap():

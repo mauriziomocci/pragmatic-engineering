@@ -42,6 +42,20 @@ def commit(
     return git(repo, "rev-parse", "HEAD").strip()
 
 
+def common(repo: Path) -> Path:
+    """The common git folder of ``repo``, the one its worktrees share."""
+    return Path(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+
+
+def submodule_in(repo: Path, folder: Path) -> Path:
+    """A repository with one commit made in ``folder`` and added to ``repo`` as the committed submodule ``sub``."""
+    sub = init_repo(folder)
+    commit(sub, {"s.py": "s = 1\n"}, "sub")
+    git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub.as_posix(), "sub")
+    git(repo, "commit", "-q", "-m", "submodule")
+    return sub
+
+
 def run_script(
     script: Path,
     args: List[str],

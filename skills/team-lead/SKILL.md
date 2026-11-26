@@ -18,7 +18,7 @@ Until then, no parallel work: design the plan with the user, then build it task 
 
 ## The team
 
-Before the first order write the team: for each worker a file area and a package of two or three tasks, and one line for each pair that shares files or interfaces, naming who changes it first; section and migration numbers and the generated files are assigned beforehand. Starting caps, from one team, not measured since: one code worker for each area, at most three per test environment. The user's approval of the team opens its sessions.
+Before the first order write the team: for each worker a file area and a package of two or three tasks, and one line for each pair that shares files or interfaces, naming who changes it first; section and migration numbers and the generated files are assigned beforehand. Starting caps, from one team, not measured since: one code worker for each area, at most three per test environment. The project's instructions change them and name the resources (`engineering-principles`, isolated sessions). The user's approval of the team opens its sessions. Models and escalation: `development-workflow`.
 
 ## Two bases
 
@@ -30,7 +30,7 @@ Before the first order write the team: for each worker a file area and a package
 
 Right after `start_session`, write an empty `.pe/worker` and `.pe/.gitignore` holding `*` into the worktree that `get_session` gives, and only then send the brief by `SendMessage`; the hook holds a session with that signal to its worktree; when the auto mode classifier denies that write, the boundary does not hold for that worker, and the coordinator says so. A session worker may launch at most two internal agents, declared in its delivery file.
 
-Before the first sub-agent launch, add `.claude/worktrees/`, where the host puts sub-agent worktrees, to `git rev-parse --git-path info/exclude`: local, never committed. Then, before any worker, `python3 <this skill's folder>/shared_state.py start --integration <branch> --team <branch>...` lists the worktrees outside the team: with the user present, ask which are active. Never read it again: `team <branch>` before launching a branch it lacks, `merged <new integration tip>` after an integration, `accept <item>...` of what the user accepted after an exit 4.
+Before the first sub-agent launch, add `.claude/worktrees/`, where the host puts sub-agent worktrees, to `git rev-parse --git-path info/exclude`: local, never committed. Then, before any worker, `python3 <this skill's folder>/shared_state.py start --integration <branch> --team <branch>...` lists the worktrees outside the team: an active one fails the fourth condition; ask the user which are active, and with the user away count every one but yours as active. Never run `start` again in the run, since it reads git anew: `team <branch>` before launching a branch it lacks, `merged <new integration tip>` after an integration, `accept <line>...` of what the user accepted after an exit 4.
 
 ## The brief
 
@@ -46,7 +46,7 @@ Order only to a stopped session, with the whole brief, as after `clear_session` 
 
 ## A worker stuck on a permission
 
-No wake-up reports it. At each wake-up, and once after the package's estimated time where the host offers a wait, read `list_sessions` (`linked: true`) and the last `list_events` of each worker without a report. One still running with no new event for more than 10 minutes (measured in one team; the brief may set another) goes to the user at once, as a probable permission to approve in that session's window. That these fields tell it from a long job is not verified, so a session is a base only with the user present; with the user away or an autonomy open use sub-agents.
+No wake-up reports it. At each wake-up, and once after the package's estimated time where the host offers a wait, read `list_sessions` (`linked: true`) and the last `list_events` of each worker without a report. One still running with no new event for more than 10 minutes (measured in one team; the brief may set another) goes to the user at once, as a probable permission to approve in that session's window. That these fields tell it from a long job is not verified, so a session is a base only with the user present; with the user away or an autonomy open use sub-agents. In auto mode the classifier denies instead of waiting, and the worker reports it.
 
 ## Delivery
 
@@ -78,7 +78,7 @@ The coordinator never resolves a conflict: the worker does, in its worktree, and
 
 ## Decisions
 
-A decision of the coordinator holds only if it cites the entry it derives from (a spec line, a plan task, a decision-log entry, an answer from above) and changes no requirement, interface, data model or contract; any other goes up by the escalation of `development-workflow`. A general rule is not such an entry: the entry must decide that case. Bring the user's decisions together.
+A decision of the coordinator holds only if it cites the entry it derives from (a spec line, a plan task, a decision-log entry, an answer from above) and changes no requirement, interface, data model or contract; any other goes up by the escalation of `development-workflow`. A general rule is not such an entry: the entry must decide that case. A technical decision inside a task is the worker's. Bring the user's decisions together.
 
 ## Failures
 
@@ -86,4 +86,4 @@ A test that depends on time under load is unstable until it passes alone; say so
 
 ## Closing
 
-A worker's worktree and session are archived only when its branch is integrated and its report recorded, never mid-suite; then remove a sub-agent's with `git worktree remove <folder>`. Measure in tokens per task delivered; if the session log lacks it, usage per package with only the team running.
+A worker's worktree and session are archived only when its branch is integrated and its report recorded, never mid-suite; then remove a sub-agent's with `git worktree remove <folder>`. Handover: `development-workflow`. Measure in tokens per task delivered; if the session log lacks it, usage per package with only the team running.

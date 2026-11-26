@@ -8,18 +8,18 @@ suite also runs on Windows, where a backslash is an escape for the command split
 """
 import json
 import os
-from contextlib import contextmanager
 import shlex
 import shutil
 import subprocess
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional
 
 import pytest
 
-from support import REPO_ROOT, commit, git, init_repo, run_script
+from support import REPO_ROOT, commit, common, git, init_repo, run_script, submodule_in
 
 SCRIPT = REPO_ROOT / "skills" / "team-lead" / "verify_delivery.py"
 SHARED_STATE = REPO_ROOT / "skills" / "team-lead" / "shared_state.py"
@@ -134,14 +134,18 @@ def delivery(tmp_path):
 
 
 def listed(proc) -> List[str]:
-    """The items an exit 4 printed, each as ``accept`` takes it."""
-    return [line[len(CHANGED):] for line in proc.stderr.splitlines() if line.startswith(CHANGED)]
+    """The lines of the changes that an exit 4 printed, each whole, as ``accept`` takes it."""
+    return [line for line in proc.stderr.splitlines() if line.startswith(CHANGED)]
+
+
+def printed(line: str) -> dict:
+    return json.loads(line[len(CHANGED):])
 
 
 def changed_items(proc) -> List[List[Optional[str]]]:
     assert proc.returncode == 4, proc.stdout + proc.stderr
     assert "it goes to the user, never to the worker" in proc.stderr, proc.stderr
-    return [json.loads(line)["item"] for line in listed(proc)]
+    return [printed(line)["item"] for line in listed(proc)]
 
 
 def refused(proc, reason: str) -> None:
@@ -599,10 +603,6 @@ def calls(counter: Path) -> int:
     return len(counter.read_text(encoding="utf-8").splitlines()) if counter.exists() else 0
 
 
-def common(repo: Path) -> Path:
-    return Path(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
-
-
 def ref(name: str) -> List[str]:
     return ["ref", name]
 
@@ -613,7 +613,7 @@ def test_a_branch_outside_the_team_that_moves_exits_4_with_its_recorded_and_foun
     git(delivery.repo, "branch", "-f", "shared", tip)
     proc = delivery.run()
     assert changed_items(proc) == [ref("refs/heads/shared")]
-    assert json.loads(listed(proc)[0]) == {"item": ref("refs/heads/shared"), "recorded": before, "found": tip}
+    assert printed(listed(proc)[0]) == {"item": ref("refs/heads/shared"), "recorded": before, "found": tip}
 
 
 def test_a_loose_ref_beside_the_packed_one_it_shadows_exits_4_even_once_packed(delivery):
@@ -760,6 +760,7 @@ def test_a_hook_planted_once_the_temporary_worktree_is_added_exits_4_before_the_
 
 def test_a_hook_that_the_test_command_writes_exits_4_before_the_next_worktree_is_added(delivery, tmp_path):
     counter = tmp_path / "hook-calls"
+    # before the assertion: it runs on the integration tip, where the test then fails, so the next worktree is the tip's
     delivery.work({"src/a/feature.py": "VALUE = 1\n",
                    "tests/test_a.py": HOOK_WRITER % counter.as_posix() + FEATURE_TEST})
     items = changed_items(delivery.run(("--red", delivery.red_command())))
@@ -772,6 +773,7 @@ def test_a_merge_driver_that_the_test_command_sets_exits_4_before_the_merges_are
         "* merge=spy\n", encoding="utf-8"))
     command, counter = spy(tmp_path)
     conflicting_resolution(delivery)
+    # after the assertion: it runs only at the delivery tip, the last command before the merges are read
     delivery.work({"src/a/feature.py": "VALUE = 1\n",
                    "tests/test_a.py": FEATURE_TEST + DRIVER_WRITER % (command + " %O %A %B")})
     items = changed_items(delivery.run(("--red", delivery.red_command())))
@@ -838,14 +840,14 @@ def test_after_an_accept_a_change_not_listed_is_still_a_difference(delivery):
 def test_an_item_changed_again_after_its_listing_stays_a_difference_once_accepted(delivery):
     """``accept`` records the value the user saw, not the one there when it runs."""
     git(delivery.repo, "tag", "v2")
-    printed = listed(delivery.run())
-    seen = json.loads(printed[0])["found"]
+    lines = listed(delivery.run())
+    seen = printed(lines[0])["found"]
     tip = delivery.work({"src/a/new.py": "x = 1\n"})
     git(delivery.repo, "tag", "-f", "v2", tip)
-    delivery.shared("accept", *printed)
+    delivery.shared("accept", *lines)
     proc = delivery.run()
     assert changed_items(proc) == [ref("refs/tags/v2")]
-    assert json.loads(listed(proc)[0])["recorded"] == seen and json.loads(listed(proc)[0])["found"] == tip
+    assert printed(listed(proc)[0])["recorded"] == seen and printed(listed(proc)[0])["found"] == tip
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="a symlink needs a privilege on Windows")
@@ -876,6 +878,22 @@ def test_without_a_record_the_check_exits_2_and_says_how_a_run_begins(delivery):
     proc = delivery.run()
     usage_error(proc, "no record at")
     assert "`shared_state.py start` begins a new run; in a run, stop and go to the user" in proc.stderr
+
+
+def test_a_worker_git_folder_outside_the_worktrees_folder_exits_1_and_runs_nothing_there(tmp_path):
+    """Its ``commondir`` names this repository, so only where the git folder itself lies tells it apart."""
+    delivery = make_delivery(tmp_path, worktree_config_on)
+    tip = delivery.work({"src/a/new.py": "x = 1\n"})
+    elsewhere = tmp_path / "elsewhere"
+    shutil.copytree(str(common(delivery.repo) / "worktrees" / "worker"), str(elsewhere))
+    (elsewhere / "commondir").write_text(common(delivery.repo).as_posix() + "\n", encoding="utf-8")
+    command, counter = spy(tmp_path)
+    git(tmp_path, "config", "--file", (elsewhere / "config.worktree").as_posix(), "filter.spy.clean", command)
+    (delivery.worktree / ".gitattributes").write_text("* filter=spy\n", encoding="utf-8")
+    os.utime(str(delivery.worktree / "src/a/a.py"), (1_000_000_000, 1_000_000_000))
+    (delivery.worktree / ".git").write_text("gitdir: %s\n" % elsewhere.as_posix(), encoding="utf-8")
+    refused(delivery.run(replace={"--tip": tip}), "the worktree's .git leads to")
+    assert calls(counter) == 0
 
 
 def test_a_worker_git_that_leads_to_another_repository_exits_1_and_runs_nothing_there(delivery, tmp_path):
@@ -999,18 +1017,27 @@ def test_an_accepted_change_is_no_longer_listed(delivery):
     accepted(delivery.run())
 
 
-def test_a_submodule_of_the_worker_runs_no_fsmonitor_of_its_own(tmp_path):
-    sub = init_repo(tmp_path / "sub")
-    commit(sub, {"s.py": "s = 1\n"}, "sub")
-
-    def with_submodule(repo: Path) -> None:
-        git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub.as_posix(), "sub")
-        git(repo, "commit", "-q", "-m", "submodule")
-
-    delivery = make_delivery(tmp_path, with_submodule)
+def test_a_submodule_of_the_worker_runs_no_program_of_its_own_configuration(tmp_path):
+    """Its git folder lies in the worker's admin folder, which nothing compares, so the status never looks inside it."""
+    delivery = make_delivery(tmp_path, lambda repo: submodule_in(repo, tmp_path / "sub"))
     git(delivery.worktree, "-c", "protocol.file.allow=always", "submodule", "update", "-q", "--init")
     delivery.work({"src/a/new.py": "x = 1\n"})
     command, counter = spy(tmp_path)  # after the work: the worker's own commit looks into the submodule too
-    git(delivery.worktree / "sub", "config", "core.fsmonitor", command)
+    inner = delivery.worktree / "sub"
+    git(inner, "config", "core.fsmonitor", command)
+    git(inner, "config", "filter.spy.clean", command)
+    (inner / ".gitattributes").write_text("* filter=spy\n", encoding="utf-8")
+    os.utime(str(inner / "s.py"), (1_000_000_000, 1_000_000_000))
+    accepted(delivery.run())
+    assert calls(counter) == 0
+
+
+def test_an_accepted_fsmonitor_in_the_workers_own_config_still_runs_nothing(tmp_path):
+    """Once the user accepts the entry, only ``-c core.fsmonitor=false`` keeps the status from starting it."""
+    delivery = make_delivery(tmp_path, worktree_config_on)
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    command, counter = spy(tmp_path)  # after the work: the worker's own commit would start it too
+    git(delivery.worktree, "config", "--worktree", "core.fsmonitor", command)
+    delivery.accept_listed()
     accepted(delivery.run())
     assert calls(counter) == 0

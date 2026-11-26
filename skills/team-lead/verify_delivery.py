@@ -24,10 +24,13 @@ changed, each change with its recorded and its found value; it goes to the user,
 ``shared_state.py accept`` records what the user accepts.
 
 Exit 1, a refusal, with every reason on standard error: the branch does not point to the declared tip; the worktree's
-``.git`` leads to another repository (its ``git rev-parse --git-common-dir`` is not this one's), which is refused
+``.git`` leads to a git folder that is neither this repository's common folder nor a folder directly under its
+``worktrees/`` (``git rev-parse --git-common-dir`` and ``--absolute-git-dir``), whose settings nothing compares, refused
 without reading its status; the worktree is not clean (``git --no-optional-locks -c core.fsmonitor=false status
---porcelain --untracked-files=all`` prints something; the options keep status from refreshing and locking the worker's
-index and from starting the fsmonitor of the worker's configuration); a file the delivery changed is
+--porcelain --untracked-files=all --ignore-submodules=dirty`` prints something; the options keep status from
+refreshing and locking the worker's index, from starting the fsmonitor of the worker's configuration, and from running
+a status inside each submodule, whose git folder lies in the worker's admin folder and whose configuration nothing
+compares, so that uncommitted changes inside a submodule's checkout are not seen here); a file the delivery changed is
 outside every ``OWNED:`` line. The files are those of ``git diff --no-renames --name-only <merge base> <tip>``, where
 the merge base is that of the integration and the tip, so a delivery the integration has overtaken is judged on its
 own changes (without ``--no-renames`` a rename names only its destination, and a file moved in from another worker's
@@ -226,14 +229,24 @@ def check_shared_state(request: Request) -> None:
         raise SharedStateChanged(changes)
 
 
+def foreign_git_folder(worktree: str) -> Optional[str]:
+    """The git folder that the worktree's ``.git`` leads to, unless it is this repository's common folder or one
+    directly under its ``worktrees/``: the status would read, and run, that folder's settings, which nothing
+    compares."""
+    own = os.path.realpath(shared_state.common_dir())
+    found = git("-C", worktree, "rev-parse", "--path-format=absolute", "--git-common-dir", "--absolute-git-dir")
+    common, folder = (os.path.realpath(path) for path in found.splitlines())
+    ours = common == own and (folder == own or os.path.dirname(folder) == os.path.join(own, "worktrees"))
+    return None if ours else folder
+
+
 def worktree_problems(request: Request) -> List[str]:
-    """A ``.git`` that leads elsewhere would make status read, and run the settings of, another repository."""
     check_shared_state(request)
-    leads_to = shared_state.common_dir(request.worktree)
-    if os.path.realpath(leads_to) != os.path.realpath(shared_state.common_dir()):
-        return ["the worktree's .git leads to %s, not to this repository" % leads_to]
+    elsewhere = foreign_git_folder(request.worktree)
+    if elsewhere:
+        return ["the worktree's .git leads to %s, not to this repository" % elsewhere]
     dirty = git("--no-optional-locks", "-c", "core.fsmonitor=false", "-C", request.worktree, "status", "--porcelain",
-                "--untracked-files=all")
+                "--untracked-files=all", "--ignore-submodules=dirty")
     return ["the worktree is not clean:\n%s" % dirty.rstrip()] if dirty.strip() else []
 
 
@@ -249,7 +262,7 @@ def run_test_command(request: Request, revision: str, test_files: Sequence[str])
         check_shared_state(request)  # worktree add runs post-checkout
         with temporary_worktree(revision, "verify-delivery-") as folder:
             if test_files:
-                check_shared_state(request)  # so does checkout, and the test command ran in between
+                check_shared_state(request)  # checkout runs post-checkout, which a worker at work may have written
                 git("-C", folder, "checkout", request.tip, "--", *test_files)
             return subprocess.run(request.red, cwd=folder, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                   text=True, errors="replace")
@@ -321,7 +334,7 @@ def main(argv: Sequence[str]) -> int:
         reasons = review_reasons(request)
     except SharedStateChanged as changed:
         for change in changed.changes:
-            print("verify_delivery: shared state changed: %s" % change.line(), file=sys.stderr)
+            print(change.line(), file=sys.stderr)
         print("verify_delivery: each change above, with its recorded and its found value: it goes to the user, "
               "never to the worker; `shared_state.py accept` records what the user accepts", file=sys.stderr)
         return 4

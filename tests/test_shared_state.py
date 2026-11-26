@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from support import REPO_ROOT, commit, git, init_repo, run_script
+from support import REPO_ROOT, commit, common, git, init_repo, run_script, submodule_in
 
 sys.path.insert(0, str(REPO_ROOT / "skills" / "team-lead"))
 import shared_state  # noqa: E402  (the skill's folder is put on the path above)
@@ -57,7 +57,9 @@ def test_every_name_of_the_closed_list_is_in_the_docstring():
 
 def test_a_changed_value_is_listed_with_its_recorded_and_its_found_value():
     [change] = shared_state.differences(record({ref("main"): SHA}), now({ref("main"): OTHER_SHA}))
-    assert json.loads(change.line()) == {"item": ["ref", "refs/heads/main"], "recorded": SHA, "found": OTHER_SHA}
+    prefix, _, change_text = change.line().partition("shared state changed: ")
+    assert prefix == "verify_delivery: "
+    assert json.loads(change_text) == {"item": ["ref", "refs/heads/main"], "recorded": SHA, "found": OTHER_SHA}
 
 
 def test_team_refs_absent_from_the_record_may_appear_and_move():
@@ -201,8 +203,13 @@ def test_accept_brings_a_worktree_back_as_it_was_printed():
     assert shared_state.accepted(record({}), [printed]).items[("worktree", "/new")] == worktree()
 
 
-@pytest.mark.parametrize("line", ["", "[1]", '{"item": ["nothing", "x"], "found": 1}', '{"item": [], "found": 1}',
-                                  '{"found": 1}'])
+PRINTED = "verify_delivery: shared state changed: "
+
+
+@pytest.mark.parametrize("line", ["", PRINTED + "[1]", PRINTED + '{"item": ["nothing", "x"], "found": 1}',
+                                  PRINTED + '{"item": [], "found": 1}', PRINTED + '{"found": 1}',
+                                  '{"item": ["ref", "refs/tags/v1"], "recorded": null, "found": "%s"}' % SHA,
+                                  "verify_delivery: refused: of a sort.... " + '{"item": ["ref", "x"], "found": 1}'])
 def test_accept_refuses_what_exit_4_did_not_print(line):
     with pytest.raises(shared_state.RecordError, match="not an item"):
         shared_state.accepted(record({}), [line])
@@ -222,10 +229,6 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.chdir(path)
     return path
-
-
-def common(repo: Path) -> Path:
-    return Path(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
 
 
 def test_refs_are_read_by_name_with_their_symbolic_target(repo):
@@ -364,14 +367,6 @@ def recorded() -> "shared_state.Record":
     return shared_state.started("main", ["w"], shared_state.observe(), frozenset())
 
 
-def submodule_in(repo: Path, folder: Path) -> Path:
-    sub = init_repo(folder)
-    commit(sub, {"s.py": "s = 1\n"}, "sub")
-    git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub.as_posix(), "sub")
-    git(repo, "commit", "-q", "-m", "submodule")
-    return sub
-
-
 def test_a_submodules_git_folder_is_read_by_the_rules_of_a_git_folder(repo, tmp_path):
     """Its objects and refs are as volatile as the repository's own; its config and hooks are compared."""
     sub = submodule_in(repo, tmp_path / "sub")
@@ -481,10 +476,21 @@ def test_merged_records_the_new_integration_tip(repo):
 
 def test_accept_records_the_printed_item(repo):
     assert run(repo, "start", "--integration", "main", "--team", "w1").returncode == 0
-    line = json.dumps({"item": ["ref", "refs/tags/v1"], "recorded": None, "found": SHA})
-    assert run(repo, "accept", line).returncode == 0
+    line = PRINTED + json.dumps({"item": ["ref", "refs/tags/v1"], "recorded": None, "found": SHA})
+    assert run(repo, "accept", line).returncode == 0  # the whole line, one argument, as exit 4 printed it
     assert load(repo).items[("ref", "refs/tags/v1")] == SHA
     usage_error(run(repo, "accept", "refs/tags/v1"), "not an item")
+
+
+def test_start_refuses_to_read_again_over_a_record_of_the_run(repo):
+    """A second ``start`` would absorb every change since the first; only a removed record begins a new run."""
+    assert run(repo, "start", "--integration", "main", "--team", "w1").returncode == 0
+    first = load(repo)
+    git(repo, "tag", "planted")
+    usage_error(run(repo, "start", "--integration", "main", "--team", "w1"), "a record exists at")
+    assert load(repo) == first
+    (repo / ".pe" / "shared-state.json").unlink()
+    assert run(repo, "start", "--integration", "main", "--team", "w1").returncode == 0
 
 
 def test_a_record_that_cannot_be_written_exits_2_with_the_reason(repo):

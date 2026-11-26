@@ -1857,6 +1857,9 @@ GUIDED_SENTENCES = {
     ),
     "limits": (
         # the check of the shared state: after the fact, and another session's write is an exit 4 too
+        ("so a hook or a merge driver written then can run during those reads, as often as they start it, and shows",
+         "quindi un hook o un driver di merge scritto in quel momento può girare durante quelle letture, tante "
+         "volte quante esse lo avviano, e si vede"),
         ("The check of the shared state by `shared_state.py` and exit 4 of `verify_delivery.py` sees a change after "
          "it is made, not while it is made, and, like the delivery check, runs only when the model runs it.",
          "Il controllo dello stato condiviso, con `shared_state.py` e l'uscita 4 di `verify_delivery.py`, vede un "
@@ -2244,30 +2247,43 @@ GUIDED_SENTENCES = {
          "nel worktree di un `worker` anche `delivery.md` (il suo file di consegna) e, in quello di una sessione "
          "worker, `worker` (il segnale che vincola la sessione al suo worktree, scritto dalla sessione che "
          "coordina), e"),
-        ("besides the `SessionStart` and `PreToolUse` hooks described below, three scripts: "
-         "`skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells the model to run, and "
-         "`skills/team-lead/verify_delivery.py` and `skills/team-lead/shared_state.py`, which `team-lead` tells the "
-         "model to run.",
-         "oltre agli hook `SessionStart` e `PreToolUse` descritti sotto, ci sono tre script: "
-         "`skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al modello di eseguire, e "
-         "`skills/team-lead/verify_delivery.py` e `skills/team-lead/shared_state.py`, che `team-lead` dice al "
-         "modello di eseguire."),
-        ("1 when it is refused, 2 on a usage error, 3 when it holds something the reviewer has not read and 4 when "
-         "what the worktrees share changed since the record.",
-         "con 1 se è rifiutata, con 2 per un errore d'uso, con 3 quando contiene qualcosa che il revisore non ha "
-         "letto e con 4 quando ciò che i worktree condividono è cambiato dalla registrazione."),
-        ("[--reviewed <sha>] [--red <command>]`, from the checkout of the repository. "
-         "`skills/team-lead/shared_state.py` keeps that record, in `.pe/shared-state.json` of the checkout, and "
+        # the scripts, and the two of team-lead, whole: the five options of the command too
+        ("There are no commands in this version and, besides the `SessionStart` and `PreToolUse` hooks described "
+         "below, three scripts: `skills/safe-operations/recreate_night_commits.py`, which `safe-operations` tells "
+         "the model to run, and `skills/team-lead/verify_delivery.py` and `skills/team-lead/shared_state.py`, which "
+         "`team-lead` tells the model to run.",
+         "In questa versione non ci sono comandi e, oltre agli hook `SessionStart` e `PreToolUse` descritti sotto, "
+         "ci sono tre script: `skills/safe-operations/recreate_night_commits.py`, che `safe-operations` dice al "
+         "modello di eseguire, e `skills/team-lead/verify_delivery.py` e `skills/team-lead/shared_state.py`, che "
+         "`team-lead` dice al modello di eseguire."),
+        ("`skills/team-lead/verify_delivery.py` checks the delivery of a worker against git and exits 0 when it is "
+         "accepted, 1 when it is refused, 2 on a usage error, 3 when it holds something the reviewer has not read "
+         "and 4 when what the worktrees share changed since the record. To run it by hand: `python3 <the folder of "
+         "team-lead>/verify_delivery.py --integration <branch> --branch <branch> --tip <sha> --worktree <folder> "
+         "--brief <file> [--reviewed <sha>] [--red <command>]`, from the checkout of the repository.",
+         "`skills/team-lead/verify_delivery.py` controlla con git la consegna di un worker ed esce con 0 se è "
+         "accettata, con 1 se è rifiutata, con 2 per un errore d'uso, con 3 quando contiene qualcosa che il "
+         "revisore non ha letto e con 4 quando ciò che i worktree condividono è cambiato dalla registrazione. Per "
+         "eseguirlo a mano: `python3 <la cartella di team-lead>/verify_delivery.py --integration <ramo> --branch "
+         "<ramo> --tip <sha> --worktree <cartella> --brief <file> [--reviewed <sha>] [--red <comando>]`, dal "
+         "checkout del repository."),
+        ("`skills/team-lead/shared_state.py` keeps that record, in `.pe/shared-state.json` of the checkout, and "
          "exits 0, or 2 on a usage error. To run it by hand, from the checkout of the repository: `python3 <the "
          "folder of team-lead>/shared_state.py start --integration <branch> --team <branch>...` before the first "
-         "worker, `team <branch>...` before launching a branch that the record lacks, `merged <sha>` after each "
-         "integration, and `accept <item>...` with an item that exit 4 printed and you accepted.",
-         "[--reviewed <sha>] [--red <comando>]`, dal checkout del repository. `skills/team-lead/shared_state.py` "
-         "tiene quella registrazione, in `.pe/shared-state.json` del checkout, ed esce con 0, o con 2 per un errore "
-         "d'uso. Per eseguirlo a mano, dal checkout del repository: `python3 <la cartella di "
-         "team-lead>/shared_state.py start --integration <ramo> --team <ramo>...` prima del primo worker, `team "
-         "<ramo>...` prima di lanciare un ramo che la registrazione non ha, `merged <sha>` dopo ogni integrazione e "
-         "`accept <voce>...` con una voce che l'uscita 4 ha stampato e che hai accettato."),
+         "worker and never again during the run (it refuses while the record is there; remove it only to begin a "
+         "new run), `team <branch>...` before launching a branch that the record lacks, `merged <sha>` after each "
+         "integration, and `accept '<line>'...`, each a whole line that exit 4 printed and you accepted, quoted as "
+         "one argument.",
+         "`skills/team-lead/shared_state.py` tiene quella registrazione, in `.pe/shared-state.json` del checkout, "
+         "ed esce con 0, o con 2 per un errore d'uso. Per eseguirlo a mano, dal checkout del repository: `python3 "
+         "<la cartella di team-lead>/shared_state.py start --integration <ramo> --team <ramo>...` prima del primo "
+         "worker e mai più durante la corsa (rifiuta finché la registrazione c'è; toglila solo per cominciare una "
+         "corsa nuova), `team <ramo>...` prima di lanciare un ramo che la registrazione non ha, `merged <sha>` dopo "
+         "ogni integrazione e `accept '<riga>'...`, ciascuna una riga intera che l'uscita 4 ha stampato e che hai "
+         "accettato, tra virgolette come un solo argomento."),
+        # the record is one of the files of `.pe/`
+        ("in the coordinator's checkout also `shared-state.json` (the record of the shared state)",
+         "nel checkout del coordinatore anche `shared-state.json` (la registrazione dello stato condiviso)"),
         # the team-lead row names the fourth condition too
         ("(an approved plan, at least two disjoint file areas, a test environment for each suite, no other session "
          "writing the repository)",
@@ -2310,6 +2326,19 @@ GUIDED_SENTENCES = {
     ),
     "explain-parallel": (
         EXCLUDE_SENTENCES,
+        # the record of the shared state and its exit 4, which the delivery check of the explanation now has
+        ("so nothing makes it run, nor the steps of `shared_state.py` that keep its record",
+         "quindi nulla lo fa partire, né fa partire i passi di `shared_state.py` che ne tengono la registrazione"),
+        ("Before the first worker, the coordinator records with `shared_state.py` what the worktrees share "
+         "(branches, tags, worktrees, configuration, hooks); each run of `verify_delivery.py` compares it with what "
+         "is there before each git command that can start a program, and exits 4, before any other result, when "
+         "something outside the team's branches changed, with each change listed for you to decide, never sent to "
+         "the worker.",
+         "Prima del primo worker, il coordinatore registra con `shared_state.py` ciò che i worktree condividono "
+         "(rami, tag, worktree, configurazione, hook); ogni esecuzione di `verify_delivery.py` lo confronta con ciò "
+         "che c'è prima di ogni comando git che può avviare un programma, ed esce con 4, prima di ogni altro "
+         "risultato, quando qualcosa fuori dai rami della squadra è cambiato, con ogni cambiamento elencato perché "
+         "lo decida tu, mai mandato al worker."),
         # the red of a delivery that changes no code, as team-lead decides it
         ("A delivery that changes no code has no such red, because the code its tests cover is already on the "
          "integration tip: it is checked without `--red`, and its red is the mutations of that code, run by a "

@@ -8,15 +8,16 @@ python3 <this skill's folder>/shared_state.py merged <sha>
 python3 <this skill's folder>/shared_state.py accept <item>...
 
 The record is ``.pe/shared-state.json`` at the root of that checkout, outside the common folder of the repository
-(``git rev-parse --git-common-dir``), where both scripts find it. ``start`` is the one full read: it writes the record
-again and lists the worktrees outside the team (branch, ``detached``, ``prunable``). Every later record is derived from
+(``git rev-parse --git-common-dir``), where both scripts find it. ``start`` is the one full read of a run: it refuses
+while a record is there, which only removing it ends, and lists the worktrees outside the team (branch, ``detached``,
+``prunable``). Every later record is derived from
 the one before and never read again, so nothing that changed since the last clean comparison is absorbed: ``team``
 adds team names before a launch; ``merged <sha>`` moves the integration branch, and the HEAD of the worktrees on it, to
 the commit just integrated (after ``--ff-only`` the accepted sha, after ``--no-ff`` ``git rev-parse HEAD`` right after
-the merge); ``accept`` takes items as an exit 4 of ``verify_delivery.py`` printed them and records the found value
-printed with each, without reading git, so a later change to the same item stays a difference. ``start`` and ``team``
-refuse a name equal to ``--integration`` or whose branch is in the record, and ``start`` an ``--integration`` that is
-no branch. Exit 0, or 2 with the reason.
+the merge); ``accept`` takes lines whole, each one argument, as an exit 4 of ``verify_delivery.py`` printed them, and
+records the found value printed on each, without reading git, so a later change to the same item stays a difference.
+``start`` and ``team`` refuse a name equal to ``--integration`` or whose branch is in the record, and ``start`` an
+``--integration`` that is no branch. Exit 0, or 2 with the reason.
 
 The closed list of what may change between the record and a comparison:
 
@@ -42,9 +43,10 @@ The closed list of what may change between the record and a comparison:
 Everything else is compared, present or absent: each ref by name and symbolic target, its value from one ``git
 cat-file --batch-check``, a lookup (where the disk ignores case, a loose ``refs/heads/Main`` is what ``refs/heads/main``
 reads, while ``for-each-ref`` shows the packed value); each worktree's HEAD, branch and ``prunable``; every other file
-of the common folder, by its SHA-256, a symlink by its target, anything else by its kind; configuration entries by name
-and the SHA-256 of the value, so that no value is copied into the record (in the coordinator's ``.pe/``) or a message,
-though a value with little entropy can be guessed from its digest; and each file git reads its configuration from, each
+of the common folder, by its SHA-256, a symlink by its target, anything else by its kind; the entries of ``config``
+and of a new worktree's ``config.worktree`` by name and the SHA-256 of the value, so that no value is copied into the
+record (in the coordinator's ``.pe/``) or a message, though a value with little entropy can be guessed from its digest;
+the lines of ``info/exclude``; and, whole, each file git reads its configuration from, each
 target of ``include.path``, ``includeIf.*.path``, ``core.excludesFile`` and ``core.attributesFile``, ``~/.gitconfig``,
 ``config``, ``ignore`` and ``attributes`` in ``$XDG_CONFIG_HOME/git/`` (``~/.config/git/`` without it), and the hooks
 folder when it lies outside every worktree. No git call here starts a program.
@@ -52,8 +54,10 @@ folder when it lies outside every worktree. No git call here starts a program.
 It sees what a worker changed in a hurry or by accident, after the fact; not a worker that rewrites the record, the
 scripts, the plugin's hook or the coordinator's checkout. Outside it too: includes nested under a false ``includeIf``,
 which ``--show-origin`` does not list; the system attributes file and ``%(prefix)/`` paths; the environment and the
-``-c`` of a command; and what a worktree's own files configure (a hooks folder, ``.gitattributes``), which the review
-reads.
+``-c`` of a command; what a worktree's own files configure (a hooks folder, ``.gitattributes``), which the review
+reads; and a relative ``core.excludesFile`` or ``core.attributesFile``, read here from the coordinator's root but by the
+worker's status from the worker's. The global files are compared even where a setting or ``GIT_CONFIG_GLOBAL`` puts
+others in their place, so a change to one that git does not read is an exit 4 too.
 """
 import argparse
 import hashlib
@@ -73,6 +77,9 @@ from pe_git import HEADS, OBJECT_ID, GitError, git  # noqa: E402  (the plugin's 
 
 RECORD = Path(".pe") / "shared-state.json"
 NO_RECORD = "no record at %s: `shared_state.py start` begins a new run; in a run, stop and go to the user"
+RUN_OPEN = ("a record exists at %s: `start` again would absorb every change since the first; never run it again in a "
+            "run, and remove the record only to begin a new one")
+PRINTED = "verify_delivery: shared state changed: "  # how exit 4 prints a change, and what accept takes back
 HOST_BRANCH = "worktree-agent-"
 SYNC = "(?:-sync[0-9]*)?"
 VOLATILE = ("objects/", "refs/", "packed-refs", "reftable/", "logs/", "info/refs", "index", "HEAD", "ORIG_HEAD",
@@ -117,8 +124,8 @@ class Difference:
     found: Any  # None: absent now
 
     def line(self) -> str:
-        """The one line that exit 4 prints and that ``accept`` takes back."""
-        return json.dumps({"item": list(self.item), "recorded": self.recorded, "found": self.found})
+        """The one line that exit 4 prints and that ``accept`` takes back, whole."""
+        return PRINTED + json.dumps({"item": list(self.item), "recorded": self.recorded, "found": self.found})
 
 
 def digest(text: str) -> str:
@@ -210,9 +217,11 @@ def frozen(value: Any) -> Any:
 
 
 def printed_change(line: str) -> Tuple[Item, Any]:
-    """The item and the found value of one line that exit 4 printed."""
+    """The item and the found value of one whole line that exit 4 printed."""
+    if not line.startswith(PRINTED):
+        raise RecordError("%r is not an item that verify_delivery.py printed: it starts with %r" % (line, PRINTED))
     try:
-        change = json.loads(line)
+        change = json.loads(line[len(PRINTED):])
         item, found = tuple(change["item"]), frozen(change["found"])
     except (ValueError, TypeError, KeyError) as error:
         raise RecordError("%r is not an item that verify_delivery.py printed: %s" % (line, error)) from error
@@ -240,9 +249,9 @@ def started(integration: str, team: Sequence[str], now: Observation, copied: Fro
 # --- the reader: only reads, each git call through run_git ----------------------------------------------------------
 
 
-def common_dir(folder: Optional[str] = None) -> str:
-    """The common folder of the repository of the current folder, or of ``folder``, as an absolute path."""
-    return git(*(("-C", folder) if folder else ()), "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+def common_dir() -> str:
+    """The common folder of the repository of the current folder, as an absolute path."""
+    return git("rev-parse", "--path-format=absolute", "--git-common-dir").strip()
 
 
 def read_refs() -> Dict[Item, str]:
@@ -486,9 +495,12 @@ def save(record: Record, path: Path) -> None:
 
 
 def start(args: argparse.Namespace) -> None:
+    path = record_path()
+    if path.exists():
+        raise RecordError(RUN_OPEN % path)
     now = observe()
     record = started(args.integration, args.team, now, copied_entries(common_dir(), now.admin_folders))
-    save(record, record_path())
+    save(record, path)
     worktrees = sorted((item[1], value) for item, value in record.items.items() if item[0] == "worktree")
     for path, (_, branch, prunable) in worktrees:
         print("%s %s%s" % (path, branch[len(HEADS):] if branch else "detached", " prunable" if prunable else ""))
