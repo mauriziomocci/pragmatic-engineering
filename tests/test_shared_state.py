@@ -16,7 +16,7 @@ import pytest
 from support import REPO_ROOT, commit, git, init_repo, run_script
 
 sys.path.insert(0, str(REPO_ROOT / "skills" / "team-lead"))
-import shared_state  # noqa: E402
+import shared_state  # noqa: E402  (the skill's folder is put on the path above)
 
 SCRIPT = REPO_ROOT / "skills" / "team-lead" / "shared_state.py"
 SHA = "1" * 40
@@ -48,6 +48,7 @@ def test_every_name_of_the_closed_list_is_in_the_docstring():
              + shared_state.CONFIG_MAY_GAIN + shared_state.EXCLUDE_MAY_GAIN + shared_state.NEW_WORKTREE_ENTRIES)
     assert [name for name in names if "``%s``" % name not in doc] == []
     assert "``*%s``" % shared_state.LOCK in doc and "``%s``" % shared_state.HOST_BRANCH in doc
+    assert "``%s*``" % shared_state.SHARED_INDEX in doc
     assert "``-sync``" in doc and "zero or more digits" in doc
 
 
@@ -331,9 +332,15 @@ def outside(items):
 
 
 def test_configuration_files_are_read_present_or_absent(repo, tmp_path):
+    """Includes, the global files, and the global ignore and attributes files, set or by their default."""
     git(repo, "config", "include.path", "../extra.cfg")
     git(repo, "config", "includeIf.gitdir:/nowhere/.path", str(tmp_path / "never.cfg"))
-    named = [repo / "extra.cfg", tmp_path / "never.cfg", Path(os.environ["HOME"]) / ".gitconfig"]
+    git(repo, "config", "core.excludesFile", "~/ignored.txt")
+    git(repo, "config", "core.attributesFile", (tmp_path / "attributes.txt").as_posix())
+    xdg, home = Path(os.environ["XDG_CONFIG_HOME"]) / "git", Path(os.environ["HOME"])
+    xdg.mkdir(parents=True, exist_ok=True)
+    named = [repo / "extra.cfg", tmp_path / "never.cfg", home / ".gitconfig", home / "ignored.txt",
+             tmp_path / "attributes.txt", xdg / "ignore", xdg / "attributes"]
     assert {path.resolve() for path in named} & outside(shared_state.observe().items) == set()
     for path in named:
         path.write_text("[x]\n", encoding="utf-8")
@@ -351,6 +358,63 @@ def test_a_hooks_folder_outside_every_worktree_is_read_and_one_inside_is_not(rep
     assert (hooks / "pre-commit").resolve() in outside(shared_state.observe().items)
     git(repo, "config", "core.hooksPath", ".husky")
     assert [path for path in outside(shared_state.observe().items) if "husky" in str(path)] == []
+
+
+def recorded() -> "shared_state.Record":
+    return shared_state.started("main", ["w"], shared_state.observe(), frozenset())
+
+
+def submodule_in(repo: Path, folder: Path) -> Path:
+    sub = init_repo(folder)
+    commit(sub, {"s.py": "s = 1\n"}, "sub")
+    git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub.as_posix(), "sub")
+    git(repo, "commit", "-q", "-m", "submodule")
+    return sub
+
+
+def test_a_submodules_git_folder_is_read_by_the_rules_of_a_git_folder(repo, tmp_path):
+    """Its objects and refs are as volatile as the repository's own; its config and hooks are compared."""
+    sub = submodule_in(repo, tmp_path / "sub")
+    before = recorded()
+    files = {key[1] for key in before.items if key[0] == "file"}
+    assert [path for path in files if path.startswith(("modules/sub/objects/", "modules/sub/refs/"))] == []
+    assert "modules/sub/config" in files and [path for path in files if path.startswith("modules/sub/hooks/")]
+    commit(sub, {"s.py": "s = 2\n"}, "next")
+    git(repo, "-c", "protocol.file.allow=always", "submodule", "update", "-q", "--remote")
+    assert changed(before, shared_state.observe(before)) == []
+    git(repo / "sub", "config", "x.y", "z")
+    assert changed(before, shared_state.observe(before)) == [("file", "modules/sub/config")]
+
+
+def test_a_split_index_write_is_no_difference(repo):
+    git(repo, "config", "core.splitIndex", "true")
+    git(repo, "update-index", "--split-index")
+    before = recorded()
+    written = set(common(repo).glob("sharedindex.*"))
+    (repo / "b.py").write_text("b = 1\n", encoding="utf-8")
+    git(repo, "-c", "splitIndex.maxPercentChange=0", "add", "b.py")
+    assert set(common(repo).glob("sharedindex.*")) - written, "no new shared index was written"
+    assert [key for key in before.items if key[0] == "file" and "sharedindex." in key[1]] == []
+    assert changed(before, shared_state.observe(before)) == []
+
+
+def test_what_git_writes_in_a_run_is_volatile_allowed_or_derived(repo, tmp_path):
+    """The closed list against git itself: a worker on a team branch, gc, packed refs, a submodule update, a split
+    index, a fast-forward recorded with ``merged`` and the worker's worktree removed leave no difference."""
+    sub = submodule_in(repo, tmp_path / "sub")
+    git(repo, "config", "core.splitIndex", "true")
+    record = recorded()
+    git(repo, "worktree", "add", "-q", "-b", "w", str(tmp_path / "w"), "main")
+    tip = commit(tmp_path / "w", {"w.py": "w = 1\n"}, "work")
+    commit(sub, {"s.py": "s = 2\n"}, "next")
+    git(repo, "-c", "protocol.file.allow=always", "submodule", "update", "-q", "--remote")
+    git(repo, "-c", "splitIndex.maxPercentChange=0", "status", "--porcelain")
+    git(repo, "gc", "-q")
+    git(repo, "pack-refs", "--all")
+    git(repo, "merge", "-q", "--ff-only", tip)
+    record = shared_state.merged(record, tip)
+    git(repo, "worktree", "remove", "--force", str(tmp_path / "w"))
+    assert changed(record, shared_state.observe(record)) == []
 
 
 # --- the commands ---------------------------------------------------------------------------------------------------
@@ -421,6 +485,11 @@ def test_accept_records_the_printed_item(repo):
     assert run(repo, "accept", line).returncode == 0
     assert load(repo).items[("ref", "refs/tags/v1")] == SHA
     usage_error(run(repo, "accept", "refs/tags/v1"), "not an item")
+
+
+def test_a_record_that_cannot_be_written_exits_2_with_the_reason(repo):
+    (repo / ".pe").write_text("a file where the folder goes", encoding="utf-8")
+    usage_error(run(repo, "start", "--integration", "main", "--team", "w1"), "cannot be written")
 
 
 @pytest.mark.parametrize("command", [["team", "w2"], ["merged", SHA], ["accept", "{}"]])

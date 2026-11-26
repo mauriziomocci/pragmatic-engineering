@@ -33,7 +33,9 @@ The closed list of what may change between the record and a comparison:
   ``fsmonitor--daemon.ipc``, ``fsmonitor--daemon/``; in a recorded folder under ``worktrees/`` all but
   ``config.worktree``, ``commondir`` and ``gitdir``. Volatile, not measured, from gitrepository-layout and git-lfs:
   ``FETCH_HEAD``, ``AUTO_MERGE``, ``MERGE_HEAD``, ``MERGE_MSG``, ``MERGE_MODE``, ``MERGE_RR``, ``rr-cache/``, ``lfs/``,
-  ``gc.pid``, ``gc.log``, ``*.lock``.
+  ``gc.pid``, ``gc.log``, ``*.lock``, ``sharedindex.*`` (split index). The git folder of each submodule of the main
+  worktree, under ``modules/``, follows the same rules from its own root: its ``objects/``, ``refs/``, ``index`` and
+  ``HEAD`` are volatile, its ``config`` and ``hooks/`` compared.
 - By entries and by lines: ``config`` may gain only ``extensions.worktreeconfig=true``; ``info/exclude`` only lines
   that start with ``.claude/`` or ``**/.claude/``.
 
@@ -42,15 +44,19 @@ cat-file --batch-check``, which reads a name as a lookup does (where the file sy
 ``refs/heads/Main`` is what ``refs/heads/main`` reads, while ``for-each-ref`` still shows the packed value); each
 worktree's HEAD, branch and ``prunable`` (``git worktree list --porcelain``); every other file of the common folder, a
 regular file by its SHA-256, a symlink by its target, a socket or a FIFO by its kind; the entries of ``config`` and of
-a new worktree's ``config.worktree`` by name and by the SHA-256 of the value, so that no secret of a configuration is
-copied into the record or into a message; the lines of ``info/exclude``; and, present or absent, each configuration
-file that ``git config --list --show-origin`` names, each target of ``include.path`` and ``includeIf.*.path``,
-``~/.gitconfig``, ``$XDG_CONFIG_HOME/git/config`` (``~/.config/git/config`` without the variable) and the files of the
-hooks folder (``git rev-parse --git-path hooks``) when it lies outside every worktree. No git call here starts a
-program.
+a new worktree's ``config.worktree`` by name and by the SHA-256 of the value, so that no value of a configuration is
+copied into the record, which lives in the coordinator's ``.pe/``, or into a message (a value with little entropy can
+still be guessed from its digest); the lines of ``info/exclude``; and, present or absent, each configuration file that
+``git config --list --show-origin`` names, each target of ``include.path`` and ``includeIf.*.path``, of
+``core.excludesFile`` and of ``core.attributesFile``, ``~/.gitconfig``, and ``config``, ``ignore`` and ``attributes``
+in ``$XDG_CONFIG_HOME/git/`` (``~/.config/git/`` without the variable), and the files of the hooks folder (``git
+rev-parse --git-path hooks``) when it lies outside every worktree. No git call here starts a program.
 
 It sees what a worker changed in a hurry or by accident, after the fact; not a worker that rewrites the record, the
-scripts, the plugin's hook or the coordinator's checkout.
+scripts, the plugin's hook or the coordinator's checkout. Outside it too: includes nested under a false ``includeIf``,
+which ``--show-origin`` does not list; the system attributes file and ``%(prefix)/`` paths; the environment and the
+``-c`` of a command; and what a worktree's own files configure (a hooks folder, ``.gitattributes``), which the review
+reads.
 """
 import argparse
 import hashlib
@@ -66,11 +72,10 @@ from types import MappingProxyType
 from typing import Any, Callable, Dict, FrozenSet, Iterable, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
-from pe_git import run_git  # noqa: E402  (the plugin's shared code, found from this file)
+from pe_git import HEADS, OBJECT_ID, GitError, git  # noqa: E402  (the plugin's shared code, found from this file)
 
 RECORD = Path(".pe") / "shared-state.json"
 NO_RECORD = "no record at %s: `shared_state.py start` begins a new run; in a run, stop and go to the user"
-HEADS = "refs/heads/"
 HOST_BRANCH = "worktree-agent-"
 SYNC = "(?:-sync[0-9]*)?"
 VOLATILE = ("objects/", "refs/", "packed-refs", "reftable/", "logs/", "info/refs", "index", "HEAD", "ORIG_HEAD",
@@ -78,13 +83,12 @@ VOLATILE = ("objects/", "refs/", "packed-refs", "reftable/", "logs/", "info/refs
             "MERGE_MSG", "MERGE_MODE", "MERGE_RR", "rr-cache/", "lfs/", "gc.pid", "gc.log")
 NOT_VOLATILE = ("objects/info/alternates", "objects/info/http-alternates")
 LOCK = ".lock"
+SHARED_INDEX = "sharedindex."
 READ_APART = ("config", "info/exclude", "worktrees/")  # by entries, by lines, folder by folder
-SKIPPED_FOLDERS = tuple(name for name in VOLATILE + READ_APART if name.endswith("/"))
 ADMIN_COMPARED = ("config.worktree", "commondir", "gitdir")
 CONFIG_MAY_GAIN = ("extensions.worktreeconfig=true",)
 EXCLUDE_MAY_GAIN = (".claude/", "**/.claude/")
 NEW_WORKTREE_ENTRIES = ("core.untrackedcache", "core.longpaths")
-OBJECT_ID = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 FILE_KINDS = {stat.S_IFSOCK: "socket", stat.S_IFIFO: "fifo", stat.S_IFDIR: "folder"}
 
 Item = Tuple[Optional[str], ...]  # its kind, then its name: ("ref", "refs/heads/main")
@@ -92,7 +96,7 @@ Entry = Tuple[str, Optional[str]]  # a configuration entry: its name and the dig
 
 
 class RecordError(Exception):
-    """The call or the record is wrong, or git could not answer: nothing was recorded or compared."""
+    """The call or the record is wrong: nothing was recorded or compared. A git command that fails raises GitError."""
 
 
 @dataclass(frozen=True)
@@ -239,13 +243,6 @@ def started(integration: str, team: Sequence[str], now: Observation, copied: Fro
 # --- the reader: only reads, each git call through run_git ----------------------------------------------------------
 
 
-def git(*args: str, stdin: Optional[str] = None) -> str:
-    proc = run_git(*args, input=stdin)
-    if proc.returncode != 0:
-        raise RecordError("`git %s` failed: %s" % (" ".join(args), proc.stderr.strip()))
-    return proc.stdout
-
-
 def common_dir(folder: Optional[str] = None) -> str:
     """The common folder of the repository of the current folder, or of ``folder``, as an absolute path."""
     return git(*(("-C", folder) if folder else ()), "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
@@ -254,7 +251,7 @@ def common_dir(folder: Optional[str] = None) -> str:
 def read_refs() -> Dict[Item, str]:
     """Names from ``for-each-ref``, values from one lookup each; a name gone in between is left out, as if absent."""
     listed = [line.split("\0") for line in git("for-each-ref", "--format=%(refname)%00%(symref)").splitlines()]
-    looked_up = git("cat-file", "--batch-check=%(objectname)", stdin="".join(name + "\n" for name, _ in listed))
+    looked_up = git("cat-file", "--batch-check=%(objectname)", input="".join(name + "\n" for name, _ in listed))
     return {("ref", name): value + (" -> " + target if target else "")
             for (name, target), value in zip(listed, looked_up.splitlines()) if OBJECT_ID.fullmatch(value)}
 
@@ -269,16 +266,25 @@ def read_worktrees() -> Dict[Item, Tuple[Optional[str], Optional[str], bool]]:
 
 
 def file_value(path: str) -> Optional[str]:
-    """A regular file by the SHA-256 of its bytes, a symlink by its target, anything else by its kind; None if absent."""
+    """A regular file by the SHA-256 of its bytes, a symlink by its target, anything else by its kind; None when
+    absent."""
     try:
         mode = os.lstat(path).st_mode
         if stat.S_ISLNK(mode):
             return "symlink " + os.readlink(path)
         if stat.S_ISREG(mode):
-            return "sha256 " + hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            return file_digest(path)
     except FileNotFoundError:
         return None
     return FILE_KINDS.get(stat.S_IFMT(mode), "other")
+
+
+def file_digest(path: str) -> str:
+    content = hashlib.sha256()
+    with open(path, "rb") as opened:
+        for block in iter(lambda: opened.read(1 << 16), b""):
+            content.update(block)
+    return "sha256 " + content.hexdigest()
 
 
 def scanned(folder: str) -> List[os.DirEntry]:
@@ -299,11 +305,37 @@ def walk(root: str, skipped: Callable[[str], bool], below: str = "") -> Iterator
             yield path, entry.path
 
 
-def skipped_in_common(path: str) -> bool:
-    """Volatile, or read apart; a folder on the way to a compared file is entered."""
+def is_skipped(path: str, read_apart: Sequence[str]) -> bool:
+    """A path of a git folder, relative to it (a folder with its ``/``), that is not compared as a file: volatile, or
+    read apart; a folder on the way to a compared file is entered."""
     if path in NOT_VOLATILE or (path.endswith("/") and any(kept.startswith(path) for kept in NOT_VOLATILE)):
         return False
-    return path.endswith(LOCK) or path.startswith(SKIPPED_FOLDERS) or path in VOLATILE + READ_APART
+    names = VOLATILE + tuple(read_apart)
+    folders = tuple(name for name in names if name.endswith("/"))
+    return path.endswith(LOCK) or path.startswith((SHARED_INDEX, *folders)) or path in names
+
+
+def submodule_git_folders(common: str, below: str = "modules/") -> List[str]:
+    """The git folders under ``modules/``, nested ones included, relative with their ``/``: a folder there that holds
+    a ``HEAD`` is one, any other is a part of a submodule's name."""
+    folder = os.path.join(common, below)
+    found: List[str] = []
+    for entry in scanned(folder) if os.path.isdir(folder) else []:
+        if not entry.is_dir(follow_symlinks=False):
+            continue
+        path = below + entry.name + "/"
+        if os.path.isfile(os.path.join(entry.path, "HEAD")):
+            found += [path, *submodule_git_folders(common, path + "modules/")]
+        else:
+            found += submodule_git_folders(common, path)
+    return found
+
+
+def skipped_in_common(git_folders: Sequence[str], path: str) -> bool:
+    """A submodule's git folder follows the rules of a git folder from its own root; only the repository's own has the
+    parts read apart."""
+    base = max((folder for folder in git_folders if path.startswith(folder)), key=len, default="")
+    return is_skipped(path[len(base):], () if base else READ_APART)
 
 
 def file_items(paths: Iterable[Tuple[str, str]]) -> Dict[Item, str]:
@@ -349,20 +381,27 @@ def configuration_files(top: str) -> Set[str]:
         if origin.startswith("file:"):
             source = os.path.join(top, origin[len("file:"):])
             files.add(source)
-            files.update(include_target(source, text))
+            files.update(file_named(source, top, text))
     return files
 
 
-def include_target(source: str, text: str) -> List[str]:
+def file_named(source: str, top: str, text: str) -> List[str]:
+    """The file an entry names: an include, relative to the file that holds it; a global ignore or attributes file,
+    relative to the root of the checkout, where git reads it from."""
     name, _, value = text.partition("\n")
-    if not value or not (name == "include.path" or (name.startswith("includeif.") and name.endswith(".path"))):
+    if name == "include.path" or (name.startswith("includeif.") and name.endswith(".path")):
+        base = os.path.dirname(source)
+    elif name in ("core.excludesfile", "core.attributesfile"):
+        base = top
+    else:
         return []
-    return [os.path.normpath(os.path.join(os.path.dirname(source), os.path.expanduser(value)))]
+    return [os.path.normpath(os.path.join(base, os.path.expanduser(value)))] if value else []
 
 
 def global_files() -> Set[str]:
-    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
-    return {os.path.join(os.path.expanduser("~"), ".gitconfig"), os.path.join(xdg, "git", "config")}
+    xdg = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config"), "git")
+    return {os.path.join(os.path.expanduser("~"), ".gitconfig"), *(os.path.join(xdg, name)
+                                                                    for name in ("config", "ignore", "attributes"))}
 
 
 def is_below(path: str, folder: str) -> bool:
@@ -396,7 +435,8 @@ def observe(record: Optional[Record] = None) -> Observation:
     try:
         worktrees = read_worktrees()
         admin = read_admin_folders(common, registered)
-        files = file_items(walk(common, skipped_in_common))
+        git_folders = submodule_git_folders(common)
+        files = file_items(walk(common, lambda path: skipped_in_common(git_folders, path)))
         config = config_entries(os.path.join(common, "config"))
         items = {**read_refs(), **worktrees, **files, **admin.items, **read_exclude(common),
                  **{("config",) + entry: count for entry, count in config.items()},
@@ -436,13 +476,16 @@ def save(record: Record, path: Path) -> None:
     data = {"integration": record.integration, "team": sorted(record.team),
             "copied": sorted(record.copied, key=json.dumps),
             "items": sorted(([list(item), value] for item, value in record.items.items()), key=json.dumps)}
-    path.parent.mkdir(exist_ok=True)
-    ignore = path.parent / ".gitignore"
-    if not ignore.exists():
-        ignore.write_text("*\n", encoding="utf-8")
-    partial = path.with_name(path.name + ".partial")
-    partial.write_text(json.dumps(data), encoding="utf-8")
-    os.replace(str(partial), str(path))
+    try:
+        path.parent.mkdir(exist_ok=True)
+        ignore = path.parent / ".gitignore"
+        if not ignore.exists():
+            ignore.write_text("*\n", encoding="utf-8")
+        partial = path.with_name(path.name + ".partial")
+        partial.write_text(json.dumps(data), encoding="utf-8")
+        os.replace(str(partial), str(path))
+    except OSError as error:
+        raise RecordError("the record %s cannot be written: %s" % (path, error)) from error
 
 
 # --- the commands ---------------------------------------------------------------------------------------------------
@@ -484,7 +527,7 @@ def main(argv: Sequence[str]) -> int:
         else:
             path = record_path()
             save(DERIVED[args.command](load(path), args), path)
-    except RecordError as error:
+    except (RecordError, GitError) as error:
         print("shared_state: %s" % error, file=sys.stderr)
         return 2
     return 0

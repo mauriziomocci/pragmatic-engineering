@@ -16,9 +16,18 @@ lookup tries a tag and ``refs/<name>`` before a branch, and the worker can creat
 brief the worker was given: its ``OWNED: <glob>`` lines (one or more) name the files the worker may change, matched
 with ``fnmatchcase`` on the repository paths, where ``*`` also crosses ``/``.
 
-Exit 1, a refusal, with every reason on standard error: the branch does not point to the declared tip; the worktree
-is not clean (``git --no-optional-locks status --porcelain --untracked-files=all`` prints something; the option keeps
-status from refreshing and locking the worker's index); a file the delivery changed is
+Every run reads the record of what the worktrees share, ``.pe/shared-state.json`` at the root of the checkout, which
+``shared_state.py`` keeps, and compares it with what is there now before each git command that can start a program:
+before the worker's status, before each temporary worktree of ``--red`` and the copy of its test files, and before the
+merges are read; two comparisons without ``--red``, five with it. Exit 4, which wins over 1 and 3: the shared state
+changed, each change with its recorded and its found value; it goes to the user, never to the worker, and
+``shared_state.py accept`` records what the user accepts.
+
+Exit 1, a refusal, with every reason on standard error: the branch does not point to the declared tip; the worktree's
+``.git`` leads to another repository (its ``git rev-parse --git-common-dir`` is not this one's), which is refused
+without reading its status; the worktree is not clean (``git --no-optional-locks -c core.fsmonitor=false status
+--porcelain --untracked-files=all`` prints something; the options keep status from refreshing and locking the worker's
+index and from starting the fsmonitor of the worker's configuration); a file the delivery changed is
 outside every ``OWNED:`` line. The files are those of ``git diff --no-renames --name-only <merge base> <tip>``, where
 the merge base is that of the integration and the tip, so a delivery the integration has overtaken is judged on its
 own changes (without ``--no-renames`` a rename names only its destination, and a file moved in from another worker's
@@ -44,7 +53,8 @@ merged) are the ones to read. Without ``--reviewed`` (it then equals ``--integra
 from the reviewed tip (``git merge-base --is-ancestor``), or the branch was moved below or away from what the reviewer
 read, which is exit 3 with that reason.
 
-Exit 2, a usage error: a missing or unknown argument, a brief with no ``OWNED:`` line, a value that is neither a
+Exit 2, a usage error: no record (``shared_state.py start`` begins a new run; in a run, stop and go to the user), a
+missing or unknown argument, a brief with no ``OWNED:`` line, a value that is neither a
 commit id nor a branch of the repository, a ``--red`` command that is empty, has an unbalanced quote or cannot start,
 a folder or a file that is not there, a git command that fails. Exit 0: accepted.
 
@@ -55,7 +65,7 @@ hide a change.
 """
 import argparse
 import fnmatch
-import re
+import os
 import shlex
 import subprocess
 import sys
@@ -64,12 +74,14 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
-from pe_git import run_git  # noqa: E402
-from pe_worktree import WorktreeError, temporary_worktree  # noqa: E402  (the plugin's shared code, found from this file)
+# Below, the imports come after the path to lib/: the plugin's shared code, found from this file, which shared_state,
+# in this file's folder, imports too.
+import shared_state  # noqa: E402
+from pe_git import HEADS, OBJECT_ID, GitError, git, run_git  # noqa: E402
+from pe_worktree import WorktreeError, temporary_worktree  # noqa: E402
+from shared_state import RecordError  # noqa: E402
 
 READ_FLAGS = ("--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "--ignore-submodules=none")
-OBJECT_ID = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
-HEADS = "refs/heads/"
 OUTPUT_LINES = 20
 # Tests copied onto the integration tip pass there when the code they cover is already on it, so a delivery that
 # changes no code is never red here. Every delivery also ticks its task file, which the script cannot tell from code:
@@ -82,7 +94,15 @@ NEVER_RED = (
 
 
 class UsageError(Exception):
-    """The call is wrong, or git could not answer: nothing was checked."""
+    """The call is wrong: nothing was checked. A git command that fails raises ``GitError``, with the same exit."""
+
+
+class SharedStateChanged(Exception):
+    """What the worktrees share changed since the record: the run stops before git can start a program."""
+
+    def __init__(self, changes: Sequence[shared_state.Difference]):
+        super().__init__("%d change(s)" % len(changes))
+        self.changes = changes
 
 
 class _Parser(argparse.ArgumentParser):
@@ -102,13 +122,7 @@ class Request:
     reviewed: str
     after_review: bool
     red: Optional[Tuple[str, ...]]
-
-
-def git(*args: str) -> str:
-    proc = run_git(*args)
-    if proc.returncode != 0:
-        raise UsageError("`git %s` failed: %s" % (" ".join(args), proc.stderr.strip()))
-    return proc.stdout
+    record: shared_state.Record
 
 
 def branch_head(option: str, value: str) -> str:
@@ -182,7 +196,8 @@ def parse(argv: Sequence[str]) -> Request:
         raise UsageError("--red needs a `TESTS:` line in the brief")
     return Request(integration, args.branch, branch_head("--branch", args.branch), commit_id("--tip", args.tip),
                    args.worktree, owned, tests, reviewed,
-                   args.reviewed is not None, None if args.red is None else split_command(args.red))
+                   args.reviewed is not None, None if args.red is None else split_command(args.red),
+                   shared_state.load(shared_state.record_path()))
 
 
 def own_changes(request: Request, *options: str) -> List[str]:
@@ -204,8 +219,21 @@ def branch_problems(request: Request) -> List[str]:
     return ["branch %s points to %s, not to the declared tip %s" % (request.branch, request.branch_tip, request.tip)]
 
 
+def check_shared_state(request: Request) -> None:
+    """Before a git command that can start a program: one that a worker set up would otherwise run here."""
+    changes = shared_state.differences(request.record, shared_state.observe(request.record))
+    if changes:
+        raise SharedStateChanged(changes)
+
+
 def worktree_problems(request: Request) -> List[str]:
-    dirty = git("--no-optional-locks", "-C", request.worktree, "status", "--porcelain", "--untracked-files=all")
+    """A ``.git`` that leads elsewhere would make status read, and run the settings of, another repository."""
+    check_shared_state(request)
+    leads_to = shared_state.common_dir(request.worktree)
+    if os.path.realpath(leads_to) != os.path.realpath(shared_state.common_dir()):
+        return ["the worktree's .git leads to %s, not to this repository" % leads_to]
+    dirty = git("--no-optional-locks", "-c", "core.fsmonitor=false", "-C", request.worktree, "status", "--porcelain",
+                "--untracked-files=all")
     return ["the worktree is not clean:\n%s" % dirty.rstrip()] if dirty.strip() else []
 
 
@@ -218,8 +246,10 @@ def run_test_command(request: Request, revision: str, test_files: Sequence[str])
     """The test command in a temporary worktree of ``revision``, after the delivery's own ``test_files`` are copied
     into it; its output is kept, standard error merged into standard output."""
     try:
+        check_shared_state(request)  # worktree add runs post-checkout
         with temporary_worktree(revision, "verify-delivery-") as folder:
             if test_files:
+                check_shared_state(request)  # so does checkout, and the test command ran in between
                 git("-C", folder, "checkout", request.tip, "--", *test_files)
             return subprocess.run(request.red, cwd=folder, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                   text=True, errors="replace")
@@ -283,12 +313,19 @@ def main(argv: Sequence[str]) -> int:
     try:
         request = parse(argv)
         problems = refusals(request)
+        check_shared_state(request)  # before a refusal too, for what the test ran; and --remerge-diff runs drivers
         if problems:
             for problem in problems:
                 print("verify_delivery: refused: %s" % problem, file=sys.stderr)
             return 1
         reasons = review_reasons(request)
-    except UsageError as error:
+    except SharedStateChanged as changed:
+        for change in changed.changes:
+            print("verify_delivery: shared state changed: %s" % change.line(), file=sys.stderr)
+        print("verify_delivery: each change above, with its recorded and its found value: it goes to the user, "
+              "never to the worker; `shared_state.py accept` records what the user accepts", file=sys.stderr)
+        return 4
+    except (UsageError, RecordError, GitError) as error:
         print("verify_delivery: %s" % error, file=sys.stderr)
         return 2
     if reasons:

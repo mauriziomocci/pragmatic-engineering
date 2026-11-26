@@ -1,34 +1,41 @@
 """The delivery check of team-lead against git: every case builds its own repository and its own worker worktree.
 
 The script runs from the coordinator's checkout (``repo``, on the branch ``integration``) and reads the worker's
-branch ``w``, checked out in ``worktree``. Every path inside a command line is written with ``as_posix()``: the
+branch ``w``, checked out in ``worktree``. Every case starts from a record of the shared state taken by
+``shared_state.py start`` before the worker exists, with ``w`` as the team, a branch ``shared`` and a tag ``v1``
+outside it, and a home folder of its own. Every path inside a command line is written with ``as_posix()``: the
 suite also runs on Windows, where a backslash is an escape for the command splitter.
 """
+import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
 import pytest
 
 from support import REPO_ROOT, commit, git, init_repo, run_script
 
 SCRIPT = REPO_ROOT / "skills" / "team-lead" / "verify_delivery.py"
+SHARED_STATE = REPO_ROOT / "skills" / "team-lead" / "shared_state.py"
 BRIEF = "# Brief\n\nOWNED: src/a/*\nOWNED: tests/test_a*.py\nTESTS: tests/test_a*.py\n"
 # A test is a script that exits with a non-zero code when its assertion falls, run from the root of a worktree.
 FEATURE_TEST = "import sys\n\nsys.path.insert(0, 'src/a')\nimport feature\n\nassert feature.VALUE == 1\n"
+CHANGED = "verify_delivery: shared state changed: "
 
 
 @dataclass
 class Delivery:
-    """The coordinator's checkout, the worker's worktree on ``w``, and the brief."""
+    """The coordinator's checkout, the worker's worktree on ``w``, the brief, and the home folder of both scripts."""
 
     repo: Path
     worktree: Path
     brief: Path
+    home: Path
 
     def tip(self) -> str:
         return git(self.worktree, "rev-parse", "HEAD").strip()
@@ -37,7 +44,10 @@ class Delivery:
         return commit(self.worktree, files, message)
 
     def integrate(self, files: Dict[str, str], message: str = "integration moves") -> str:
-        return commit(self.repo, files, message)
+        """A commit on the integration branch, recorded with ``merged`` as the coordinator does after a merge."""
+        sha = commit(self.repo, files, message)
+        self.shared("merged", sha)
+        return sha
 
     def worktree_entries(self) -> int:
         return len(git(self.repo, "worktree", "list").splitlines())
@@ -52,6 +62,7 @@ class Delivery:
 
     def integrate_a_resolved_merge(self) -> str:
         """Another worker's delivery lands on ``integration`` as a merge that keeps the integration's side."""
+        self.shared("team", "other")
         git(self.repo, "branch", "other", "integration")
         git(self.repo, "checkout", "-q", "other")
         commit(self.repo, {"src/b/b.py": "b = 'other'\n"}, "other worker")
@@ -61,10 +72,15 @@ class Delivery:
         git(self.repo, "checkout", "--ours", "--", "src/b/b.py")
         git(self.repo, "add", "src/b/b.py")
         git(self.repo, "commit", "-q", "--no-edit")
-        return git(self.repo, "rev-parse", "HEAD").strip()
+        merge = git(self.repo, "rev-parse", "HEAD").strip()
+        self.shared("merged", merge)
+        return merge
 
     def red_command(self) -> str:
         return shlex.join([Path(sys.executable).as_posix(), "tests/test_a.py"])
+
+    def env(self) -> Dict[str, str]:
+        return {"HOME": str(self.home), "USERPROFILE": str(self.home)}
 
     def run(self, extra: Iterable[str] = (), replace: Optional[Dict[str, Optional[str]]] = None):
         """Run the script with the usual arguments; ``replace`` swaps a value, or drops the option with ``None``."""
@@ -77,19 +93,54 @@ class Delivery:
         }
         arguments.update(replace or {})
         flat = [word for pair in arguments.items() if pair[1] is not None for word in pair]
-        return run_script(SCRIPT, [*flat, *extra], self.repo)
+        return run_script(SCRIPT, [*flat, *extra], self.repo, env=self.env())
+
+    def shared(self, *args: str) -> None:
+        proc = run_script(SHARED_STATE, list(args), self.repo, env=self.env())
+        assert proc.returncode == 0, proc.stderr
+
+    def accept_listed(self) -> None:
+        """What the test changed in the shared state on purpose is accepted as the user would, after an exit 4."""
+        proc = self.run()
+        assert proc.returncode == 4, proc.stdout + proc.stderr
+        self.shared("accept", *listed(proc))
+
+
+def make_delivery(tmp_path: Path, before_start: Callable[[Path], None] = lambda repo: None,
+                  init: Iterable[str] = ()) -> Delivery:
+    """The one way a case gets its record: ``before_start`` shapes the repository before it is recorded."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main", *init)
+    git(repo, "checkout", "-q", "-b", "integration")
+    commit(repo, {"src/a/a.py": "a = 1\n", "src/b/b.py": "b = 1\n"}, "base")
+    git(repo, "branch", "shared")
+    git(repo, "tag", "v1")
+    before_start(repo)
+    home = tmp_path / "home"
+    home.mkdir()
+    brief = tmp_path / "brief.md"
+    brief.write_text(BRIEF, encoding="utf-8")
+    delivery = Delivery(repo, tmp_path / "worker", brief, home)
+    delivery.shared("start", "--integration", "integration", "--team", "w")
+    git(repo, "worktree", "add", "-q", "-b", "w", str(delivery.worktree), "integration")
+    return delivery
 
 
 @pytest.fixture
 def delivery(tmp_path):
-    repo = init_repo(tmp_path / "repo")
-    git(repo, "checkout", "-q", "-b", "integration")
-    commit(repo, {"src/a/a.py": "a = 1\n", "src/b/b.py": "b = 1\n"}, "base")
-    worktree = tmp_path / "worker"
-    git(repo, "worktree", "add", "-q", "-b", "w", str(worktree), "integration")
-    brief = tmp_path / "brief.md"
-    brief.write_text(BRIEF, encoding="utf-8")
-    return Delivery(repo, worktree, brief)
+    return make_delivery(tmp_path)
+
+
+def listed(proc) -> List[str]:
+    """The items an exit 4 printed, each as ``accept`` takes it."""
+    return [line[len(CHANGED):] for line in proc.stderr.splitlines() if line.startswith(CHANGED)]
+
+
+def changed_items(proc) -> List[List[Optional[str]]]:
+    assert proc.returncode == 4, proc.stdout + proc.stderr
+    assert "it goes to the user, never to the worker" in proc.stderr, proc.stderr
+    return [json.loads(line)["item"] for line in listed(proc)]
 
 
 def refused(proc, reason: str) -> None:
@@ -124,6 +175,7 @@ def test_a_tag_named_like_the_branch_does_not_stand_in_for_it(delivery):
     declared = delivery.work({"src/a/new.py": "x = 1\n"})
     delivery.work({"src/a/newer.py": "y = 1\n"})
     git(delivery.repo, "tag", "w", declared)
+    delivery.accept_listed()
     refused(delivery.run(replace={"--tip": declared}), "not to the declared tip")
 
 
@@ -135,6 +187,7 @@ def test_a_tag_or_a_ref_named_like_the_integration_is_ignored(delivery, kind):
         git(delivery.repo, "tag", "integration", delivery.tip())
     else:
         git(delivery.repo, "update-ref", "refs/integration", delivery.tip())
+    delivery.accept_listed()
     refused(delivery.run(), "outside the OWNED lines")
 
 
@@ -160,6 +213,7 @@ def test_a_tip_behind_the_reviewed_tip_exits_3(delivery):
 def test_a_full_ref_or_a_sha_still_names_the_integration_when_a_tag_shadows_it(delivery, spelling):
     delivery.work({"src/a/new.py": "x = 1\n"})
     git(delivery.repo, "tag", "integration", delivery.tip())
+    delivery.accept_listed()
     integration = "refs/heads/integration" if spelling == "full-ref" else git(delivery.repo, "rev-parse",
                                                                               "refs/heads/integration").strip()
     proc = delivery.run(replace={"--integration": integration})
@@ -231,6 +285,7 @@ def test_a_file_moved_in_from_another_area_exits_1(delivery):
 def test_a_dirty_worktree_exits_1(delivery, dirt):
     """``status.showUntrackedFiles=no`` hides an untracked file from ``--porcelain`` unless the script asks for all."""
     git(delivery.repo, "config", "status.showUntrackedFiles", "no")
+    delivery.accept_listed()
     delivery.work({"src/a/new.py": "x = 1\n"})
     if dirt == "tracked":
         (delivery.worktree / "src/a/a.py").write_text("a = 2\n", encoding="utf-8")
@@ -382,6 +437,7 @@ def test_a_replaced_commit_is_read_as_it_is(delivery):
     clean = git(delivery.repo, "commit-tree", "-p", "integration", "-m", "clean",
                 git(delivery.repo, "rev-parse", "integration^{tree}").strip()).strip()
     git(delivery.repo, "replace", tip, clean)
+    delivery.accept_listed()
     refused(delivery.run(), "outside the OWNED lines")
 
 
@@ -523,3 +579,410 @@ def test_no_text_says_that_the_script_changes_nothing_or_that_the_command_is_con
                 for line in (REPO_ROOT / name).read_text(encoding="utf-8").splitlines() if "verify_delivery" in line]
     for text in [path.read_text(encoding="utf-8") for path in whole] + about_it:
         assert [claim for claim in claims if claim in text] == []
+
+
+# --- exit 4: the shared state changed since the record ---------------------------------------------------------------
+
+# A program that a git setting runs counts each call in the file it is given, and copies its input as a filter would.
+SPY = "import sys\nwith open(sys.argv[1], 'a') as calls:\n    calls.write('x\\n')\nsys.stdout.write(sys.stdin.read())\n"
+
+
+def spy(folder: Path):
+    """The command line of a spy and the file where it counts its calls."""
+    script, counter = folder / "spy.py", folder / "spy-calls"
+    script.write_text(SPY, encoding="utf-8")
+    return shlex.join([Path(sys.executable).as_posix(), script.as_posix(), counter.as_posix()]), counter
+
+
+def calls(counter: Path) -> int:
+    return len(counter.read_text(encoding="utf-8").splitlines()) if counter.exists() else 0
+
+
+def common(repo: Path) -> Path:
+    return Path(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+
+
+def ref(name: str) -> List[str]:
+    return ["ref", name]
+
+
+def test_a_branch_outside_the_team_that_moves_exits_4_with_its_recorded_and_found_value(delivery):
+    before = git(delivery.repo, "rev-parse", "shared").strip()
+    tip = delivery.work({"src/a/new.py": "x = 1\n"})
+    git(delivery.repo, "branch", "-f", "shared", tip)
+    proc = delivery.run()
+    assert changed_items(proc) == [ref("refs/heads/shared")]
+    assert json.loads(listed(proc)[0]) == {"item": ref("refs/heads/shared"), "recorded": before, "found": tip}
+
+
+def test_a_loose_ref_beside_the_packed_one_it_shadows_exits_4_even_once_packed(delivery):
+    """Where the file system ignores case, a loose ``Integration`` is what ``integration`` and its checkout read."""
+    tip = delivery.work({"src/a/new.py": "x = 1\n"})
+    git(delivery.repo, "pack-refs", "--all")
+    (common(delivery.repo) / "refs" / "heads" / "Integration").write_text(tip + "\n", encoding="utf-8")
+    items = changed_items(delivery.run())
+    assert ref("refs/heads/Integration") in items
+    if (common(delivery.repo) / "refs" / "heads" / "integration").exists():  # the loose file answers both names
+        assert ref("refs/heads/integration") in items and [item[0] for item in items].count("worktree") == 1
+    git(delivery.repo, "pack-refs", "--all")
+    assert ref("refs/heads/Integration") in changed_items(delivery.run())
+
+
+def test_a_branch_made_symbolic_with_the_same_value_exits_4(delivery):
+    git(delivery.repo, "branch", "w-sync3", "shared")
+    git(delivery.repo, "symbolic-ref", "refs/heads/shared", "refs/heads/w-sync3")
+    assert changed_items(delivery.run()) == [ref("refs/heads/shared")]
+
+
+def test_a_new_tag_and_a_stash_exit_4(delivery):
+    git(delivery.repo, "tag", "v2")
+    (delivery.repo / "src/b/b.py").write_text("b = 2\n", encoding="utf-8")
+    git(delivery.repo, "stash", "-q")
+    assert changed_items(delivery.run()) == [ref("refs/stash"), ref("refs/tags/v2")]
+
+
+def test_the_head_of_the_coordinators_checkout_moved_exits_4(delivery):
+    git(delivery.repo, "checkout", "-q", "--detach")
+    [item] = changed_items(delivery.run())
+    assert item[0] == "worktree" and Path(item[1]).name == "repo"
+
+
+def test_a_new_worktree_on_a_branch_outside_the_team_exits_4(delivery, tmp_path):
+    git(delivery.repo, "worktree", "add", "-q", str(tmp_path / "stray"), "shared")
+    [item] = changed_items(delivery.run())
+    assert item[0] == "worktree" and Path(item[1]).name == "stray"
+
+
+def test_a_recorded_worktree_that_disappears_exits_4(tmp_path):
+    delivery = make_delivery(tmp_path, lambda repo: git(repo, "worktree", "add", "-q", "--detach",
+                                                        str(tmp_path / "kept")))
+    git(delivery.repo, "worktree", "remove", str(tmp_path / "kept"))
+    items = changed_items(delivery.run())
+    assert [Path(item[1]).name for item in items if item[0] == "worktree"] == ["kept"]
+
+
+def append(path: Path, text: str) -> None:
+    with path.open("a", encoding="utf-8") as appended:
+        appended.write(text)
+
+
+COMMON_CHANGES = {
+    "config": (lambda repo, folder: git(repo, "config", "x.y", "z"), ["config", "x.y"]),
+    "shallow": (lambda repo, folder: (folder / "shallow").write_text("0" * 40 + "\n"), ["file", "shallow"]),
+    "alternates": (lambda repo, folder: (folder / "objects" / "info" / "alternates").write_text("/x\n"),
+                   ["file", "objects/info/alternates"]),
+    "attributes": (lambda repo, folder: (folder / "info" / "attributes").write_text("* -text\n"),
+                   ["file", "info/attributes"]),
+    "exclude": (lambda repo, folder: append(folder / "info" / "exclude", "build/\n"), ["exclude", "build/"]),
+    "hook": (lambda repo, folder: (folder / "hooks" / "post-checkout").write_text("#!/bin/sh\n"),
+             ["file", "hooks/post-checkout"]),
+    "new-file": (lambda repo, folder: (folder / "stray").write_text("x"), ["file", "stray"]),
+}
+
+
+@pytest.mark.parametrize("change", sorted(COMMON_CHANGES))
+def test_a_change_in_the_common_folder_outside_the_closed_list_exits_4(delivery, change):
+    write, expected = COMMON_CHANGES[change]
+    write(delivery.repo, common(delivery.repo))
+    assert [item[:2] for item in changed_items(delivery.run())] == [expected]
+
+
+def worktree_config_on(repo: Path) -> None:
+    git(repo, "config", "extensions.worktreeConfig", "true")
+
+
+@pytest.mark.parametrize("form", ["filter", "include"])
+def test_a_filter_in_the_workers_own_config_exits_4_before_its_status_runs_it(tmp_path, form):
+    delivery = make_delivery(tmp_path, worktree_config_on)
+    command, counter = spy(tmp_path)
+    if form == "filter":
+        git(delivery.worktree, "config", "--worktree", "filter.spy.clean", command)
+    else:
+        included = tmp_path / "included.cfg"
+        git(tmp_path, "config", "--file", included.as_posix(), "filter.spy.clean", command)
+        git(delivery.worktree, "config", "--worktree", "include.path", included.as_posix())
+    (delivery.worktree / ".gitattributes").write_text("* filter=spy\n", encoding="utf-8")
+    os.utime(str(delivery.worktree / "src/a/a.py"), (1_000_000_000, 1_000_000_000))
+    items = changed_items(delivery.run())
+    assert [item[:3] for item in items] == [["worktree-config", "worker",
+                                             "filter.spy.clean" if form == "filter" else "include.path"]]
+    assert calls(counter) == 0
+
+
+def test_a_configuration_file_that_appears_exits_4(tmp_path):
+    later = tmp_path / "later.cfg"
+    delivery = make_delivery(tmp_path, lambda repo: git(repo, "config", "include.path", later.as_posix()))
+    later.write_text("[x]\n", encoding="utf-8")
+    (delivery.home / ".gitconfig").write_text("[y]\n", encoding="utf-8")
+    names = {Path(item[1]).name for item in changed_items(delivery.run()) if item[0] == "file"}
+    assert names == {"later.cfg", ".gitconfig"}
+
+
+HOOK_WRITER = (
+    "import os, subprocess\n"
+    "common = subprocess.run(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], "
+    "capture_output=True, text=True).stdout.strip()\n"
+    "hook = os.path.join(common, 'hooks', 'post-checkout')\n"
+    "with open(hook, 'w') as written:\n"
+    "    written.write('#!/bin/sh\\necho x >> %s\\n')\n"
+    "os.chmod(hook, 0o755)\n"
+)
+DRIVER_WRITER = "import subprocess\nsubprocess.run(['git', 'config', 'merge.spy.driver', %r])\n"
+
+
+def test_a_hook_that_the_test_command_writes_exits_4_before_the_next_worktree_is_added(delivery, tmp_path):
+    counter = tmp_path / "hook-calls"
+    delivery.work({"src/a/feature.py": "VALUE = 1\n",
+                   "tests/test_a.py": HOOK_WRITER % counter.as_posix() + FEATURE_TEST})
+    items = changed_items(delivery.run(("--red", delivery.red_command())))
+    assert [item[:2] for item in items] == [["file", "hooks/post-checkout"]]
+    assert calls(counter) == 0 and delivery.worktree_entries() == 2
+
+
+def test_a_merge_driver_that_the_test_command_sets_exits_4_before_the_merges_are_read(tmp_path):
+    delivery = make_delivery(tmp_path, lambda repo: (common(repo) / "info" / "attributes").write_text(
+        "* merge=spy\n", encoding="utf-8"))
+    command, counter = spy(tmp_path)
+    conflicting_resolution(delivery)
+    delivery.work({"src/a/feature.py": "VALUE = 1\n",
+                   "tests/test_a.py": FEATURE_TEST + DRIVER_WRITER % (command + " %O %A %B")})
+    items = changed_items(delivery.run(("--red", delivery.red_command())))
+    assert [item[:2] for item in items] == [["config", "merge.spy.driver"]]
+    assert calls(counter) == 0
+
+
+def test_a_tag_made_between_a_comparison_and_merged_stays_a_difference(delivery):
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    assert delivery.run().returncode == 0
+    git(delivery.repo, "tag", "late")
+    delivery.integrate({"src/b/more.py": "m = 1\n"})
+    assert changed_items(delivery.run()) == [ref("refs/tags/late")]
+
+
+@pytest.mark.parametrize("branch", ["worktree-agent-old", "w-sync3"])
+def test_a_recorded_team_like_branch_that_moves_exits_4(tmp_path, branch):
+    delivery = make_delivery(tmp_path, lambda repo: git(repo, "branch", branch))
+    git(delivery.repo, "branch", "-f", branch, delivery.work({"src/a/new.py": "x = 1\n"}))
+    assert changed_items(delivery.run()) == [ref("refs/heads/" + branch)]
+
+
+@pytest.mark.parametrize("branch", ["worktree-agent-old", "w-sync3"])
+def test_a_new_worktree_on_a_recorded_team_like_branch_exits_4(tmp_path, branch):
+    """Only a team ref absent from the record frees a new worktree on it."""
+    delivery = make_delivery(tmp_path, lambda repo: git(repo, "branch", branch))
+    git(delivery.repo, "worktree", "add", "-q", str(tmp_path / "late"), branch)
+    [item] = changed_items(delivery.run())
+    assert item[0] == "worktree" and Path(item[1]).name == "late"
+
+
+def test_a_new_file_in_a_hooks_folder_outside_the_repository_exits_4(tmp_path):
+    hooks = tmp_path / "hooks"
+
+    def outside_hooks(repo: Path) -> None:
+        hooks.mkdir()
+        (hooks / "pre-commit.sample").write_text("#!/bin/sh\n", encoding="utf-8")
+        git(repo, "config", "core.hooksPath", hooks.as_posix())
+
+    delivery = make_delivery(tmp_path, outside_hooks)
+    (hooks / "post-checkout").write_text("#!/bin/sh\n", encoding="utf-8")
+    [item] = changed_items(delivery.run())
+    assert item[0] == "file" and Path(item[1]).name == "post-checkout"
+
+
+def test_a_recorded_branch_and_tag_deleted_exit_4(delivery):
+    git(delivery.repo, "branch", "-D", "shared")
+    git(delivery.repo, "tag", "-d", "v1")
+    assert changed_items(delivery.run()) == [ref("refs/heads/shared"), ref("refs/tags/v1")]
+
+
+def test_a_branch_made_without_team_exits_4(delivery):
+    git(delivery.repo, "branch", "w2")
+    assert changed_items(delivery.run()) == [ref("refs/heads/w2")]
+
+
+def test_after_an_accept_a_change_not_listed_is_still_a_difference(delivery):
+    git(delivery.repo, "tag", "v2")
+    delivery.accept_listed()
+    git(delivery.repo, "tag", "v3")
+    assert changed_items(delivery.run()) == [ref("refs/tags/v3")]
+
+
+def test_an_item_changed_again_after_its_listing_stays_a_difference_once_accepted(delivery):
+    """``accept`` records the value the user saw, not the one there when it runs."""
+    git(delivery.repo, "tag", "v2")
+    printed = listed(delivery.run())
+    seen = json.loads(printed[0])["found"]
+    tip = delivery.work({"src/a/new.py": "x = 1\n"})
+    git(delivery.repo, "tag", "-f", "v2", tip)
+    delivery.shared("accept", *printed)
+    proc = delivery.run()
+    assert changed_items(proc) == [ref("refs/tags/v2")]
+    assert json.loads(listed(proc)[0])["recorded"] == seen and json.loads(listed(proc)[0])["found"] == tip
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a symlink needs a privilege on Windows")
+def test_a_hook_symlink_pointed_elsewhere_exits_4(tmp_path):
+    def linked_hook(repo: Path) -> None:
+        hooks = common(repo) / "hooks"
+        (hooks / "a.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        (hooks / "post-checkout").symlink_to("a.sh")
+
+    delivery = make_delivery(tmp_path, linked_hook)
+    hook = common(delivery.repo) / "hooks" / "post-checkout"
+    hook.unlink()
+    hook.symlink_to("b.sh")
+    assert [item[:2] for item in changed_items(delivery.run())] == [["file", "hooks/post-checkout"]]
+
+
+def test_exit_4_wins_over_a_refusal(delivery):
+    delivery.work({"src/b/stray.py": "s = 1\n"})
+    git(delivery.repo, "tag", "v2")
+    assert changed_items(delivery.run()) == [ref("refs/tags/v2")]
+
+
+# --- the record and the worker's repository: exits 2 and 1 ----------------------------------------------------------
+
+
+def test_without_a_record_the_check_exits_2_and_says_how_a_run_begins(delivery):
+    (delivery.repo / ".pe" / "shared-state.json").unlink()
+    proc = delivery.run()
+    usage_error(proc, "no record at")
+    assert "`shared_state.py start` begins a new run; in a run, stop and go to the user" in proc.stderr
+
+
+def test_a_worker_git_that_leads_to_another_repository_exits_1_and_runs_nothing_there(delivery, tmp_path):
+    tip = delivery.work({"src/a/new.py": "x = 1\n"})
+    other = init_repo(tmp_path / "other")
+    commit(other, {"src/a/a.py": "a = 1\n"}, "other")
+    command, counter = spy(tmp_path)
+    git(other, "config", "filter.spy.clean", command)
+    (other / ".git" / "info" / "attributes").write_text("* filter=spy\n", encoding="utf-8")
+    (delivery.worktree / ".git").write_text("gitdir: %s\n" % (other / ".git").as_posix(), encoding="utf-8")
+    refused(delivery.run(replace={"--tip": tip}), "the worktree's .git leads to")
+    assert calls(counter) == 0
+
+
+# --- accepted: what the closed list lets change ----------------------------------------------------------------------
+
+
+def accepted(proc) -> None:
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_the_sync_branches_of_a_resumption_are_the_teams(delivery):
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    for name in ("w-sync", "w-sync2"):
+        git(delivery.worktree, "switch", "-q", "-c", name)
+        delivery.work({"src/a/%s.py" % name.replace("-", "_"): "x = 1\n"})
+    accepted(delivery.run(replace={"--branch": "w-sync2"}))
+
+
+def test_a_host_branch_and_a_branch_declared_after_start_are_the_teams(delivery, tmp_path):
+    delivery.shared("team", "w2")
+    agent = tmp_path / "agent"
+    git(delivery.repo, "worktree", "add", "-q", "-b", "worktree-agent-x", str(agent), "integration")
+    git(agent, "switch", "-q", "-c", "w2")
+    commit(agent, {"src/a/agent.py": "x = 1\n"}, "work")
+    delivery.integrate({"src/b/more.py": "m = 1\n"})
+    git(agent, "merge", "-q", "--no-edit", "integration")
+    tip = git(agent, "rev-parse", "HEAD").strip()
+    accepted(delivery.run(replace={"--branch": "w2", "--tip": tip, "--worktree": agent.as_posix()}))
+
+
+def test_gc_changes_nothing_that_is_compared(delivery):
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    git(delivery.repo, "gc", "-q")
+    accepted(delivery.run())
+
+
+def reftable_works(tmp_path: Path) -> bool:
+    probe = tmp_path / "probe"
+    probe.mkdir()
+    return subprocess.run(["git", "init", "-q", "--ref-format=reftable"], cwd=str(probe)).returncode == 0
+
+
+def test_a_reftable_repository_with_a_commit_and_a_fast_forward(tmp_path):
+    if not reftable_works(tmp_path):
+        pytest.skip("git init --ref-format=reftable fails here (it needs git 2.45)")
+    delivery = make_delivery(tmp_path, init=("--ref-format=reftable",))
+    tip = delivery.work({"src/a/new.py": "x = 1\n"})
+    git(delivery.repo, "merge", "-q", "--ff-only", tip)
+    delivery.shared("merged", tip)
+    accepted(delivery.run())
+
+
+def test_the_fsmonitor_daemon_started_after_the_record(delivery):
+    started = subprocess.run(["git", "fsmonitor--daemon", "start"], cwd=str(delivery.repo), capture_output=True,
+                             text=True)
+    if started.returncode != 0:
+        pytest.skip("git fsmonitor--daemon start fails here (macOS and Windows only): %s" % started.stderr.strip())
+    try:
+        delivery.work({"src/a/new.py": "x = 1\n"})
+        accepted(delivery.run())
+    finally:
+        subprocess.run(["git", "fsmonitor--daemon", "stop"], cwd=str(delivery.repo), capture_output=True)
+
+
+def test_a_prunable_worktree_pruned(tmp_path):
+    def prunable(repo: Path) -> None:
+        git(repo, "worktree", "add", "-q", "--detach", str(tmp_path / "gone"))
+        shutil.rmtree(str(tmp_path / "gone"))
+
+    delivery = make_delivery(tmp_path, prunable)
+    git(delivery.repo, "worktree", "prune")
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    accepted(delivery.run())
+
+
+def test_a_config_worktree_copied_from_the_coordinator(tmp_path):
+    def coordinator_config(repo: Path) -> None:
+        worktree_config_on(repo)
+        git(repo, "config", "--worktree", "x.y", "z")
+
+    delivery = make_delivery(tmp_path, coordinator_config)
+    assert git(delivery.worktree, "config", "--worktree", "x.y").strip() == "z"
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    accepted(delivery.run())
+
+
+def test_what_the_host_writes_into_the_configuration_and_the_exclude_file(delivery):
+    worktree_config_on(delivery.repo)
+    append(common(delivery.repo) / "info" / "exclude", ".claude/worktrees/\n**/.claude/settings.local.json\n")
+    git(delivery.worktree, "config", "--worktree", "core.untrackedCache", "true")
+    git(delivery.worktree, "config", "--worktree", "core.longpaths", "true")
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    accepted(delivery.run())
+
+
+def test_merged_after_a_fast_forward_and_after_a_merge_commit(delivery):
+    first = delivery.work({"src/a/new.py": "x = 1\n"})
+    git(delivery.repo, "merge", "-q", "--ff-only", first)
+    delivery.shared("merged", first)
+    accepted(delivery.run())
+    delivery.work({"src/a/more.py": "y = 1\n"})
+    git(delivery.repo, "merge", "-q", "--no-ff", "-m", "integrate w", delivery.tip())
+    delivery.shared("merged", git(delivery.repo, "rev-parse", "HEAD").strip())
+    accepted(delivery.run())
+
+
+def test_an_accepted_change_is_no_longer_listed(delivery):
+    git(delivery.repo, "tag", "v2")
+    delivery.accept_listed()
+    accepted(delivery.run())
+
+
+def test_a_submodule_of_the_worker_runs_no_fsmonitor_of_its_own(tmp_path):
+    sub = init_repo(tmp_path / "sub")
+    commit(sub, {"s.py": "s = 1\n"}, "sub")
+
+    def with_submodule(repo: Path) -> None:
+        git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub.as_posix(), "sub")
+        git(repo, "commit", "-q", "-m", "submodule")
+
+    delivery = make_delivery(tmp_path, with_submodule)
+    git(delivery.worktree, "-c", "protocol.file.allow=always", "submodule", "update", "-q", "--init")
+    delivery.work({"src/a/new.py": "x = 1\n"})
+    command, counter = spy(tmp_path)  # after the work: the worker's own commit looks into the submodule too
+    git(delivery.worktree / "sub", "config", "core.fsmonitor", command)
+    accepted(delivery.run())
+    assert calls(counter) == 0
