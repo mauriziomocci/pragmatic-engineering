@@ -479,7 +479,9 @@ def test_hooks_json_runs_the_hook_on_its_five_tools_and_lets_a_failed_hook_throu
         # a crash, a timeout or no python3 must never block a call of any user: the limits fall back to declared
         "onFailure": "continue",
     }]}]
-    # The hook's one git call must end before Claude Code gives up on the hook.
+    # Each git call of the hook must end before Claude Code gives up on the hook. A decision can make several (one
+    # for the worker agent, two for a worker session, plus one for each `cd` or `git -C`), so their sum can pass it:
+    # both READMEs give that cost per statement and say a hook past its timeout lets the call through.
     assert pre_tool_use.GIT_TIMEOUT < entries[0]["hooks"][0]["timeout"]
 
 
@@ -2002,6 +2004,10 @@ GUIDED_SENTENCES = {
          "interno, una chiamata dell'agente worker, e una chiamata la cui cartella di lavoro, o una cartella sopra di "
          "essa, contiene `.pe/worker`, come ogni chiamata di una sessione worker; nega anche quando la ricerca di quel "
          "segnale fallisce. Un guasto su ogni altra chiamata la lascia passare."),
+        ("A worker session whose git gives no answer (missing, hung past %g seconds, or failing) is not held either."
+         % pre_tool_use.GIT_TIMEOUT,
+         "Nemmeno una sessione worker il cui git non risponde (assente, fermo oltre %g secondi o in errore) è vincolata."
+         % pre_tool_use.GIT_TIMEOUT),
         # the Bash part of the worker boundary: the grammar it accepts, what it denies, what stays open
         ("The Bash part of the worker boundary reads the text of a command, not what the shell runs.",
          "La parte Bash del confine del worker legge il testo di un comando, non ciò che la shell esegue."),

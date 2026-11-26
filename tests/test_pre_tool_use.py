@@ -444,6 +444,7 @@ GIT_ENTRY_RULE = "never writes the .git file or folder"
     ("", "docs/.git"), ("", "docs/.GIT"), ("", ".git."), ("", ".git "), ("", "docs/.git ./config"), ("docs", ".git"),
     # NTFS reads what follows a colon as a stream of the name before it: .git::$DATA is the content of .git
     ("", ".git::$DATA"), ("", ".git:x"),
+    ("", ".git. :x"), ("", ".git ::$DATA"),  # trailing dots and spaces before the colon are dropped too
 ])
 def test_a_worker_write_of_the_git_file_or_folder_of_its_worktree_is_denied(worker_worktree, agent_type, tool_name,
                                                                              folder, path):
@@ -798,6 +799,7 @@ GIT_ENTRY_DELETE = "never the root itself nor a .git"
     ("", "rm .git."), ("", "rm -rf docs/.git/objects"), ("", "find .git -delete"), ("", "find docs/.git -delete"),
     ("docs", "rm ../.git"), ("docs", "rm .git"),
     ("", "rm '.git::$DATA'"), ("", "rm .git:x"), ("", "rm -rf '.git::$INDEX_ALLOCATION/config'"),  # NTFS streams
+    ("", "rm '.git. :x'"),
 ])
 def test_a_worker_deletion_of_a_git_file_or_folder_is_denied(worker_worktree, folder, command):
     reason = hook.decide(bash_call(command, worker_worktree / folder))
