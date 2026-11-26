@@ -479,8 +479,11 @@ def test_hooks_json_runs_the_hook_on_its_five_tools_and_lets_a_failed_hook_throu
         # a crash, a timeout or no python3 must never block a call of any user: the limits fall back to declared
         "onFailure": "continue",
     }]}]
-    # The hook's one git call must end before Claude Code gives up on the hook.
+    # Each git call of the hook must end before Claude Code gives up on the hook; one decision for a worker session
+    # can make up to three of them, a limit both READMEs declare.
     assert pre_tool_use.GIT_TIMEOUT < entries[0]["hooks"][0]["timeout"]
+    # Both READMEs state this value ("hung past 5 seconds", "fermo oltre 5 secondi").
+    assert pre_tool_use.GIT_TIMEOUT == 5
 
 
 MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
