@@ -1857,6 +1857,10 @@ GUIDED_SENTENCES = {
     ),
     "limits": (
         # the check of the shared state: after the fact, and another session's write is an exit 4 too
+        ("the system configuration file, when it is absent or without an entry at the start of the run and your "
+         "git's `git var` does not know `GIT_CONFIG_SYSTEM`",
+         "il file di configurazione di sistema, quando all'inizio della corsa manca o non ha voci e il `git var` "
+         "del tuo git non conosce `GIT_CONFIG_SYSTEM`"),
         ("The worker's status does not look inside a submodule, so uncommitted changes in a submodule's checkout do "
          "not make the worktree unclean.",
          "Lo stato del worker non guarda dentro un sottomodulo, quindi le modifiche non ancora in un commit nel "

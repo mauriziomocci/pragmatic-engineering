@@ -366,13 +366,17 @@ def test_the_system_configuration_file_is_read_present_or_absent(repo, tmp_path,
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="no executable bit on this file system")
-def test_a_regular_file_is_read_with_its_executable_bit(repo):
+@pytest.mark.parametrize("before, after", [(0o644, 0o755), (0o654, 0o754), (0o645, 0o745)],
+                         ids=["no-bit", "group-bit-only", "other-bit-only"])
+def test_a_regular_file_is_read_with_its_execute_bits_as_they_are(repo, before, after):
+    """Git runs a hook its owner may execute: a group or other bit alone leaves it skipped, so one flag would hide the
+    owner bit that a later ``chmod u+x`` adds."""
     hook = common(repo) / "hooks" / "post-checkout"
     hook.write_text("#!/bin/sh\n", encoding="utf-8")
-    hook.chmod(0o644)
+    hook.chmod(before)
     idle = shared_state.observe().items[("file", "hooks/post-checkout")]
-    hook.chmod(0o755)
-    assert shared_state.observe().items[("file", "hooks/post-checkout")] == idle + " executable"
+    hook.chmod(after)
+    assert shared_state.observe().items[("file", "hooks/post-checkout")] != idle
 
 
 def test_a_hooks_folder_outside_every_worktree_is_read_and_one_inside_is_not(repo, tmp_path):

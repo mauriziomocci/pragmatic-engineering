@@ -881,6 +881,22 @@ def test_an_item_changed_again_after_its_listing_stays_a_difference_once_accepte
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="a symlink needs a privilege on Windows")
+def test_a_hook_that_links_to_a_file_outside_the_repository_exits_4_when_that_file_changes(tmp_path):
+    """Git runs what the link leads to, so the file behind it counts even where nothing else compares it."""
+    elsewhere = tmp_path / "elsewhere" / "post-checkout.sh"
+
+    def linked_outside(repo: Path) -> None:
+        elsewhere.parent.mkdir()
+        elsewhere.write_text("#!/bin/sh\n", encoding="utf-8")
+        elsewhere.chmod(0o755)
+        (common(repo) / "hooks" / "post-checkout").symlink_to(elsewhere)
+
+    delivery = make_delivery(tmp_path, linked_outside)
+    elsewhere.write_text("#!/bin/sh\necho changed\n", encoding="utf-8")
+    assert [item[:2] for item in changed_items(delivery.run())] == [["file", "hooks/post-checkout"]]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a symlink needs a privilege on Windows")
 def test_a_hook_symlink_pointed_elsewhere_exits_4(tmp_path):
     def linked_hook(repo: Path) -> None:
         hooks = common(repo) / "hooks"
