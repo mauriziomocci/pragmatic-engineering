@@ -559,8 +559,8 @@ CONTRACTS: Dict[str, Contract] = {
             "the worktrees outside the team: an active one fails the fourth condition; ask the user which are active, "
             "and with the user away count every one but yours as active.",
             "Never run `start` again in the run, since it reads git anew: `team <branch>` before launching a branch it "
-            "lacks, `merged <new integration tip>` after an integration, `accept <line>...` of what the user accepted "
-            "after an exit 4.",
+            "lacks, `merged <new integration tip>` after an integration, `accept '<line>'...` of what the user "
+            "accepted after an exit 4.",
             # rules that a cut to fit the cap removed once (D-26-PE-7): each holds a decision no other line holds here
             "The project's instructions change them and name the resources (`engineering-principles`, isolated "
             "sessions).",
@@ -568,6 +568,8 @@ CONTRACTS: Dict[str, Contract] = {
             "In auto mode the classifier denies instead of waiting, and the worker reports it.",
             "A technical decision inside a task is the worker's.",
             "Handover: `development-workflow`.",
+            # the record ends with its run, so a record that start finds always means a run left open
+            "When the run ends, remove `.pe/shared-state.json`.",
             "- It exits 4: shared state changed, listed with its recorded and found values: it goes to the user, "
             "never to the worker.",
             "Integrate one delivery at a time, right after the run after the PASS, in order of arrival",

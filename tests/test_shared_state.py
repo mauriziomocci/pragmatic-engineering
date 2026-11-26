@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from support import REPO_ROOT, commit, common, git, init_repo, run_script, submodule_in
+from support import PRINTED, REPO_ROOT, commit, common, git, init_repo, run_script, submodule_in
 
 sys.path.insert(0, str(REPO_ROOT / "skills" / "team-lead"))
 import shared_state  # noqa: E402  (the skill's folder is put on the path above)
@@ -57,9 +57,9 @@ def test_every_name_of_the_closed_list_is_in_the_docstring():
 
 def test_a_changed_value_is_listed_with_its_recorded_and_its_found_value():
     [change] = shared_state.differences(record({ref("main"): SHA}), now({ref("main"): OTHER_SHA}))
-    prefix, _, change_text = change.line().partition("shared state changed: ")
-    assert prefix == "verify_delivery: "
-    assert json.loads(change_text) == {"item": ["ref", "refs/heads/main"], "recorded": SHA, "found": OTHER_SHA}
+    assert change.line().startswith(PRINTED)
+    assert json.loads(change.line()[len(PRINTED):]) == {"item": ["ref", "refs/heads/main"], "recorded": SHA,
+                                                        "found": OTHER_SHA}
 
 
 def test_team_refs_absent_from_the_record_may_appear_and_move():
@@ -203,15 +203,12 @@ def test_accept_brings_a_worktree_back_as_it_was_printed():
     assert shared_state.accepted(record({}), [printed]).items[("worktree", "/new")] == worktree()
 
 
-PRINTED = "verify_delivery: shared state changed: "
-
-
 @pytest.mark.parametrize("line", ["", PRINTED + "[1]", PRINTED + '{"item": ["nothing", "x"], "found": 1}',
                                   PRINTED + '{"item": [], "found": 1}', PRINTED + '{"found": 1}',
                                   '{"item": ["ref", "refs/tags/v1"], "recorded": null, "found": "%s"}' % SHA,
                                   "verify_delivery: refused: of a sort.... " + '{"item": ["ref", "x"], "found": 1}'])
 def test_accept_refuses_what_exit_4_did_not_print(line):
-    with pytest.raises(shared_state.RecordError, match="not an item"):
+    with pytest.raises(shared_state.RecordError, match="is not a line that exit 4 of verify_delivery.py printed"):
         shared_state.accepted(record({}), [line])
 
 
@@ -256,6 +253,13 @@ def test_a_loose_ref_that_differs_only_by_case_is_what_the_packed_one_reads(repo
     (common(repo) / "refs" / "heads" / "Main").write_text(new + "\n", encoding="utf-8")
     items = shared_state.observe().items
     assert items[ref("main")] == new and items[ref("Main")] == new
+
+
+@pytest.mark.parametrize("name", ["x\u2028y", "x\u0085y"], ids=["line-separator", "next-line"])
+def test_a_ref_whose_name_holds_a_line_break_of_unicode_is_read_whole(repo, name):
+    """``check-ref-format`` takes them, and ``str.splitlines`` would break the name in two."""
+    git(repo, "branch", name)
+    assert shared_state.observe().items[ref(name)] == git(repo, "rev-parse", "HEAD").strip()
 
 
 def test_worktrees_are_read_with_head_branch_and_prunable(repo, tmp_path):
@@ -479,7 +483,20 @@ def test_accept_records_the_printed_item(repo):
     line = PRINTED + json.dumps({"item": ["ref", "refs/tags/v1"], "recorded": None, "found": SHA})
     assert run(repo, "accept", line).returncode == 0  # the whole line, one argument, as exit 4 printed it
     assert load(repo).items[("ref", "refs/tags/v1")] == SHA
-    usage_error(run(repo, "accept", "refs/tags/v1"), "not an item")
+    usage_error(run(repo, "accept", "refs/tags/v1"), "is not a line that exit 4 of verify_delivery.py printed")
+
+
+def test_accept_of_an_unquoted_line_says_what_a_line_starts_with_and_how_to_pass_it(repo):
+    """Without quotes the shell splits the line, and the first argument is only ``verify_delivery:``."""
+    assert run(repo, "start", "--integration", "main", "--team", "w1").returncode == 0
+    proc = run(repo, "accept", "verify_delivery:", "shared", "state")
+    usage_error(proc, "such a line starts with %r" % PRINTED)
+    assert "pass each whole line as one quoted argument" in proc.stderr
+
+
+def test_the_usage_and_the_parser_name_whole_lines():
+    assert "shared_state.py accept '<line>'..." in shared_state.__doc__
+    assert shared_state.parser().parse_args(["accept", PRINTED + "{}"]).lines == [PRINTED + "{}"]
 
 
 def test_start_refuses_to_read_again_over_a_record_of_the_run(repo):

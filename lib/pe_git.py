@@ -7,7 +7,7 @@ that is not valid text, so they still compare exactly.
 """
 import re
 import subprocess
-from typing import Optional
+from typing import List, Optional
 
 HEADS = "refs/heads/"
 OBJECT_ID = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")  # a full object id, SHA-1 or SHA-256
@@ -21,6 +21,12 @@ def run_git(*args: str, input: Optional[str] = None) -> subprocess.CompletedProc
     """``input`` is the standard input, for a command that reads its names there, as ``cat-file --batch-check`` does."""
     return subprocess.run(["git", "--no-replace-objects", *args], input=input, capture_output=True, text=True,
                           errors="surrogateescape")
+
+
+def output_lines(output: str) -> List[str]:
+    """The lines of git's output, split on newlines only: ``str.splitlines`` also splits on line breaks of Unicode,
+    such as U+2028 and U+0085, which git takes in a branch name or a path."""
+    return [line for line in output.split("\n") if line]
 
 
 def git(*args: str, input: Optional[str] = None) -> str:

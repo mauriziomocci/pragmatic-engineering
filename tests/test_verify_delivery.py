@@ -19,14 +19,13 @@ from typing import Callable, Dict, Iterable, List, Optional
 
 import pytest
 
-from support import REPO_ROOT, commit, common, git, init_repo, run_script, submodule_in
+from support import PRINTED, REPO_ROOT, commit, common, git, init_repo, run_script, submodule_in
 
 SCRIPT = REPO_ROOT / "skills" / "team-lead" / "verify_delivery.py"
 SHARED_STATE = REPO_ROOT / "skills" / "team-lead" / "shared_state.py"
 BRIEF = "# Brief\n\nOWNED: src/a/*\nOWNED: tests/test_a*.py\nTESTS: tests/test_a*.py\n"
 # A test is a script that exits with a non-zero code when its assertion falls, run from the root of a worktree.
 FEATURE_TEST = "import sys\n\nsys.path.insert(0, 'src/a')\nimport feature\n\nassert feature.VALUE == 1\n"
-CHANGED = "verify_delivery: shared state changed: "
 
 
 @dataclass
@@ -135,11 +134,11 @@ def delivery(tmp_path):
 
 def listed(proc) -> List[str]:
     """The lines of the changes that an exit 4 printed, each whole, as ``accept`` takes it."""
-    return [line for line in proc.stderr.splitlines() if line.startswith(CHANGED)]
+    return [line for line in proc.stderr.splitlines() if line.startswith(PRINTED)]
 
 
 def printed(line: str) -> dict:
-    return json.loads(line[len(CHANGED):])
+    return json.loads(line[len(PRINTED):])
 
 
 def changed_items(proc) -> List[List[Optional[str]]]:
@@ -825,6 +824,20 @@ def test_a_recorded_branch_and_tag_deleted_exit_4(delivery):
     assert changed_items(delivery.run()) == [ref("refs/heads/shared"), ref("refs/tags/v1")]
 
 
+@pytest.mark.parametrize("team", [False, True], ids=["outside-the-team", "of-the-team"])
+def test_a_branch_whose_name_holds_a_unicode_line_break_reaches_the_comparison(delivery, team):
+    """A crash would be exit 1, which goes back to the worker; the change is the user's, or the team's own."""
+    name = "x\u2028y"
+    if team:
+        delivery.shared("team", name)
+    git(delivery.repo, "branch", name)
+    proc = delivery.run()
+    if team:
+        accepted(proc)
+    else:
+        assert changed_items(proc) == [ref("refs/heads/" + name)]
+
+
 def test_a_branch_made_without_team_exits_4(delivery):
     git(delivery.repo, "branch", "w2")
     assert changed_items(delivery.run()) == [ref("refs/heads/w2")]
@@ -894,6 +907,29 @@ def test_a_worker_git_folder_outside_the_worktrees_folder_exits_1_and_runs_nothi
     (delivery.worktree / ".git").write_text("gitdir: %s\n" % elsewhere.as_posix(), encoding="utf-8")
     refused(delivery.run(replace={"--tip": tip}), "the worktree's .git leads to")
     assert calls(counter) == 0
+
+
+@pytest.mark.parametrize("name", ["else\u2028where", "else\nwhere"], ids=["line-separator", "newline"])
+def test_a_worker_git_folder_whose_path_holds_a_line_break_is_refused_with_its_reason(tmp_path, name):
+    """The worker writes its own ``.git``: a path that git prints over two lines must give a refusal, not a crash."""
+    if "\n" in name and sys.platform == "win32":
+        pytest.skip("a newline is no part of a file name on Windows")
+    delivery = make_delivery(tmp_path)
+    tip = delivery.work({"src/a/new.py": "x = 1\n"})
+    elsewhere = tmp_path / name
+    shutil.copytree(str(common(delivery.repo) / "worktrees" / "worker"), str(elsewhere))
+    (elsewhere / "commondir").write_text(common(delivery.repo).as_posix() + "\n", encoding="utf-8")
+    (delivery.worktree / ".git").write_text("gitdir: %s\n" % elsewhere.as_posix(), encoding="utf-8")
+    refused(delivery.run(replace={"--tip": tip}), "the worktree's .git leads to")
+
+
+def test_a_worktree_of_this_repository_whose_folder_holds_a_unicode_line_break_is_ours(delivery, tmp_path):
+    """Its admin folder under ``worktrees/`` takes the name of the folder, and git prints that path on one line."""
+    delivery.shared("team", "w2")
+    agent = tmp_path / "agent\u2028x"
+    git(delivery.repo, "worktree", "add", "-q", "-b", "w2", str(agent), "integration")
+    tip = commit(agent, {"src/a/agent.py": "x = 1\n"}, "work")
+    accepted(delivery.run(replace={"--branch": "w2", "--tip": tip, "--worktree": agent.as_posix()}))
 
 
 def test_a_worker_git_that_leads_to_another_repository_exits_1_and_runs_nothing_there(delivery, tmp_path):

@@ -42,6 +42,10 @@ def commit(
     return git(repo, "rev-parse", "HEAD").strip()
 
 
+# How exit 4 of verify_delivery.py prints each change, and what shared_state.py accept takes back whole.
+PRINTED = "verify_delivery: shared state changed: "
+
+
 def common(repo: Path) -> Path:
     """The common git folder of ``repo``, the one its worktrees share."""
     return Path(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())

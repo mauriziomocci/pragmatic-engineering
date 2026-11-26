@@ -80,7 +80,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
 # Below, the imports come after the path to lib/: the plugin's shared code, found from this file, which shared_state,
 # in this file's folder, imports too.
 import shared_state  # noqa: E402
-from pe_git import HEADS, OBJECT_ID, GitError, git, run_git  # noqa: E402
+from pe_git import HEADS, OBJECT_ID, GitError, git, output_lines, run_git  # noqa: E402
 from pe_worktree import WorktreeError, temporary_worktree  # noqa: E402
 from shared_state import RecordError  # noqa: E402
 
@@ -232,10 +232,13 @@ def check_shared_state(request: Request) -> None:
 def foreign_git_folder(worktree: str) -> Optional[str]:
     """The git folder that the worktree's ``.git`` leads to, unless it is this repository's common folder or one
     directly under its ``worktrees/``: the status would read, and run, that folder's settings, which nothing
-    compares."""
+    compares. A path that git prints over more lines than one, a newline in a folder name, is never ours."""
     own = os.path.realpath(shared_state.common_dir())
     found = git("-C", worktree, "rev-parse", "--path-format=absolute", "--git-common-dir", "--absolute-git-dir")
-    common, folder = (os.path.realpath(path) for path in found.splitlines())
+    paths = [os.path.realpath(path) for path in output_lines(found)]
+    if len(paths) != 2:
+        return found.strip()
+    common, folder = paths
     ours = common == own and (folder == own or os.path.dirname(folder) == os.path.join(own, "worktrees"))
     return None if ours else folder
 
@@ -244,7 +247,8 @@ def worktree_problems(request: Request) -> List[str]:
     check_shared_state(request)
     elsewhere = foreign_git_folder(request.worktree)
     if elsewhere:
-        return ["the worktree's .git leads to %s, not to this repository" % elsewhere]
+        return ["the worktree's .git leads to %r, which is neither this repository's git folder nor one under its "
+                "worktrees/" % elsewhere]
     dirty = git("--no-optional-locks", "-c", "core.fsmonitor=false", "-C", request.worktree, "status", "--porcelain",
                 "--untracked-files=all", "--ignore-submodules=dirty")
     return ["the worktree is not clean:\n%s" % dirty.rstrip()] if dirty.strip() else []

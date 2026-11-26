@@ -30,7 +30,7 @@ Before the first order write the team: for each worker a file area and a package
 
 Right after `start_session`, write an empty `.pe/worker` and `.pe/.gitignore` holding `*` into the worktree that `get_session` gives, and only then send the brief by `SendMessage`; the hook holds a session with that signal to its worktree; when the auto mode classifier denies that write, the boundary does not hold for that worker, and the coordinator says so. A session worker may launch at most two internal agents, declared in its delivery file.
 
-Before the first sub-agent launch, add `.claude/worktrees/`, where the host puts sub-agent worktrees, to `git rev-parse --git-path info/exclude`: local, never committed. Then, before any worker, `python3 <this skill's folder>/shared_state.py start --integration <branch> --team <branch>...` lists the worktrees outside the team: an active one fails the fourth condition; ask the user which are active, and with the user away count every one but yours as active. Never run `start` again in the run, since it reads git anew: `team <branch>` before launching a branch it lacks, `merged <new integration tip>` after an integration, `accept <line>...` of what the user accepted after an exit 4.
+Before the first sub-agent launch, add `.claude/worktrees/`, where the host puts sub-agent worktrees, to `git rev-parse --git-path info/exclude`: local, never committed. Then, before any worker, `python3 <this skill's folder>/shared_state.py start --integration <branch> --team <branch>...` lists the worktrees outside the team: an active one fails the fourth condition; ask the user which are active, and with the user away count every one but yours as active. Never run `start` again in the run, since it reads git anew: `team <branch>` before launching a branch it lacks, `merged <new integration tip>` after an integration, `accept '<line>'...` of what the user accepted after an exit 4.
 
 ## The brief
 
@@ -86,4 +86,4 @@ A test that depends on time under load is unstable until it passes alone; say so
 
 ## Closing
 
-A worker's worktree and session are archived only when its branch is integrated and its report recorded, never mid-suite; then remove a sub-agent's with `git worktree remove <folder>`. Handover: `development-workflow`. Measure in tokens per task delivered; if the session log lacks it, usage per package with only the team running.
+A worker's worktree and session are archived only when its branch is integrated and its report recorded, never mid-suite; then remove a sub-agent's with `git worktree remove <folder>`. When the run ends, remove `.pe/shared-state.json`. Handover: `development-workflow`. Measure in tokens per task delivered; if the session log lacks it, usage per package with only the team running.

@@ -5,7 +5,7 @@ Usage, from the coordinator's checkout:
 python3 <this skill's folder>/shared_state.py start --integration <branch> --team <branch>...
 python3 <this skill's folder>/shared_state.py team <branch>...
 python3 <this skill's folder>/shared_state.py merged <sha>
-python3 <this skill's folder>/shared_state.py accept <item>...
+python3 <this skill's folder>/shared_state.py accept '<line>'...
 
 The record is ``.pe/shared-state.json`` at the root of that checkout, outside the common folder of the repository
 (``git rev-parse --git-common-dir``), where both scripts find it. ``start`` is the one full read of a run: it refuses
@@ -73,7 +73,8 @@ from types import MappingProxyType
 from typing import Any, Callable, Dict, FrozenSet, Iterable, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
-from pe_git import HEADS, OBJECT_ID, GitError, git  # noqa: E402  (the plugin's shared code, found from this file)
+# the plugin's shared code, found from this file
+from pe_git import HEADS, OBJECT_ID, GitError, git, output_lines  # noqa: E402
 
 RECORD = Path(".pe") / "shared-state.json"
 NO_RECORD = "no record at %s: `shared_state.py start` begins a new run; in a run, stop and go to the user"
@@ -219,14 +220,15 @@ def frozen(value: Any) -> Any:
 def printed_change(line: str) -> Tuple[Item, Any]:
     """The item and the found value of one whole line that exit 4 printed."""
     if not line.startswith(PRINTED):
-        raise RecordError("%r is not an item that verify_delivery.py printed: it starts with %r" % (line, PRINTED))
+        raise RecordError("%r is not a line that exit 4 of verify_delivery.py printed: such a line starts with %r; "
+                          "pass each whole line as one quoted argument" % (line, PRINTED))
     try:
         change = json.loads(line[len(PRINTED):])
         item, found = tuple(change["item"]), frozen(change["found"])
     except (ValueError, TypeError, KeyError) as error:
-        raise RecordError("%r is not an item that verify_delivery.py printed: %s" % (line, error)) from error
+        raise RecordError("%r is not a line that exit 4 of verify_delivery.py printed: %s" % (line, error)) from error
     if not item or item[0] not in ITEM_KINDS or not all(part is None or isinstance(part, str) for part in item):
-        raise RecordError("%r is not an item that verify_delivery.py printed" % line)
+        raise RecordError("%r is not a line that exit 4 of verify_delivery.py printed" % line)
     return item, found
 
 
@@ -256,10 +258,10 @@ def common_dir() -> str:
 
 def read_refs() -> Dict[Item, str]:
     """Names from ``for-each-ref``, values from one lookup each; a name gone in between is left out, as if absent."""
-    listed = [line.split("\0") for line in git("for-each-ref", "--format=%(refname)%00%(symref)").splitlines()]
+    listed = [line.split("\0") for line in output_lines(git("for-each-ref", "--format=%(refname)%00%(symref)"))]
     looked_up = git("cat-file", "--batch-check=%(objectname)", input="".join(name + "\n" for name, _ in listed))
     return {("ref", name): value + (" -> " + target if target else "")
-            for (name, target), value in zip(listed, looked_up.splitlines()) if OBJECT_ID.fullmatch(value)}
+            for (name, target), value in zip(listed, output_lines(looked_up)) if OBJECT_ID.fullmatch(value)}
 
 
 def read_worktrees() -> Dict[Item, Tuple[Optional[str], Optional[str], bool]]:
@@ -502,14 +504,14 @@ def start(args: argparse.Namespace) -> None:
     record = started(args.integration, args.team, now, copied_entries(common_dir(), now.admin_folders))
     save(record, path)
     worktrees = sorted((item[1], value) for item, value in record.items.items() if item[0] == "worktree")
-    for path, (_, branch, prunable) in worktrees:
-        print("%s %s%s" % (path, branch[len(HEADS):] if branch else "detached", " prunable" if prunable else ""))
+    for folder, (_, branch, prunable) in worktrees:
+        print("%s %s%s" % (folder, branch[len(HEADS):] if branch else "detached", " prunable" if prunable else ""))
 
 
 DERIVED: Dict[str, Callable[[Record, argparse.Namespace], Record]] = {
     "team": lambda record, args: with_team(record, args.names),
     "merged": lambda record, args: merged(record, args.sha),
-    "accept": lambda record, args: accepted(record, args.items),
+    "accept": lambda record, args: accepted(record, args.lines),
 }
 
 
@@ -521,7 +523,7 @@ def parser() -> argparse.ArgumentParser:
     first.add_argument("--team", nargs="+", required=True)
     command.add_parser("team").add_argument("names", nargs="+")
     command.add_parser("merged").add_argument("sha")
-    command.add_parser("accept").add_argument("items", nargs="+")
+    command.add_parser("accept").add_argument("lines", nargs="+")
     return commands
 
 
